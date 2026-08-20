@@ -468,7 +468,7 @@
             }).addTo(osmGroup);
         }
 
-        // --- 7. Fetch OSM Data (CORS-Safe Reliable Endpoints) ---
+        // --- 7. Fetch OSM Data (CORS-Safe Robust Strategy: POST -> GET -> Proxy) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -493,7 +493,6 @@
                 out skel qt;
             `;
 
-            // Daftar server publik Overpass API utama yang terbukti aman dari CORS
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
                 'https://lz4.overpass-api.de/api/interpreter',
@@ -504,10 +503,17 @@
 
             for (const endpoint of endpoints) {
                 try {
-                    const response = await fetch(endpoint, {
+                    // 1. Coba metode POST standar
+                    let response = await fetch(endpoint, {
                         method: 'POST',
                         body: query
                     });
+
+                    // 2. Jika POST gagal / diblokir CORS preflight, coba metode GET via parameter URL
+                    if (!response.ok) {
+                        const getUrl = `${endpoint}?data=${encodeURIComponent(query)}`;
+                        response = await fetch(getUrl, { method: 'GET' });
+                    }
                     
                     const responseText = await response.text();
 
@@ -525,21 +531,47 @@
                         success = true;
                         break;
                     } else {
-                        console.warn(`Server ${endpoint} busy or returned invalid response. Switching...`);
+                        console.warn(`Server ${endpoint} returned invalid payload. Trying next...`);
                     }
                 } catch (err) {
                     console.warn(`Attempt with ${endpoint} failed due to network/CORS. Trying next...`);
                 }
 
-                // Beri jeda 1 detik antar percobaan server
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
+            // 3. Cadangan Terakhir (Fallback melalui Public CORS Proxy jika koneksi langsung gagal total)
+            if (!success) {
+                try {
+                    console.warn('Direct endpoints failed. Trying via public CORS proxy...');
+                    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent('https://overpass-api.de/api/interpreter');
+                    const response = await fetch(proxyUrl, {
+                        method: 'POST',
+                        body: query
+                    });
+                    const responseText = await response.text();
+
+                    if (response.ok && responseText.trim().startsWith('{')) {
+                        const data = JSON.parse(responseText);
+                        lastFetchedOsmGeojson = osmtogeojson(data);
+                        renderOSM(lastFetchedOsmGeojson, currentRoadWidthMultiplier);
+
+                        Swal.fire({
+                            toast: true, position: 'top-end', icon: 'success',
+                            title: 'Data loaded via proxy successfully!', showConfirmButton: false, timer: 2000
+                        });
+                        success = true;
+                    }
+                } catch (proxyErr) {
+                    console.warn('Proxy fallback failed:', proxyErr);
+                }
             }
 
             if (!success) {
                 Swal.fire({
                     icon: 'warning',
-                    title: 'Server Overpass Sibuk',
-                    text: 'Koneksi ke server OSM terhalang atau sibuk. Silakan tunggu 10 detik lalu klik tombol "Refresh Buildings & Roads" kembali.',
+                    title: 'Koneksi Overpass Terblokir',
+                    text: 'Jaringan atau browser Anda memblokir akses ke server peta. Coba nonaktifkan AdBlock/Extension pelindung privasi atau coba beberapa saat lagi.',
                     confirmButtonColor: '#10b981'
                 });
             }

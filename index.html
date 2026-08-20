@@ -22,17 +22,6 @@
     <!-- toGeoJSON (for KML to GeoJSON) -->
     <script src="https://unpkg.com/@tmcw/togeojson@4.2.0/dist/togeojson.umd.js"></script>
 
-    <!-- OSM to GeoJSON with Auto CDN Fallback -->
-    <script src="https://cdn.jsdelivr.net/npm/osmtogeojson@3/osmtogeojson.js" onerror="loadOSMBackup(this)"></script>
-    <script>
-        function loadOSMBackup(elem) {
-            console.warn("CDN Utama osmtogeojson gagal, mengalihkan ke CDN cadangan...");
-            const backup = document.createElement('script');
-            backup.src = "https://unpkg.com/osmtogeojson@3/osmtogeojson.js";
-            document.head.appendChild(backup);
-        }
-    </script>
-
     <!-- Turf.js (for spatial processing & bounding boxes) -->
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
@@ -332,7 +321,44 @@
             fetchOSMData(currentBbox);
         }
 
-        // --- ROBUST: Multi-Mirror & Safe Converter with Delay Check ---
+        // --- INTERNAL INLINE PARSER (Replaces external osmtogeojson dependency completely) ---
+        function convertOverpassToGeoJSON(data) {
+            const features = [];
+            if (!data || !data.elements) return { type: "FeatureCollection", features: [] };
+
+            data.elements.forEach(el => {
+                if (el.type === 'way' && el.geometry && el.geometry.length > 0) {
+                    const coordinates = el.geometry.map(pt => [pt.lon, pt.lat]);
+                    let geomType = "LineString";
+                    let geomCoords = coordinates;
+
+                    if (el.tags && el.tags.building) {
+                        geomType = "Polygon";
+                        if (coordinates.length > 2) {
+                            const first = coordinates[0];
+                            const last = coordinates[coordinates.length - 1];
+                            if (first[0] !== last[0] || first[1] !== last[1]) {
+                                coordinates.push([...first]);
+                            }
+                        }
+                        geomCoords = [coordinates];
+                    }
+
+                    features.push({
+                        type: "Feature",
+                        geometry: {
+                            type: geomType,
+                            coordinates: geomCoords
+                        },
+                        properties: el.tags || {}
+                    });
+                }
+            });
+
+            return { type: "FeatureCollection", features: features };
+        }
+
+        // --- ROBUST: Multi-Mirror & Independent Fetcher ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -341,24 +367,11 @@
             btn.innerHTML = 'Fetching... <div class="loader"></div>';
             btn.disabled = true;
 
-            // Beri jeda sepersekian detik jika pustaka cadangan sedang diunduh
-            let attempts = 0;
-            while (typeof osmtogeojson === 'undefined' && attempts < 10) {
-                await new Promise(r => setTimeout(r, 300));
-                attempts++;
-            }
-
-            if (typeof osmtogeojson === 'undefined') {
-                Swal.fire('Error', 'Gagal memuat pustaka osmtogeojson dari CDN manapun. Periksa koneksi internet Anda.', 'error');
-                btn.innerHTML = originalHTML;
-                btn.disabled = false;
-                return;
-            }
-
             const s = bbox.getSouth(); const w = bbox.getWest();
             const n = bbox.getNorth(); const e_coord = bbox.getEast();
 
-            const query = `[out:json][timeout:25];(way["building"](${s},${w},${n},${e_coord});way["highway"](${s},${w},${n},${e_coord}););out body;>;out skel qt;`;
+            // Menggunakan query 'out geom;' agar data geometri langsung tersedia tanpa dependensi luar
+            const query = `[out:json][timeout:25];(way["building"](${s},${w},${n},${e_coord});way["highway"](${s},${w},${n},${e_coord}););out geom;`;
 
             const targetUrls = [
                 `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,
@@ -377,7 +390,7 @@
                     const data = await response.json();
                     if (!data.elements) continue;
 
-                    const geojson = osmtogeojson(data);
+                    const geojson = convertOverpassToGeoJSON(data);
                     
                     osmGroup.clearLayers();
                     L.geoJSON(geojson, {
@@ -404,7 +417,7 @@
             }
 
             if (!success) {
-                Swal.fire('Error', 'Overpass API sedang sibuk atau gagal memuat data.', 'error');
+                Swal.fire('Error', 'Overpass API sedang sibuk atau area terlalu besar. Coba perkecil area batas KML Anda.', 'error');
             }
 
             btn.innerHTML = originalHTML;

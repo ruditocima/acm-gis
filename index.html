@@ -324,7 +324,7 @@
             fetchOSMData(currentBbox);
         }
 
-        // --- FIXED: Fetch OSM Data via GET Method to Avoid CORS ---
+        // --- ROBUST: Multi-Mirror & CORS Proxy Fetcher ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
             const btn = document.getElementById('btn-fetch-osm');
@@ -337,22 +337,24 @@
 
             const query = `[out:json][timeout:25];(way["building"](${s},${w},${n},${e_coord});way["highway"](${s},${w},${n},${e_coord}););out body;>;out skel qt;`;
 
-            const endpoints = [
-                'https://overpass-api.de/api/interpreter',
-                'https://lz4.overpass-api.de/api/interpreter'
+            // Daftar endpoint cadangan (Mirror & Proxy) untuk menghindari blokir jaringan/CORS
+            const targetUrls = [
+                `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,
+                `https://lz4.overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,
+                `https://overpass.kumi.systems/api/interpreter?data=${encodeURIComponent(query)}`,
+                `https://corsproxy.io/?${encodeURIComponent('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query))}`
             ];
 
             let success = false;
 
-            for (const endpoint of endpoints) {
+            for (const url of targetUrls) {
                 try {
-                    // Menggunakan metode GET query parameter agar aman dari CORS preflight browser
-                    const url = `${endpoint}?data=${encodeURIComponent(query)}`;
                     const response = await fetch(url);
-                    
-                    if (!response.ok) throw new Error("Server error");
+                    if (!response.ok) continue;
                     
                     const data = await response.json();
+                    if (!data.elements) continue;
+
                     const geojson = osmtogeojson(data);
                     
                     osmGroup.clearLayers();
@@ -375,12 +377,12 @@
                     success = true;
                     break; 
                 } catch (err) {
-                    console.warn(`Attempt with ${endpoint} failed. Trying next...`);
+                    console.warn(`Gagal pada mirror: ${url}`, err);
                 }
             }
 
             if (!success) {
-                Swal.fire('Error', 'Gagal memuat data dari Overpass API. Server sibuk atau diblokir jaringan.', 'error');
+                Swal.fire('Error', 'Overpass API sedang sibuk atau area terlalu besar. Coba perkecil area batas KML Anda.', 'error');
             }
 
             btn.innerHTML = originalHTML;

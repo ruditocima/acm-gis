@@ -468,7 +468,7 @@
             }).addTo(osmGroup);
         }
 
-        // --- 7. Fetch OSM Data (CORS-Safe Robust Strategy: POST -> GET -> Proxy) ---
+        // --- 7. Fetch OSM Data (Timeout 504 Handled & Optimized) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -482,8 +482,9 @@
             const n = bbox.getNorth();
             const e_coord = bbox.getEast();
 
+            // Mengoptimalkan query dengan timeout yang wajar
             const query = `
-                [out:json][timeout:25];
+                [out:json][timeout:30];
                 (
                   way["building"](${s},${w},${n},${e_coord});
                   way["highway"](${s},${w},${n},${e_coord});
@@ -500,19 +501,28 @@
             ];
 
             let success = false;
+            let isTimeout504 = false;
 
             for (const endpoint of endpoints) {
                 try {
-                    // 1. Coba metode POST standar
                     let response = await fetch(endpoint, {
                         method: 'POST',
                         body: query
                     });
 
-                    // 2. Jika POST gagal / diblokir CORS preflight, coba metode GET via parameter URL
+                    if (response.status === 504) {
+                        isTimeout504 = true;
+                        console.warn(`Server ${endpoint} responded with 504 Gateway Timeout. Area too large.`);
+                        continue;
+                    }
+
                     if (!response.ok) {
                         const getUrl = `${endpoint}?data=${encodeURIComponent(query)}`;
                         response = await fetch(getUrl, { method: 'GET' });
+                        if (response.status === 504) {
+                            isTimeout504 = true;
+                            continue;
+                        }
                     }
                     
                     const responseText = await response.text();
@@ -530,48 +540,21 @@
 
                         success = true;
                         break;
-                    } else {
-                        console.warn(`Server ${endpoint} returned invalid payload. Trying next...`);
                     }
                 } catch (err) {
-                    console.warn(`Attempt with ${endpoint} failed due to network/CORS. Trying next...`);
+                    console.warn(`Attempt with ${endpoint} failed. Trying next...`);
                 }
 
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
 
-            // 3. Cadangan Terakhir (Fallback melalui Public CORS Proxy jika koneksi langsung gagal total)
-            if (!success) {
-                try {
-                    console.warn('Direct endpoints failed. Trying via public CORS proxy...');
-                    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent('https://overpass-api.de/api/interpreter');
-                    const response = await fetch(proxyUrl, {
-                        method: 'POST',
-                        body: query
-                    });
-                    const responseText = await response.text();
-
-                    if (response.ok && responseText.trim().startsWith('{')) {
-                        const data = JSON.parse(responseText);
-                        lastFetchedOsmGeojson = osmtogeojson(data);
-                        renderOSM(lastFetchedOsmGeojson, currentRoadWidthMultiplier);
-
-                        Swal.fire({
-                            toast: true, position: 'top-end', icon: 'success',
-                            title: 'Data loaded via proxy successfully!', showConfirmButton: false, timer: 2000
-                        });
-                        success = true;
-                    }
-                } catch (proxyErr) {
-                    console.warn('Proxy fallback failed:', proxyErr);
-                }
-            }
-
             if (!success) {
                 Swal.fire({
                     icon: 'warning',
-                    title: 'Koneksi Overpass Terblokir',
-                    text: 'Jaringan atau browser Anda memblokir akses ke server peta. Coba nonaktifkan AdBlock/Extension pelindung privasi atau coba beberapa saat lagi.',
+                    title: isTimeout504 ? 'Wilayah Terlalu Luas (504 Timeout)' : 'Koneksi Overpass Gagal',
+                    text: isTimeout504 
+                        ? 'Server peta publik mengalami timeout karena area KML yang Anda unggah terlalu besar. Silakan gunakan area/boundary yang lebih kecil.' 
+                        : 'Gagal mengambil data OSM. Periksa koneksi internet Anda atau coba beberapa saat lagi.',
                     confirmButtonColor: '#10b981'
                 });
             }
@@ -679,7 +662,7 @@
                 let gem = feature.geometry;
                 if (!gem) return;
 
-                let layerName = feature.properties.layer || "0";
+                    let layerName = feature.properties.layer || "0";
                 layerName = layerName.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
 
                 function addLWPolyline(coords, isClosed) {

@@ -208,7 +208,7 @@
 
     <!-- Application Logic -->
     <script>
-        // --- 1. Map Initialization (OSM as Default) ---
+        // --- 1. Map Initialization (OSM as Default) ---[cite: 1]
         const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 22,
             attribution: '© OpenStreetMap contributors'
@@ -220,7 +220,7 @@
         });
 
         const map = L.map('map', {
-            center: [-0.7893, 113.9213], // Default center (Indonesia)
+            center: [-0.7893, 113.9213], // Default center (Indonesia)[cite: 1]
             zoom: 5,
             layers: [osmLayer],
             zoomControl: false 
@@ -234,7 +234,7 @@
 
         let currentBbox = null;
 
-        // --- 2. Leaflet Geoman ---
+        // --- 2. Leaflet Geoman ---[cite: 1]
         map.pm.addControls({
             position: 'topright',
             drawCircle: false,
@@ -256,7 +256,7 @@
             bindNamePopup(e.layer);
         });
 
-        // --- 3. UI Interactions ---
+        // --- 3. UI Interactions ---[cite: 1]
         const btnMap = document.getElementById('btn-map');
         const btnEarth = document.getElementById('btn-earth');
 
@@ -274,7 +274,7 @@
             btnMap.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
         });
 
-        // --- 4. Popup Binding ---
+        // --- 4. Popup Binding ---[cite: 1]
         function bindNamePopup(layer) {
             layer.on('click', function(e) {
                 let props = layer.feature?.properties || {};
@@ -288,7 +288,7 @@
             });
         }
 
-        // --- 5. File Upload (KML / KMZ) ---
+        // --- 5. File Upload (KML / KMZ) ---[cite: 1]
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -359,11 +359,15 @@
                 title: 'KML loaded! Fetching OSM data...', showConfirmButton: false, timer: 1500
             });
 
-            // AUTOMATIC TRIGGER: Fetch OSM data immediately after parsing boundary
-            fetchOSMData(currentBbox);
+            // AUTOMATIC TRIGGER: Fetch OSM data immediately and reliably with a short async timeout
+            setTimeout(() => {
+                if (currentBbox) {
+                    fetchOSMData(currentBbox);
+                }
+            }, 300);
         }
 
-        // --- 6. Fetch OSM Data (With Failover Servers) ---
+        // --- 6. Fetch OSM Data (With Failover Servers) ---[cite: 1]
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -388,7 +392,7 @@
                 out skel qt;
             `;
 
-            // List of reliable Overpass API instances
+            // List of reliable Overpass API instances[cite: 1]
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
                 'https://lz4.overpass-api.de/api/interpreter',
@@ -406,7 +410,7 @@
                     
                     const responseText = await response.text();
 
-                    // Check if response is valid JSON and not an error page (HTML)
+                    // Check if response is valid JSON and not an error page (HTML)[cite: 1]
                     if (responseText.trim().startsWith('{')) {
                         const data = JSON.parse(responseText);
                         const geojson = osmtogeojson(data);
@@ -438,7 +442,7 @@
                         });
 
                         success = true;
-                        break; // Stop trying other servers
+                        break; // Stop trying other servers[cite: 1]
                     } else {
                         throw new Error("Invalid response");
                     }
@@ -455,12 +459,12 @@
             btn.disabled = false;
         }
 
-        // Manual trigger button event
+        // Manual trigger button event[cite: 1]
         document.getElementById('btn-fetch-osm').addEventListener('click', () => {
             if (currentBbox) fetchOSMData(currentBbox);
         });
 
-        // --- 7. Save State ---
+        // --- 7. Save State ---[cite: 1]
         document.getElementById('btn-save').addEventListener('click', () => {
             const allFeatures = [];
             [kmlGroup, osmGroup, drawGroup].forEach(group => {
@@ -481,7 +485,7 @@
             });
         });
 
-        // --- 8. Export to DXF ---
+        // --- 8. Export to DXF ---[cite: 1]
         function lonLatToMeters(lon, lat) {
             const x = lon * 20037508.34 / 180;
             let y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);

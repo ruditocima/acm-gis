@@ -363,7 +363,7 @@
             fetchOSMData(currentBbox);
         }
 
-        // --- 6. Fetch OSM Data (With Fixed CORS & Endpoints) ---
+        // --- 6. Fetch OSM Data (Fixed Fix) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -388,17 +388,17 @@
                 out skel qt;
             `;
 
-            // Updated list of CORS-friendly Overpass API mirrors (kumi.systems removed)
+            // Server yang lebih stabil dan mendukung CORS
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
-                'https://lz4.overpass-api.de/api/interpreter',
-                'https://overpass.openstreetmap.fr/api/interpreter'
+                'https://lz4.overpass-api.de/api/interpreter'
             ];
 
             let success = false;
 
             for (const endpoint of endpoints) {
                 try {
+                    // PERBAIKAN: Menambahkan header content-type untuk menghindari preflight CORS
                     const response = await fetch(endpoint, {
                         method: 'POST',
                         headers: {
@@ -409,7 +409,7 @@
                     
                     const responseText = await response.text();
 
-                    // Check if response is valid JSON and not an error page (HTML)
+                    // Cek validasi JSON
                     if (responseText.trim().startsWith('{')) {
                         const data = JSON.parse(responseText);
                         const geojson = osmtogeojson(data);
@@ -441,7 +441,7 @@
                         });
 
                         success = true;
-                        break; // Stop trying other servers
+                        break; 
                     } else {
                         throw new Error("Invalid response");
                     }
@@ -451,7 +451,7 @@
             }
 
             if (!success) {
-                Swal.fire('Error', 'All Overpass API servers are currently busy. Please wait a few seconds and try again.', 'error');
+                Swal.fire('Error', 'Servers busy or network error. Please try again.', 'error');
             }
 
             btn.innerHTML = originalHTML;

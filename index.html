@@ -468,7 +468,7 @@
             }).addTo(osmGroup);
         }
 
-        // --- 7. Fetch OSM Data (CORS/Network Error Handled via GET Request) ---
+        // --- 7. Robust Fetch OSM Data (Multiple Mirrors & Dual POST/GET Strategy) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -493,10 +493,12 @@
                 out skel qt;
             `;
 
-            // Menggunakan endpoint cadangan resmi Overpass
+            // Daftar server mirror Overpass resmi & andal yang lebih luas
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
                 'https://lz4.overpass-api.de/api/interpreter',
+                'https://overpass.openstreetmap.fr/api/interpreter',
+                'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
                 'https://overpass.kumi.systems/api/interpreter'
             ];
 
@@ -504,12 +506,20 @@
 
             for (const endpoint of endpoints) {
                 try {
-                    // Menggunakan metode GET dengan query parameter (?data=...) 
-                    // untuk mencegah CORS preflight / Network blocked error pada fetch POST.
-                    const getUrl = `${endpoint}?data=${encodeURIComponent(query)}`;
-                    let response = await fetch(getUrl, {
-                        method: 'GET'
+                    // Percobaan 1: Menggunakan metode POST (Rekomendasi standar Overpass)
+                    let response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: 'data=' + encodeURIComponent(query)
                     });
+
+                    // Percobaan 2: Jika POST gagal, coba metode GET pada endpoint yang sama
+                    if (!response.ok) {
+                        const getUrl = `${endpoint}?data=${encodeURIComponent(query)}`;
+                        response = await fetch(getUrl, { method: 'GET' });
+                    }
 
                     if (response.ok) {
                         const responseText = await response.text();
@@ -529,17 +539,17 @@
                         }
                     }
                 } catch (err) {
-                    console.warn(`Attempt with ${endpoint} failed due to network/CORS. Trying next...`);
+                    console.warn(`Attempt with ${endpoint} failed. Trying next mirror...`);
                 }
 
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(resolve => setTimeout(resolve, 300));
             }
 
             if (!success) {
                 Swal.fire({
                     icon: 'warning',
                     title: 'Koneksi Overpass Gagal',
-                    text: 'Gagal mengambil data OSM karena masalah jaringan atau pemblokiran CORS oleh browser/ekstensi. Coba nonaktifkan ad-blocker atau pastikan koneksi internet stabil.',
+                    text: 'Gagal mengambil data OSM dari semua server mirror. Kemungkinan terhalang oleh ekstensi ad-blocker, firewall jaringan, atau area KML terlalu luas. Coba nonaktifkan ad-blocker atau perkecil area KML.',
                     confirmButtonColor: '#10b981'
                 });
             }

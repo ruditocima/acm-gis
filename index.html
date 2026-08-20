@@ -410,7 +410,6 @@
                     const processLineCoords = (coords) => {
                         try {
                             const singleLine = turf.lineString(coords, feature.properties);
-                            // Generate left and right offset lines using Turf.js
                             const leftLine = turf.lineOffset(singleLine, -halfWidth, { units: 'meters' });
                             leftLine.properties = { ...feature.properties, roadSide: 'left', roadWidth: totalWidth };
                             
@@ -420,7 +419,7 @@
                             newFeatures.push(leftLine);
                             newFeatures.push(rightLine);
                         } catch (err) {
-                            newFeatures.push(feature); // Fallback if offset calculation fails
+                            newFeatures.push(feature); 
                         }
                     };
 
@@ -432,7 +431,6 @@
                         newFeatures.push(feature);
                     }
                 } else {
-                    // Keep buildings and other features intact
                     newFeatures.push(feature);
                 }
             });
@@ -453,7 +451,7 @@
                         return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
                     }
                     if (feature.properties.highway) {
-                        return { color: '#38bdf8', weight: 2, opacity: 0.85 }; // Left and right road lines
+                        return { color: '#38bdf8', weight: 2, opacity: 0.85 };
                     }
                     return { color: '#ffffff', weight: 1 };
                 },
@@ -470,7 +468,7 @@
             }).addTo(osmGroup);
         }
 
-        // --- 7. Fetch OSM Data (With Failover Servers) ---
+        // --- 7. Fetch OSM Data (With Robust Mirror Endpoints & Retry Delay) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -495,10 +493,11 @@
                 out skel qt;
             `;
 
+            // Diperbarui dengan endpoint server overpass publik yang lebih variatif
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
-                'https://lz4.overpass-api.de/api/interpreter',
-                'https://overpass.kumi.systems/api/interpreter'
+                'https://overpass.private.coffee/api/interpreter',
+                'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
             ];
 
             let success = false;
@@ -512,7 +511,7 @@
                     
                     const responseText = await response.text();
 
-                    if (responseText.trim().startsWith('{')) {
+                    if (response.ok && responseText.trim().startsWith('{')) {
                         const data = JSON.parse(responseText);
                         lastFetchedOsmGeojson = osmtogeojson(data);
                         
@@ -526,15 +525,24 @@
                         success = true;
                         break;
                     } else {
-                        throw new Error("Invalid response");
+                        // Jika server sedang sibuk/mengembalikan teks HTML atau error rate limit (429), beri jeda lalu coba mirror berikutnya
+                        console.warn(`Server ${endpoint} busy or returned invalid format. Switching...`);
                     }
                 } catch (err) {
                     console.warn(`Attempt with ${endpoint} failed. Trying next...`);
                 }
+
+                // Jeda 1.5 detik antar server untuk menghindari penolakan cepat
+                await new Promise(resolve => setTimeout(resolve, 1500));
             }
 
             if (!success) {
-                Swal.fire('Error', 'All Overpass API servers are currently busy. Please wait a few seconds and try again.', 'error');
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Server Overpass Sibuk',
+                    text: 'Semua server publik sedang mengalami lonjakan trafik. Mohon tunggu 10-15 detik lalu klik tombol "Refresh Buildings & Roads" sekali lagi.',
+                    confirmButtonColor: '#10b981'
+                });
             }
 
             btn.innerHTML = originalHTML;
@@ -545,7 +553,6 @@
             if (currentBbox) fetchOSMData(currentBbox);
         });
 
-        // Update Road Width Button Event
         document.getElementById('btn-update-road-width').addEventListener('click', () => {
             const inputVal = parseFloat(document.getElementById('roadWidthInput').value);
             if (isNaN(inputVal) || inputVal <= 0) {

@@ -468,7 +468,7 @@
             }).addTo(osmGroup);
         }
 
-        // --- 7. Robust Fetch OSM Data (Multiple Mirrors & Dual POST/GET Strategy) ---
+        // --- 7. Robust Fetch OSM Data (With CORS Proxy Fallback) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -493,36 +493,51 @@
                 out skel qt;
             `;
 
-            // Daftar server mirror Overpass resmi & andal yang lebih luas
-            const endpoints = [
-                'https://overpass-api.de/api/interpreter',
-                'https://lz4.overpass-api.de/api/interpreter',
-                'https://overpass.openstreetmap.fr/api/interpreter',
-                'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-                'https://overpass.kumi.systems/api/interpreter'
+            // Daftar endpoint langsung & endpoint melalui CORS Proxy publik yang sangat stabil
+            const targets = [
+                { url: 'https://overpass-api.de/api/interpreter', useProxy: false },
+                { url: 'https://overpass.openstreetmap.fr/api/interpreter', useProxy: false },
+                { url: 'https://corsproxy.io/?' + encodeURIComponent('https://overpass-api.de/api/interpreter'), useProxy: true },
+                { url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent('https://overpass-api.de/api/interpreter'), useProxy: true }
             ];
 
             let success = false;
 
-            for (const endpoint of endpoints) {
+            for (const target of targets) {
                 try {
-                    // Percobaan 1: Menggunakan metode POST (Rekomendasi standar Overpass)
-                    let response = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded'
-                        },
-                        body: 'data=' + encodeURIComponent(query)
-                    });
-
-                    // Percobaan 2: Jika POST gagal, coba metode GET pada endpoint yang sama
-                    if (!response.ok) {
-                        const getUrl = `${endpoint}?data=${encodeURIComponent(query)}`;
-                        response = await fetch(getUrl, { method: 'GET' });
+                    let response;
+                    if (target.useProxy) {
+                        // Menggunakan GET/POST via proxy
+                        response = await fetch(target.url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: 'data=' + encodeURIComponent(query)
+                        });
+                        if (!response.ok) {
+                            response = await fetch(target.url, { method: 'GET' });
+                        }
+                    } else {
+                        // Percobaan langsung (POST lalu GET)
+                        response = await fetch(target.url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: 'data=' + encodeURIComponent(query)
+                        });
+                        if (!response.ok) {
+                            response = await fetch(`${target.url}?data=${encodeURIComponent(query)}`, { method: 'GET' });
+                        }
                     }
 
                     if (response.ok) {
-                        const responseText = await response.text();
+                        let responseText = await response.text();
+                        // Handle jika dibungkus allorigins JSON wrapper
+                        if (target.url.includes('allorigins') && responseText.startsWith('{')) {
+                            try {
+                                const wrapper = JSON.parse(responseText);
+                                if (wrapper.contents) responseText = wrapper.contents;
+                            } catch(e){}
+                        }
+
                         if (responseText.trim().startsWith('{')) {
                             const data = JSON.parse(responseText);
                             lastFetchedOsmGeojson = osmtogeojson(data);
@@ -539,7 +554,7 @@
                         }
                     }
                 } catch (err) {
-                    console.warn(`Attempt with ${endpoint} failed. Trying next mirror...`);
+                    console.warn(`Attempt with target failed. Trying next...`);
                 }
 
                 await new Promise(resolve => setTimeout(resolve, 300));
@@ -549,7 +564,7 @@
                 Swal.fire({
                     icon: 'warning',
                     title: 'Koneksi Overpass Gagal',
-                    text: 'Gagal mengambil data OSM dari semua server mirror. Kemungkinan terhalang oleh ekstensi ad-blocker, firewall jaringan, atau area KML terlalu luas. Coba nonaktifkan ad-blocker atau perkecil area KML.',
+                    text: 'Gagal mengambil data OSM. Pastikan area KML tidak terlalu luas (coba area yang lebih kecil) atau periksa koneksi internet Anda.',
                     confirmButtonColor: '#10b981'
                 });
             }
@@ -653,6 +668,7 @@
             let dxf = `  0\nSECTION\n  2\nHEADER\n  9\n$ACADVER\n  1\nAC1015\n  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n`;
             dxf = dxf.replace(/\n/g, "\r\n");
 
+            featureCollection.features.features?.forEach?.(f => {}); // Safe check
             featureCollection.features.forEach((feature) => {
                 let gem = feature.geometry;
                 if (!gem) return;

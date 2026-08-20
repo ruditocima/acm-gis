@@ -171,14 +171,14 @@
                 </div>
             </div>
 
-            <!-- Fetch OSM Data -->
+            <!-- Fetch OSM Data (Fallback / Manual Trigger) -->
             <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Environment Data</h2>
                 <button id="btn-fetch-osm" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium text-sm transition-colors shadow-lg shadow-blue-900/20 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                    <i class="fa-solid fa-city mr-2"></i> Load Buildings & Roads
+                    <i class="fa-solid fa-city mr-2"></i> Refresh Buildings & Roads
                 </button>
                 <p class="text-[11px] text-gray-400 mt-2 leading-relaxed">
-                    Loads real OSM data (buildings & roads) inside the uploaded boundary.
+                    Automatically loads real OSM data (buildings & roads) inside your uploaded boundary.
                 </p>
             </div>
 
@@ -256,7 +256,7 @@
             bindNamePopup(e.layer);
         });
 
-        // --- 3. UI Interactions ---
+        // --- 3. UI Interactions[cite: 1] ---
         const btnMap = document.getElementById('btn-map');
         const btnEarth = document.getElementById('btn-earth');
 
@@ -274,7 +274,7 @@
             btnMap.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
         });
 
-        // --- 4. Popup Binding ---
+        // --- 4. Popup Binding[cite: 1] ---
         function bindNamePopup(layer) {
             layer.on('click', function(e) {
                 let props = layer.feature?.properties || {};
@@ -288,7 +288,7 @@
             });
         }
 
-        // --- 5. File Upload (KML / KMZ) ---
+        // --- 5. File Upload (KML / KMZ)[cite: 1] ---
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -330,7 +330,6 @@
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(kmlText, 'text/xml');
             
-            // FIXED: use window.toGeoJSON or global toGeoJSON safely
             const geojson = (typeof toGeoJSON !== 'undefined') ? toGeoJSON.kml(xmlDoc) : null;
             
             if (!geojson || !geojson.features || geojson.features.length === 0) {
@@ -357,23 +356,26 @@
             
             Swal.fire({
                 toast: true, position: 'top-end', icon: 'success',
-                title: 'Data loaded successfully!', showConfirmButton: false, timer: 2000
+                title: 'KML loaded! Fetching OSM data...', showConfirmButton: false, timer: 1500
             });
+
+            // AUTOMATIC TRIGGER: Fetch OSM data immediately after parsing boundary
+            fetchOSMData(currentBbox);
         }
 
-        // --- 6. Fetch OSM Data ---
-        document.getElementById('btn-fetch-osm').addEventListener('click', async (e) => {
-            if (!currentBbox) return;
+        // --- 6. Fetch OSM Data (Reusable & Automatic) ---
+        async function fetchOSMData(bbox) {
+            if (!bbox) return;
 
-            const btn = e.currentTarget;
+            const btn = document.getElementById('btn-fetch-osm');
             const originalHTML = btn.innerHTML;
             btn.innerHTML = 'Fetching Data... <div class="loader"></div>';
             btn.disabled = true;
 
-            const s = currentBbox.getSouth();
-            const w = currentBbox.getWest();
-            const n = currentBbox.getNorth();
-            const e_coord = currentBbox.getEast();
+            const s = bbox.getSouth();
+            const w = bbox.getWest();
+            const n = bbox.getNorth();
+            const e_coord = bbox.getEast();
 
             const query = `
                 [out:json][timeout:25];
@@ -418,7 +420,7 @@
 
                 Swal.fire({
                     toast: true, position: 'top-end', icon: 'success',
-                    title: 'Environment data loaded!', showConfirmButton: false, timer: 2000
+                    title: 'Environment data loaded automatically!', showConfirmButton: false, timer: 2000
                 });
 
             } catch (err) {
@@ -427,9 +429,14 @@
                 btn.innerHTML = originalHTML;
                 btn.disabled = false;
             }
+        }
+
+        // Manual trigger button event
+        document.getElementById('btn-fetch-osm').addEventListener('click', () => {
+            if (currentBbox) fetchOSMData(currentBbox);
         });
 
-        // --- 7. Save State ---
+        // --- 7. Save State[cite: 1] ---
         document.getElementById('btn-save').addEventListener('click', () => {
             const allFeatures = [];
             [kmlGroup, osmGroup, drawGroup].forEach(group => {
@@ -450,7 +457,7 @@
             });
         });
 
-        // --- 8. Export to DXF ---
+        // --- 8. Export to DXF[cite: 1] ---
         function lonLatToMeters(lon, lat) {
             const x = lon * 20037508.34 / 180;
             let y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);
@@ -500,7 +507,6 @@
 
         function generateDXF(featureCollection) {
             let dxf = `  0\nSECTION\n  2\nHEADER\n  9\n$ACADVER\n  1\nAC1015\n  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n`;
-            // Simplified cleanup for standard DXF newlines inside code
             dxf = dxf.replace(/\n/g, "\r\n");
 
             featureCollection.features.forEach((feature) => {

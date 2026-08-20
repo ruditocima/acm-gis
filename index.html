@@ -22,8 +22,8 @@
     <!-- toGeoJSON (for KML to GeoJSON) -->
     <script src="https://unpkg.com/@tmcw/togeojson@4.2.0/dist/togeojson.umd.js"></script>
 
-    <!-- OSM to GeoJSON -->
-    <script src="https://unpkg.com/osmtogeojson@3.2.1/osmtogeojson.js"></script>
+    <!-- OSM to GeoJSON (Using reliable jsDelivr CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/osmtogeojson@3.0.0/osmtogeojson.js"></script>
 
     <!-- Turf.js (for spatial processing & bounding boxes) -->
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
@@ -324,9 +324,16 @@
             fetchOSMData(currentBbox);
         }
 
-        // --- ROBUST: Multi-Mirror & CORS Proxy Fetcher ---
+        // --- ROBUST: Multi-Mirror & Safe Converter ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
+            
+            // Periksa ketersediaan osmtogeojson secara aman
+            if (typeof osmtogeojson === 'undefined') {
+                Swal.fire('Error', 'Pustaka osmtogeojson belum termuat dengan benar dari CDN.', 'error');
+                return;
+            }
+
             const btn = document.getElementById('btn-fetch-osm');
             const originalHTML = btn.innerHTML;
             btn.innerHTML = 'Fetching... <div class="loader"></div>';
@@ -337,7 +344,6 @@
 
             const query = `[out:json][timeout:25];(way["building"](${s},${w},${n},${e_coord});way["highway"](${s},${w},${n},${e_coord}););out body;>;out skel qt;`;
 
-            // Daftar endpoint cadangan (Mirror & Proxy) untuk menghindari blokir jaringan/CORS
             const targetUrls = [
                 `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,
                 `https://lz4.overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,
@@ -382,7 +388,7 @@
             }
 
             if (!success) {
-                Swal.fire('Error', 'Overpass API sedang sibuk atau area terlalu besar. Coba perkecil area batas KML Anda.', 'error');
+                Swal.fire('Error', 'Overpass API sedang sibuk atau gagal memuat data.', 'error');
             }
 
             btn.innerHTML = originalHTML;

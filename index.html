@@ -363,7 +363,7 @@
             fetchOSMData(currentBbox);
         }
 
-        // --- 6. Fetch OSM Data (With Failover Servers) ---
+        // --- 6. Fetch OSM Data (With Fixed CORS & Endpoints) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -388,11 +388,11 @@
                 out skel qt;
             `;
 
-            // List of reliable Overpass API instances
+            // Updated list of CORS-friendly Overpass API mirrors (kumi.systems removed)
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
                 'https://lz4.overpass-api.de/api/interpreter',
-                'https://overpass.kumi.systems/api/interpreter'
+                'https://overpass.openstreetmap.fr/api/interpreter'
             ];
 
             let success = false;
@@ -401,6 +401,9 @@
                 try {
                     const response = await fetch(endpoint, {
                         method: 'POST',
+                        headers: {
+                            'Content-Type': 'text/plain'
+                        },
                         body: query
                     });
                     

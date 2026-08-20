@@ -468,7 +468,7 @@
             }).addTo(osmGroup);
         }
 
-        // --- 7. Fetch OSM Data (Timeout 504 Handled & Optimized) ---
+        // --- 7. Fetch OSM Data (CORS/Network Error Handled via GET Request) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -482,7 +482,6 @@
             const n = bbox.getNorth();
             const e_coord = bbox.getEast();
 
-            // Mengoptimalkan query dengan timeout yang wajar
             const query = `
                 [out:json][timeout:30];
                 (
@@ -494,6 +493,7 @@
                 out skel qt;
             `;
 
+            // Menggunakan endpoint cadangan resmi Overpass
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
                 'https://lz4.overpass-api.de/api/interpreter',
@@ -501,48 +501,35 @@
             ];
 
             let success = false;
-            let isTimeout504 = false;
 
             for (const endpoint of endpoints) {
                 try {
-                    let response = await fetch(endpoint, {
-                        method: 'POST',
-                        body: query
+                    // Menggunakan metode GET dengan query parameter (?data=...) 
+                    // untuk mencegah CORS preflight / Network blocked error pada fetch POST.
+                    const getUrl = `${endpoint}?data=${encodeURIComponent(query)}`;
+                    let response = await fetch(getUrl, {
+                        method: 'GET'
                     });
 
-                    if (response.status === 504) {
-                        isTimeout504 = true;
-                        console.warn(`Server ${endpoint} responded with 504 Gateway Timeout. Area too large.`);
-                        continue;
-                    }
+                    if (response.ok) {
+                        const responseText = await response.text();
+                        if (responseText.trim().startsWith('{')) {
+                            const data = JSON.parse(responseText);
+                            lastFetchedOsmGeojson = osmtogeojson(data);
+                            
+                            renderOSM(lastFetchedOsmGeojson, currentRoadWidthMultiplier);
 
-                    if (!response.ok) {
-                        const getUrl = `${endpoint}?data=${encodeURIComponent(query)}`;
-                        response = await fetch(getUrl, { method: 'GET' });
-                        if (response.status === 504) {
-                            isTimeout504 = true;
-                            continue;
+                            Swal.fire({
+                                toast: true, position: 'top-end', icon: 'success',
+                                title: 'Data loaded successfully!', showConfirmButton: false, timer: 2000
+                            });
+
+                            success = true;
+                            break;
                         }
                     }
-                    
-                    const responseText = await response.text();
-
-                    if (response.ok && responseText.trim().startsWith('{')) {
-                        const data = JSON.parse(responseText);
-                        lastFetchedOsmGeojson = osmtogeojson(data);
-                        
-                        renderOSM(lastFetchedOsmGeojson, currentRoadWidthMultiplier);
-
-                        Swal.fire({
-                            toast: true, position: 'top-end', icon: 'success',
-                            title: 'Data loaded successfully!', showConfirmButton: false, timer: 2000
-                        });
-
-                        success = true;
-                        break;
-                    }
                 } catch (err) {
-                    console.warn(`Attempt with ${endpoint} failed. Trying next...`);
+                    console.warn(`Attempt with ${endpoint} failed due to network/CORS. Trying next...`);
                 }
 
                 await new Promise(resolve => setTimeout(resolve, 500));
@@ -551,10 +538,8 @@
             if (!success) {
                 Swal.fire({
                     icon: 'warning',
-                    title: isTimeout504 ? 'Wilayah Terlalu Luas (504 Timeout)' : 'Koneksi Overpass Gagal',
-                    text: isTimeout504 
-                        ? 'Server peta publik mengalami timeout karena area KML yang Anda unggah terlalu besar. Silakan gunakan area/boundary yang lebih kecil.' 
-                        : 'Gagal mengambil data OSM. Periksa koneksi internet Anda atau coba beberapa saat lagi.',
+                    title: 'Koneksi Overpass Gagal',
+                    text: 'Gagal mengambil data OSM karena masalah jaringan atau pemblokiran CORS oleh browser/ekstensi. Coba nonaktifkan ad-blocker atau pastikan koneksi internet stabil.',
                     confirmButtonColor: '#10b981'
                 });
             }
@@ -662,7 +647,7 @@
                 let gem = feature.geometry;
                 if (!gem) return;
 
-                    let layerName = feature.properties.layer || "0";
+                let layerName = feature.properties.layer || "0";
                 layerName = layerName.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
 
                 function addLWPolyline(coords, isClosed) {

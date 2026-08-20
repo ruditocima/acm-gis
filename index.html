@@ -359,7 +359,7 @@
                 title: 'KML loaded! Fetching OSM data...', showConfirmButton: false, timer: 1500
             });
 
-            // AUTOMATIC TRIGGER: Fetch OSM data immediately and reliably with a short async timeout
+            // AUTOMATIC TRIGGER: Fetch OSM data immediately after parsing boundary
             setTimeout(() => {
                 if (currentBbox) {
                     fetchOSMData(currentBbox);
@@ -367,7 +367,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (With Failover Servers) ---[cite: 1]
+        // --- 6. Fetch OSM Data (With Robust HTTP Status & Timeout Handling) ---[cite: 1]
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -400,6 +400,7 @@
             ];
 
             let success = false;
+            let lastErrorMsg = '';
 
             for (const endpoint of endpoints) {
                 try {
@@ -408,9 +409,14 @@
                         body: query
                     });
                     
+                    // Explicitly check HTTP response status (handles 504 Gateway Timeout cleanly)
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
                     const responseText = await response.text();
 
-                    // Check if response is valid JSON and not an error page (HTML)[cite: 1]
+                    // Check if response is valid JSON and not an error page (HTML)
                     if (responseText.trim().startsWith('{')) {
                         const data = JSON.parse(responseText);
                         const geojson = osmtogeojson(data);
@@ -444,15 +450,20 @@
                         success = true;
                         break; // Stop trying other servers[cite: 1]
                     } else {
-                        throw new Error("Invalid response");
+                        throw new Error("Invalid response format");
                     }
                 } catch (err) {
-                    console.warn(`Attempt with ${endpoint} failed. Trying next...`);
+                    console.warn(`Attempt with ${endpoint} failed (${err.message}). Trying next...`);
+                    lastErrorMsg = err.message;
                 }
             }
 
             if (!success) {
-                Swal.fire('Error', 'All Overpass API servers are currently busy. Please wait a few seconds and try again.', 'error');
+                let userFriendlyMsg = 'All Overpass API servers are currently busy or timed out.';
+                if (lastErrorMsg.includes('504') || lastErrorMsg.includes('HTTP')) {
+                    userFriendlyMsg = 'Terjadi Timeout (504 Gateway Timeout). Area wilayah/boundary KML/KMZ yang Anda unggah terlalu luas untuk server publik Overpass API. Silakan gunakan file KML dengan area yang lebih kecil (fokus pada tapak bangunan/lokasi spesifik).';
+                }
+                Swal.fire('Gagal Memuat OSM', userFriendlyMsg, 'error');
             }
 
             btn.innerHTML = originalHTML;

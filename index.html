@@ -5,121 +5,548 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GeoConvert Pro | KML to DXF</title>
 
+    <!-- Tailwind CSS (for elegant UI) -->
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Leaflet CSS & JS (for Maps) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Leaflet Geoman (for elegant drawing/editing) -->
     <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.14.2/dist/leaflet-geoman.css" />
     <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.14.2/dist/leaflet-geoman.min.js"></script>
+
+    <!-- JSZip (for KMZ) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <!-- toGeoJSON (for KML to GeoJSON) -->
     <script src="https://unpkg.com/@tmcw/togeojson@4.2.0/dist/togeojson.umd.js"></script>
 
-    <!-- FIX: Menggunakan CDN yang lebih stabil untuk osmtogeojson -->
-    <script src="https://cdn.jsdelivr.net/npm/osmtogeojson@3.2.1/osmtogeojson.js"></script>
+    <!-- OSM to GeoJSON -->
+    <script src="https://unpkg.com/osmtogeojson@3.2.1/osmtogeojson.js"></script>
 
+    <!-- Turf.js (for spatial processing & bounding boxes) -->
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+
+    <!-- SweetAlert2 (for expensive-looking alerts) -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; margin: 0; overflow: hidden; }
-        #map { height: 100vh; width: 100%; z-index: 1; }
-        .glass-panel { background: rgba(23, 25, 35, 0.85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-right: 1px solid rgba(255, 255, 255, 0.1); z-index: 1000; }
-        .file-upload-wrapper { position: relative; overflow: hidden; display: inline-block; width: 100%; }
-        .file-upload-wrapper input[type=file] { font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; height: 100%; }
-        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #10b981; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; margin-left: 10px; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        #map {
+            height: 100vh;
+            width: 100%;
+            z-index: 1;
+        }
+
+        /* Glassmorphism Panel */
+        .glass-panel {
+            background: rgba(23, 25, 35, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 1000;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.1); 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.2); 
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.4); 
+        }
+
+        /* Fancy file input */
+        .file-upload-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+        .file-upload-wrapper input[type=file] {
+            font-size: 100px;
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            cursor: pointer;
+            height: 100%;
+        }
+
+        /* Custom Popup styling */
+        .leaflet-popup-content-wrapper {
+            background: #1f2937;
+            color: #f3f4f6;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            font-family: 'Inter', sans-serif;
+        }
+        .leaflet-popup-tip {
+            background: #1f2937;
+        }
+        .leaflet-popup-content b {
+            color: #10b981;
+            font-size: 1.1em;
+            display: block;
+            margin-bottom: 4px;
+        }
+        
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #10b981;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="flex flex-row bg-gray-900 text-gray-200">
+
+    <!-- Sidebar / Main Menu -->
     <div class="glass-panel w-80 h-screen flex flex-col shadow-2xl absolute left-0 top-0 transition-transform duration-300">
-        <div class="p-6 border-b border-gray-700/50">
-            <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-cyan-400">GeoConvert Pro</h1>
-            <p class="text-xs text-gray-400">KMZ to DXF Converter</p>
+        <!-- Header -->
+        <div class="p-6 border-b border-gray-700/50 flex items-center justify-between">
+            <div>
+                <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-cyan-400 tracking-wide">
+                    <i class="fa-solid fa-layer-group text-emerald-400 mr-2"></i> GeoConvert Pro
+                </h1>
+                <p class="text-xs text-gray-400 mt-1">KMZ to DXF / DWG Converter</p>
+            </div>
         </div>
+
+        <!-- Scrollable Content -->
         <div class="p-6 flex-1 overflow-y-auto space-y-6">
+            
+            <!-- Layer Control (Map vs Earth) -->
             <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
-                <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase">Import Data</h2>
+                <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Base Layer</h2>
+                <div class="flex bg-gray-900 rounded-lg p-1">
+                    <button id="btn-map" class="flex-1 py-2 text-sm rounded-md bg-emerald-500/20 text-emerald-400 font-medium transition-all">
+                        <i class="fa-solid fa-map mr-2"></i> Maps (OSM)
+                    </button>
+                    <button id="btn-earth" class="flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all">
+                        <i class="fa-solid fa-globe mr-2"></i> Earth
+                    </button>
+                </div>
+            </div>
+
+            <!-- Upload Section -->
+            <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
+                <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Import Data</h2>
                 <div class="file-upload-wrapper">
-                    <button class="w-full py-3 px-4 border-2 border-dashed border-gray-600 rounded-lg hover:border-emerald-500 hover:bg-emerald-500/10 transition-colors flex flex-col items-center gap-2">
-                        <i class="fa-solid fa-cloud-arrow-up text-2xl text-gray-400"></i>
-                        <span class="text-sm">Upload KML / KMZ</span>
+                    <button class="w-full py-3 px-4 border-2 border-dashed border-gray-600 rounded-lg hover:border-emerald-500 hover:bg-emerald-500/10 transition-colors flex flex-col items-center justify-center gap-2 group">
+                        <i class="fa-solid fa-cloud-arrow-up text-2xl text-gray-400 group-hover:text-emerald-400"></i>
+                        <span class="text-sm font-medium text-gray-300 group-hover:text-emerald-300">Upload KML / KMZ</span>
                     </button>
                     <input type="file" id="fileInput" accept=".kml,.kmz" />
                 </div>
+                <div id="file-info" class="mt-3 text-xs text-gray-400 hidden">
+                    <span class="text-emerald-400"><i class="fa-solid fa-check-circle"></i> Loaded:</span> <span id="filename"></span>
+                </div>
             </div>
+
+            <!-- Fetch OSM Data (Fallback / Manual Trigger) -->
             <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
-                <button id="btn-fetch-osm" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium text-sm disabled:opacity-50" disabled>
+                <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Environment Data</h2>
+                <button id="btn-fetch-osm" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium text-sm transition-colors shadow-lg shadow-blue-900/20 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed" disabled>
                     <i class="fa-solid fa-city mr-2"></i> Refresh Buildings & Roads
                 </button>
+                <p class="text-[11px] text-gray-400 mt-2 leading-relaxed">
+                    Automatically loads real OSM data (buildings & roads) inside your uploaded boundary.
+                </p>
             </div>
+
+            <!-- Drawing Controls Note -->
+            <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
+                <h2 class="text-sm font-semibold mb-1 text-gray-300 uppercase tracking-wider">Editing Tools</h2>
+                <p class="text-xs text-gray-400">Use the toolbar on the map to draw, edit, or measure polygons and lines in real-world dimensions.</p>
+            </div>
+            
         </div>
-        <div class="p-6 border-t border-gray-700/50 flex flex-col gap-3">
-            <button id="btn-export" class="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-lg font-bold text-sm">Export to DXF</button>
+
+        <!-- Footer Actions -->
+        <div class="p-6 border-t border-gray-700/50 flex flex-col gap-3 bg-gray-800/30">
+            <!-- Save State (Supabase prep) -->
+            <button id="btn-save" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center">
+                <i class="fa-solid fa-floppy-disk mr-2"></i> Save State (Supabase)
+            </button>
+            <!-- Export DXF -->
+            <button id="btn-export" class="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg font-bold text-sm transition-all shadow-lg shadow-emerald-900/40 flex items-center justify-center">
+                <i class="fa-solid fa-file-export mr-2"></i> Export to DXF
+            </button>
         </div>
     </div>
+
+    <!-- Map Container -->
     <div id="map"></div>
 
+    <!-- Application Logic -->
     <script>
-        const map = L.map('map', { center: [-0.7893, 113.9213], zoom: 5 });
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OSM' }).addTo(map);
-        
+        // --- 1. Map Initialization (OSM as Default) ---
+        const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 22,
+            attribution: '© OpenStreetMap contributors'
+        });
+
+        const earthLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 22,
+            attribution: 'Tiles © Esri'
+        });
+
+        const map = L.map('map', {
+            center: [-0.7893, 113.9213], // Default center (Indonesia)
+            zoom: 5,
+            layers: [osmLayer],
+            zoomControl: false 
+        });
+
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
         const kmlGroup = L.featureGroup().addTo(map);
         const osmGroup = L.featureGroup().addTo(map);
+        const drawGroup = L.featureGroup().addTo(map);
+
         let currentBbox = null;
 
+        // --- 2. Leaflet Geoman ---
+        map.pm.addControls({
+            position: 'topright',
+            drawCircle: false,
+            drawCircleMarker: false,
+            drawText: false,
+            drawMarker: true,
+            drawPolygon: true,
+            drawPolyline: true,
+            drawRectangle: true,
+            editMode: true,
+            dragMode: true,
+            cutPolygon: true,
+            removalMode: true,
+        });
+        
+        map.on('pm:create', (e) => {
+            e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Drawn Object' } };
+            drawGroup.addLayer(e.layer);
+            bindNamePopup(e.layer);
+        });
+
+        // --- 3. UI Interactions[cite: 1] ---
+        const btnMap = document.getElementById('btn-map');
+        const btnEarth = document.getElementById('btn-earth');
+
+        btnMap.addEventListener('click', () => {
+            map.removeLayer(earthLayer);
+            map.addLayer(osmLayer);
+            btnMap.className = "flex-1 py-2 text-sm rounded-md bg-emerald-500/20 text-emerald-400 font-medium transition-all";
+            btnEarth.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
+        });
+
+        btnEarth.addEventListener('click', () => {
+            map.removeLayer(osmLayer);
+            map.addLayer(earthLayer);
+            btnEarth.className = "flex-1 py-2 text-sm rounded-md bg-emerald-500/20 text-emerald-400 font-medium transition-all";
+            btnMap.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
+        });
+
+        // --- 4. Popup Binding[cite: 1] ---
+        function bindNamePopup(layer) {
+            layer.on('click', function(e) {
+                let props = layer.feature?.properties || {};
+                let name = props.name || props.Name || props.NAME || props.type || 'Object';
+                let desc = props.description || props.Description || '';
+                
+                let content = `<b>${name}</b>`;
+                if(desc) content += `<div class="text-xs mt-1 opacity-80">${desc}</div>`;
+                
+                layer.bindPopup(content).openPopup(e.latlng);
+            });
+        }
+
+        // --- 5. File Upload (KML / KMZ)[cite: 1] ---
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
+            document.getElementById('file-info').classList.remove('hidden');
+            document.getElementById('filename').innerText = file.name;
+
             try {
-                const kmlText = await file.text();
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(kmlText, 'text/xml');
-                const geojson = toGeoJSON.kml(xmlDoc);
-                
-                kmlGroup.clearLayers();
-                const layer = L.geoJSON(geojson).addTo(kmlGroup);
-                map.fitBounds(layer.getBounds());
-                
-                currentBbox = layer.getBounds();
-                document.getElementById('btn-fetch-osm').disabled = false;
-                
-                // Trigger otomatis
-                fetchOSMData(currentBbox);
+                if (file.name.toLowerCase().endsWith('.kmz')) {
+                    const zip = new JSZip();
+                    const contents = await zip.loadAsync(file);
+                    let kmlFile = null;
+                    for (let filename in contents.files) {
+                        if (filename.toLowerCase().endsWith('.kml')) {
+                            kmlFile = contents.files[filename];
+                            break;
+                        }
+                    }
+                    if (kmlFile) {
+                        const kmlText = await kmlFile.async('text');
+                        parseKML(kmlText);
+                    } else {
+                        Swal.fire('Error', 'No KML file found inside the KMZ.', 'error');
+                    }
+                } else if (file.name.toLowerCase().endsWith('.kml')) {
+                    const kmlText = await file.text();
+                    parseKML(kmlText);
+                } else {
+                    Swal.fire('Error', 'Invalid file format. Please upload KML or KMZ.', 'error');
+                }
             } catch (err) {
-                Swal.fire('Error', 'Gagal memproses file: ' + err.message, 'error');
+                Swal.fire('Error', 'Failed to read file: ' + err.message, 'error');
             }
+            e.target.value = '';
         });
 
-        async function fetchOSMData(bbox) {
-            const s = bbox.getSouth(), w = bbox.getWest(), n = bbox.getNorth(), e_coord = bbox.getEast();
+        function parseKML(kmlText) {
+            kmlGroup.clearLayers();
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(kmlText, 'text/xml');
             
-            // Cek apakah library sudah terdefinisi
-            if (typeof osmtogeojson === 'undefined') {
-                Swal.fire('Error', 'Library osmtogeojson tidak ditemukan!', 'error');
+            const geojson = (typeof toGeoJSON !== 'undefined') ? toGeoJSON.kml(xmlDoc) : null;
+            
+            if (!geojson || !geojson.features || geojson.features.length === 0) {
+                Swal.fire('Warning', 'No geometries found or parser error in the uploaded file.', 'warning');
                 return;
             }
 
-            const query = `[out:json][timeout:25];(way["building"](${s},${w},${n},${e_coord});way["highway"](${s},${w},${n},${e_coord}););out body;>;out skel qt;`;
+            const layer = L.geoJSON(geojson, {
+                style: {
+                    color: '#ef4444',
+                    weight: 3,
+                    fillOpacity: 0.1
+                },
+                onEachFeature: function(feature, layer) {
+                    bindNamePopup(layer);
+                }
+            });
+
+            kmlGroup.addLayer(layer);
+            map.fitBounds(layer.getBounds(), { padding: [50, 50] });
+
+            currentBbox = layer.getBounds();
+            document.getElementById('btn-fetch-osm').disabled = false;
             
+            Swal.fire({
+                toast: true, position: 'top-end', icon: 'success',
+                title: 'KML loaded! Fetching OSM data...', showConfirmButton: false, timer: 1500
+            });
+
+            // AUTOMATIC TRIGGER: Fetch OSM data immediately after parsing boundary
+            fetchOSMData(currentBbox);
+        }
+
+        // --- 6. Fetch OSM Data (Reusable & Automatic) ---
+        async function fetchOSMData(bbox) {
+            if (!bbox) return;
+
+            const btn = document.getElementById('btn-fetch-osm');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = 'Fetching Data... <div class="loader"></div>';
+            btn.disabled = true;
+
+            const s = bbox.getSouth();
+            const w = bbox.getWest();
+            const n = bbox.getNorth();
+            const e_coord = bbox.getEast();
+
+            const query = `
+                [out:json][timeout:25];
+                (
+                  way["building"](${s},${w},${n},${e_coord});
+                  way["highway"](${s},${w},${n},${e_coord});
+                );
+                out body;
+                >;
+                out skel qt;
+            `;
+
             try {
-                const response = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: query });
-                const data = await response.json();
+                const response = await fetch('https://overpass-api.de/api/interpreter', {
+                    method: 'POST',
+                    body: query
+                });
                 
-                // Konversi menggunakan library
+                const data = await response.json();
                 const geojson = osmtogeojson(data);
                 
                 osmGroup.clearLayers();
-                L.geoJSON(geojson, {
-                    style: (f) => f.properties.building ? { color: '#f59e0b' } : { color: '#9ca3af' }
-                }).addTo(osmGroup);
                 
-                Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Data OSM berhasil dimuat!', showConfirmButton: false, timer: 2000 });
+                L.geoJSON(geojson, {
+                    style: function(feature) {
+                        if (feature.properties.building) {
+                            return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
+                        }
+                        if (feature.properties.highway) {
+                            return { color: '#9ca3af', weight: 3, opacity: 0.8 };
+                        }
+                        return { color: '#ffffff', weight: 1 };
+                    },
+                    onEachFeature: function(feature, layer) {
+                        if (!feature.properties.name) {
+                            if(feature.properties.building) feature.properties.name = "Building";
+                            else if(feature.properties.highway) feature.properties.name = "Road";
+                        }
+                        bindNamePopup(layer);
+                    }
+                }).addTo(osmGroup);
+
+                Swal.fire({
+                    toast: true, position: 'top-end', icon: 'success',
+                    title: 'Environment data loaded automatically!', showConfirmButton: false, timer: 2000
+                });
+
             } catch (err) {
-                Swal.fire('Error', 'Gagal fetch: ' + err.message, 'error');
+                Swal.fire('Error', 'Failed to fetch OSM data: ' + err.message, 'error');
+            } finally {
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
             }
         }
+
+        // Manual trigger button event
+        document.getElementById('btn-fetch-osm').addEventListener('click', () => {
+            if (currentBbox) fetchOSMData(currentBbox);
+        });
+
+        // --- 7. Save State[cite: 1] ---
+        document.getElementById('btn-save').addEventListener('click', () => {
+            const allFeatures = [];
+            [kmlGroup, osmGroup, drawGroup].forEach(group => {
+                group.eachLayer(layer => {
+                    if (layer.toGeoJSON) {
+                        allFeatures.push(layer.toGeoJSON());
+                    }
+                });
+            });
+
+            const featureCollection = { type: "FeatureCollection", features: allFeatures };
+            localStorage.setItem('geoconvert_draft_state', JSON.stringify(featureCollection));
+
+            Swal.fire({
+                icon: 'success', title: 'State Saved!',
+                text: 'Your current edits and layers have been saved locally.',
+                confirmButtonColor: '#10b981'
+            });
+        });
+
+        // --- 8. Export to DXF[cite: 1] ---
+        function lonLatToMeters(lon, lat) {
+            const x = lon * 20037508.34 / 180;
+            let y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);
+            y = y * 20037508.34 / 180;
+            return [x, y];
+        }
+
+        document.getElementById('btn-export').addEventListener('click', () => {
+            const allFeatures = [];
+            [kmlGroup, osmGroup, drawGroup].forEach(group => {
+                group.eachLayer(layer => {
+                    if (layer.toGeoJSON) {
+                        let geo = layer.toGeoJSON();
+                        if(group === kmlGroup) geo.properties.layer = "KML_Boundary";
+                        else if(group === osmGroup && geo.properties.building) geo.properties.layer = "OSM_Buildings";
+                        else if(group === osmGroup && geo.properties.highway) geo.properties.layer = "OSM_Roads";
+                        else geo.properties.layer = "User_Drawn";
+                        
+                        allFeatures.push(geo);
+                    }
+                });
+            });
+
+            if(allFeatures.length === 0) {
+                Swal.fire('Warning', 'Map is empty. Please upload data or draw geometries first.', 'warning');
+                return;
+            }
+
+            const featureCollection = { type: "FeatureCollection", features: allFeatures };
+            const dxfString = generateDXF(featureCollection);
+            
+            const blob = new Blob([dxfString], { type: 'application/dxf' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'GeoConvert_Export.dxf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            Swal.fire({
+                toast: true, position: 'top-end', icon: 'success',
+                title: 'DXF Exported Successfully!', showConfirmButton: false, timer: 2500
+            });
+        });
+
+        function generateDXF(featureCollection) {
+            let dxf = `  0\nSECTION\n  2\nHEADER\n  9\n$ACADVER\n  1\nAC1015\n  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n`;
+            dxf = dxf.replace(/\n/g, "\r\n");
+
+            featureCollection.features.forEach((feature) => {
+                let geom = feature.geometry;
+                if (!geom) return;
+
+                let layerName = feature.properties.layer || "0";
+                layerName = layerName.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+
+                function addLWPolyline(coords, isClosed) {
+                    let chunk = `  0\r\nLWPOLYLINE\r\n`;
+                    chunk += `  8\r\n${layerName}\r\n`;
+                    chunk += ` 90\r\n${coords.length}\r\n`;
+                    chunk += ` 70\r\n${isClosed ? 1 : 0}\r\n`;
+                    
+                    coords.forEach(c => {
+                        let [x, y] = lonLatToMeters(c[0], c[1]);
+                        chunk += ` 10\r\n${x.toFixed(4)}\r\n`;
+                        chunk += ` 20\r\n${y.toFixed(4)}\r\n`;
+                    });
+                    dxf += chunk;
+                }
+
+                if (geom.type === "Polygon") {
+                    geom.coordinates.forEach(ring => addLWPolyline(ring, true));
+                } else if (geom.type === "LineString") {
+                    addLWPolyline(geom.coordinates, false);
+                } else if (geom.type === "MultiPolygon") {
+                    geom.coordinates.forEach(polygon => {
+                        polygon.forEach(ring => addLWPolyline(ring, true));
+                    });
+                } else if (geom.type === "MultiLineString") {
+                    geom.coordinates.forEach(line => addLWPolyline(line, false));
+                }
+            });
+
+            dxf += `  0\r\nENDSEC\r\n  0\r\nEOF\r\n`;
+            return dxf;
+        }
+
     </script>
 </body>
 </html>

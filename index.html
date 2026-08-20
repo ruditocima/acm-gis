@@ -22,8 +22,16 @@
     <!-- toGeoJSON (for KML to GeoJSON) -->
     <script src="https://unpkg.com/@tmcw/togeojson@4.2.0/dist/togeojson.umd.js"></script>
 
-    <!-- OSM to GeoJSON (Using reliable jsDelivr CDN) -->
-    <script src="https://cdn.jsdelivr.net/npm/osmtogeojson@3.0.0/osmtogeojson.js"></script>
+    <!-- OSM to GeoJSON with Auto CDN Fallback -->
+    <script src="https://cdn.jsdelivr.net/npm/osmtogeojson@3/osmtogeojson.js" onerror="loadOSMBackup(this)"></script>
+    <script>
+        function loadOSMBackup(elem) {
+            console.warn("CDN Utama osmtogeojson gagal, mengalihkan ke CDN cadangan...");
+            const backup = document.createElement('script');
+            backup.src = "https://unpkg.com/osmtogeojson@3/osmtogeojson.js";
+            document.head.appendChild(backup);
+        }
+    </script>
 
     <!-- Turf.js (for spatial processing & bounding boxes) -->
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
@@ -324,20 +332,28 @@
             fetchOSMData(currentBbox);
         }
 
-        // --- ROBUST: Multi-Mirror & Safe Converter ---
+        // --- ROBUST: Multi-Mirror & Safe Converter with Delay Check ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
-            
-            // Periksa ketersediaan osmtogeojson secara aman
-            if (typeof osmtogeojson === 'undefined') {
-                Swal.fire('Error', 'Pustaka osmtogeojson belum termuat dengan benar dari CDN.', 'error');
-                return;
-            }
 
             const btn = document.getElementById('btn-fetch-osm');
             const originalHTML = btn.innerHTML;
             btn.innerHTML = 'Fetching... <div class="loader"></div>';
             btn.disabled = true;
+
+            // Beri jeda sepersekian detik jika pustaka cadangan sedang diunduh
+            let attempts = 0;
+            while (typeof osmtogeojson === 'undefined' && attempts < 10) {
+                await new Promise(r => setTimeout(r, 300));
+                attempts++;
+            }
+
+            if (typeof osmtogeojson === 'undefined') {
+                Swal.fire('Error', 'Gagal memuat pustaka osmtogeojson dari CDN manapun. Periksa koneksi internet Anda.', 'error');
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+                return;
+            }
 
             const s = bbox.getSouth(); const w = bbox.getWest();
             const n = bbox.getNorth(); const e_coord = bbox.getEast();

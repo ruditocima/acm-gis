@@ -22,6 +22,9 @@
     <!-- toGeoJSON (for KML to GeoJSON) -->
     <script src="https://unpkg.com/@tmcw/togeojson@4.2.0/dist/togeojson.umd.js"></script>
 
+    <!-- OSM to GeoJSON -->
+    <script src="https://unpkg.com/osmtogeojson@3.2.1/osmtogeojson.js"></script>
+
     <!-- Turf.js (for spatial processing & bounding boxes) -->
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
@@ -168,7 +171,7 @@
                 </div>
             </div>
 
-            <!-- Fetch OSM Data (Fallback / Manual Trigger) -->
+            <!-- Fetch OSM Data & Road Width Settings -->
             <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Environment Data</h2>
                 <button id="btn-fetch-osm" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium text-sm transition-colors shadow-lg shadow-blue-900/20 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed" disabled>
@@ -177,6 +180,17 @@
                 <p class="text-[11px] text-gray-400 mt-2 leading-relaxed">
                     Automatically loads real OSM data (buildings & roads) inside your uploaded boundary.
                 </p>
+
+                <!-- Road Width Controls -->
+                <div class="mt-4 pt-3 border-t border-gray-700/50">
+                    <label class="block text-xs font-medium text-gray-300 mb-2">Road Width Multiplier</label>
+                    <div class="flex items-center gap-2">
+                        <input type="number" id="roadWidthInput" value="1.0" step="0.2" min="0.1" max="5.0" class="w-20 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-center text-white focus:outline-none focus:border-emerald-500">
+                        <button id="btn-update-road-width" class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center shadow">
+                            <i class="fa-solid fa-road mr-1"></i> Update Width
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <!-- Drawing Controls Note -->
@@ -189,7 +203,7 @@
 
         <!-- Footer Actions -->
         <div class="p-6 border-t border-gray-700/50 flex flex-col gap-3 bg-gray-800/30">
-            <!-- Save State (Supabase prep) -->
+            <!-- Save State -->
             <button id="btn-save" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center">
                 <i class="fa-solid fa-floppy-disk mr-2"></i> Save State (Supabase)
             </button>
@@ -205,6 +219,10 @@
 
     <!-- Application Logic -->
     <script>
+        // --- Global State Variables for OSM Road Width ---
+        let lastFetchedOsmGeojson = null;
+        let currentRoadWidthMultiplier = 1.0;
+
         // --- 1. Map Initialization (OSM as Default) ---
         const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 22,
@@ -217,7 +235,7 @@
         });
 
         const map = L.map('map', {
-            center: [-0.7893, 113.9213], 
+            center: [-0.7893, 113.9213], // Default center (Indonesia)
             zoom: 5,
             layers: [osmLayer],
             zoomControl: false 
@@ -231,11 +249,20 @@
 
         let currentBbox = null;
 
+        // --- 2. Leaflet Geoman ---
         map.pm.addControls({
             position: 'topright',
-            drawCircle: false, drawCircleMarker: false, drawText: false, drawMarker: true,
-            drawPolygon: true, drawPolyline: true, drawRectangle: true,
-            editMode: true, dragMode: true, cutPolygon: true, removalMode: true,
+            drawCircle: false,
+            drawCircleMarker: false,
+            drawText: false,
+            drawMarker: true,
+            drawPolygon: true,
+            drawPolyline: true,
+            drawRectangle: true,
+            editMode: true,
+            dragMode: true,
+            cutPolygon: true,
+            removalMode: true,
         });
         
         map.on('pm:create', (e) => {
@@ -244,37 +271,48 @@
             bindNamePopup(e.layer);
         });
 
-        // --- UI Interactions ---
+        // --- 3. UI Interactions ---
         const btnMap = document.getElementById('btn-map');
         const btnEarth = document.getElementById('btn-earth');
 
         btnMap.addEventListener('click', () => {
-            map.removeLayer(earthLayer); map.addLayer(osmLayer);
+            map.removeLayer(earthLayer);
+            map.addLayer(osmLayer);
             btnMap.className = "flex-1 py-2 text-sm rounded-md bg-emerald-500/20 text-emerald-400 font-medium transition-all";
             btnEarth.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
         });
 
         btnEarth.addEventListener('click', () => {
-            map.removeLayer(osmLayer); map.addLayer(earthLayer);
+            map.removeLayer(osmLayer);
+            map.addLayer(earthLayer);
             btnEarth.className = "flex-1 py-2 text-sm rounded-md bg-emerald-500/20 text-emerald-400 font-medium transition-all";
             btnMap.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
         });
 
+        // --- 4. Popup Binding ---
         function bindNamePopup(layer) {
             layer.on('click', function(e) {
                 let props = layer.feature?.properties || {};
                 let name = props.name || props.Name || props.NAME || props.type || 'Object';
                 let desc = props.description || props.Description || '';
+                
                 let content = `<b>${name}</b>`;
                 if(desc) content += `<div class="text-xs mt-1 opacity-80">${desc}</div>`;
+                if(props.highway) {
+                    content += `<div class="text-xs mt-1 text-cyan-400">Road Type: ${props.highway}</div>`;
+                    if(props.roadSide) content += `<div class="text-xs opacity-80">Edge: ${props.roadSide}</div>`;
+                    if(props.roadWidth) content += `<div class="text-xs opacity-80">Total Width: ${props.roadWidth}m</div>`;
+                }
+                
                 layer.bindPopup(content).openPopup(e.latlng);
             });
         }
 
-        // --- File Upload ---
+        // --- 5. File Upload (KML / KMZ) ---
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
+
             document.getElementById('file-info').classList.remove('hidden');
             document.getElementById('filename').innerText = file.name;
 
@@ -284,17 +322,26 @@
                     const contents = await zip.loadAsync(file);
                     let kmlFile = null;
                     for (let filename in contents.files) {
-                        if (filename.toLowerCase().endsWith('.kml')) { kmlFile = contents.files[filename]; break; }
+                        if (filename.toLowerCase().endsWith('.kml')) {
+                            kmlFile = contents.files[filename];
+                            break;
+                        }
                     }
                     if (kmlFile) {
                         const kmlText = await kmlFile.async('text');
                         parseKML(kmlText);
-                    } else { Swal.fire('Error', 'No KML file found.', 'error'); }
+                    } else {
+                        Swal.fire('Error', 'No KML file found inside the KMZ.', 'error');
+                    }
                 } else if (file.name.toLowerCase().endsWith('.kml')) {
                     const kmlText = await file.text();
                     parseKML(kmlText);
-                } else { Swal.fire('Error', 'Invalid file.', 'error'); }
-            } catch (err) { Swal.fire('Error', 'Failed: ' + err.message, 'error'); }
+                } else {
+                    Swal.fire('Error', 'Invalid file format. Please upload KML or KMZ.', 'error');
+                }
+            } catch (err) {
+                Swal.fire('Error', 'Failed to read file: ' + err.message, 'error');
+            }
             e.target.value = '';
         });
 
@@ -302,139 +349,249 @@
             kmlGroup.clearLayers();
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(kmlText, 'text/xml');
+            
             const geojson = (typeof toGeoJSON !== 'undefined') ? toGeoJSON.kml(xmlDoc) : null;
             
             if (!geojson || !geojson.features || geojson.features.length === 0) {
-                Swal.fire('Warning', 'No geometries found.', 'warning');
+                Swal.fire('Warning', 'No geometries found or parser error in the uploaded file.', 'warning');
                 return;
             }
 
             const layer = L.geoJSON(geojson, {
-                style: { color: '#ef4444', weight: 3, fillOpacity: 0.1 },
-                onEachFeature: function(feature, layer) { bindNamePopup(layer); }
+                style: {
+                    color: '#ef4444',
+                    weight: 3,
+                    fillOpacity: 0.1
+                },
+                onEachFeature: function(feature, layer) {
+                    bindNamePopup(layer);
+                }
             });
 
             kmlGroup.addLayer(layer);
             map.fitBounds(layer.getBounds(), { padding: [50, 50] });
+
             currentBbox = layer.getBounds();
             document.getElementById('btn-fetch-osm').disabled = false;
+            
+            Swal.fire({
+                toast: true, position: 'top-end', icon: 'success',
+                title: 'KML loaded! Fetching OSM data...', showConfirmButton: false, timer: 1500
+            });
+
             fetchOSMData(currentBbox);
         }
 
-        // --- INTERNAL INLINE PARSER (Replaces external osmtogeojson dependency completely) ---
-        function convertOverpassToGeoJSON(data) {
-            const features = [];
-            if (!data || !data.elements) return { type: "FeatureCollection", features: [] };
+        // --- 6. Road Width Configuration & Turf.js Processing ---
+        function getRoadDefaultWidth(highwayType) {
+            switch (highwayType) {
+                case 'motorway': return 16;
+                case 'trunk': return 14;
+                case 'primary': return 12;
+                case 'secondary': return 9;
+                case 'tertiary': return 7;
+                case 'residential': return 5;
+                case 'service': return 4;
+                case 'track': case 'path': case 'footway': return 2;
+                default: return 6;
+            }
+        }
 
-            data.elements.forEach(el => {
-                if (el.type === 'way' && el.geometry && el.geometry.length > 0) {
-                    const coordinates = el.geometry.map(pt => [pt.lon, pt.lat]);
-                    let geomType = "LineString";
-                    let geomCoords = coordinates;
+        function processRoadFeatures(geojson, multiplier) {
+            const newFeatures = [];
 
-                    if (el.tags && el.tags.building) {
-                        geomType = "Polygon";
-                        if (coordinates.length > 2) {
-                            const first = coordinates[0];
-                            const last = coordinates[coordinates.length - 1];
-                            if (first[0] !== last[0] || first[1] !== last[1]) {
-                                coordinates.push([...first]);
-                            }
+            geojson.features.forEach(feature => {
+                if (feature.geometry && feature.properties && feature.properties.highway) {
+                    const highwayType = feature.properties.highway;
+                    const baseWidth = getRoadDefaultWidth(highwayType);
+                    const totalWidth = baseWidth * multiplier;
+                    const halfWidth = totalWidth / 2;
+
+                    const processLineCoords = (coords) => {
+                        try {
+                            const singleLine = turf.lineString(coords, feature.properties);
+                            // Generate left and right offset lines using Turf.js
+                            const leftLine = turf.lineOffset(singleLine, -halfWidth, { units: 'meters' });
+                            leftLine.properties = { ...feature.properties, roadSide: 'left', roadWidth: totalWidth };
+                            
+                            const rightLine = turf.lineOffset(singleLine, halfWidth, { units: 'meters' });
+                            rightLine.properties = { ...feature.properties, roadSide: 'right', roadWidth: totalWidth };
+                            
+                            newFeatures.push(leftLine);
+                            newFeatures.push(rightLine);
+                        } catch (err) {
+                            newFeatures.push(feature); // Fallback if offset calculation fails
                         }
-                        geomCoords = [coordinates];
-                    }
+                    };
 
-                    features.push({
-                        type: "Feature",
-                        geometry: {
-                            type: geomType,
-                            coordinates: geomCoords
-                        },
-                        properties: el.tags || {}
-                    });
+                    if (feature.geometry.type === 'LineString') {
+                        processLineCoords(feature.geometry.coordinates);
+                    } else if (feature.geometry.type === 'MultiLineString') {
+                        feature.geometry.coordinates.forEach(coords => processLineCoords(coords));
+                    } else {
+                        newFeatures.push(feature);
+                    }
+                } else {
+                    // Keep buildings and other features intact
+                    newFeatures.push(feature);
                 }
             });
 
-            return { type: "FeatureCollection", features: features };
+            return {
+                type: 'FeatureCollection',
+                features: newFeatures
+            };
         }
 
-        // --- ROBUST: Multi-Mirror & Independent Fetcher ---
+        function renderOSM(geojson, multiplier) {
+            osmGroup.clearLayers();
+            const processedGeojson = processRoadFeatures(geojson, multiplier);
+
+            L.geoJSON(processedGeojson, {
+                style: function(feature) {
+                    if (feature.properties.building) {
+                        return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
+                    }
+                    if (feature.properties.highway) {
+                        return { color: '#38bdf8', weight: 2, opacity: 0.85 }; // Left and right road lines
+                    }
+                    return { color: '#ffffff', weight: 1 };
+                },
+                onEachFeature: function(feature, layer) {
+                    if (!feature.properties.name) {
+                        if (feature.properties.building) feature.properties.name = "Building";
+                        else if (feature.properties.highway) {
+                            const side = feature.properties.roadSide ? ` (${feature.properties.roadSide})` : '';
+                            feature.properties.name = `Road (${feature.properties.highway})${side}`;
+                        }
+                    }
+                    bindNamePopup(layer);
+                }
+            }).addTo(osmGroup);
+        }
+
+        // --- 7. Fetch OSM Data (With Failover Servers) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
             const btn = document.getElementById('btn-fetch-osm');
             const originalHTML = btn.innerHTML;
-            btn.innerHTML = 'Fetching... <div class="loader"></div>';
+            btn.innerHTML = 'Fetching Data... <div class="loader"></div>';
             btn.disabled = true;
 
-            const s = bbox.getSouth(); const w = bbox.getWest();
-            const n = bbox.getNorth(); const e_coord = bbox.getEast();
+            const s = bbox.getSouth();
+            const w = bbox.getWest();
+            const n = bbox.getNorth();
+            const e_coord = bbox.getEast();
 
-            // Menggunakan query 'out geom;' agar data geometri langsung tersedia tanpa dependensi luar
-            const query = `[out:json][timeout:25];(way["building"](${s},${w},${n},${e_coord});way["highway"](${s},${w},${n},${e_coord}););out geom;`;
+            const query = `
+                [out:json][timeout:25];
+                (
+                  way["building"](${s},${w},${n},${e_coord});
+                  way["highway"](${s},${w},${n},${e_coord});
+                );
+                out body;
+                >;
+                out skel qt;
+            `;
 
-            const targetUrls = [
-                `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,
-                `https://lz4.overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,
-                `https://overpass.kumi.systems/api/interpreter?data=${encodeURIComponent(query)}`,
-                `https://corsproxy.io/?${encodeURIComponent('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query))}`
+            const endpoints = [
+                'https://overpass-api.de/api/interpreter',
+                'https://lz4.overpass-api.de/api/interpreter',
+                'https://overpass.kumi.systems/api/interpreter'
             ];
 
             let success = false;
 
-            for (const url of targetUrls) {
+            for (const endpoint of endpoints) {
                 try {
-                    const response = await fetch(url);
-                    if (!response.ok) continue;
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        body: query
+                    });
                     
-                    const data = await response.json();
-                    if (!data.elements) continue;
+                    const responseText = await response.text();
 
-                    const geojson = convertOverpassToGeoJSON(data);
-                    
-                    osmGroup.clearLayers();
-                    L.geoJSON(geojson, {
-                        style: function(feature) {
-                            if (feature.properties.building) return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
-                            if (feature.properties.highway) return { color: '#9ca3af', weight: 3, opacity: 0.8 };
-                            return { color: '#ffffff', weight: 1 };
-                        },
-                        onEachFeature: function(feature, layer) {
-                            if (!feature.properties.name) {
-                                if(feature.properties.building) feature.properties.name = "Building";
-                                else if(feature.properties.highway) feature.properties.name = "Road";
-                            }
-                            bindNamePopup(layer);
-                        }
-                    }).addTo(osmGroup);
+                    if (responseText.trim().startsWith('{')) {
+                        const data = JSON.parse(responseText);
+                        lastFetchedOsmGeojson = osmtogeojson(data);
+                        
+                        renderOSM(lastFetchedOsmGeojson, currentRoadWidthMultiplier);
 
-                    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Data Loaded!', showConfirmButton: false, timer: 2000 });
-                    success = true;
-                    break; 
+                        Swal.fire({
+                            toast: true, position: 'top-end', icon: 'success',
+                            title: 'Data loaded successfully!', showConfirmButton: false, timer: 2000
+                        });
+
+                        success = true;
+                        break;
+                    } else {
+                        throw new Error("Invalid response");
+                    }
                 } catch (err) {
-                    console.warn(`Gagal pada mirror: ${url}`, err);
+                    console.warn(`Attempt with ${endpoint} failed. Trying next...`);
                 }
             }
 
             if (!success) {
-                Swal.fire('Error', 'Overpass API sedang sibuk atau area terlalu besar. Coba perkecil area batas KML Anda.', 'error');
+                Swal.fire('Error', 'All Overpass API servers are currently busy. Please wait a few seconds and try again.', 'error');
             }
 
             btn.innerHTML = originalHTML;
             btn.disabled = false;
         }
 
-        document.getElementById('btn-fetch-osm').addEventListener('click', () => { if (currentBbox) fetchOSMData(currentBbox); });
+        document.getElementById('btn-fetch-osm').addEventListener('click', () => {
+            if (currentBbox) fetchOSMData(currentBbox);
+        });
 
-        // --- Save & Export ---
+        // Update Road Width Button Event
+        document.getElementById('btn-update-road-width').addEventListener('click', () => {
+            const inputVal = parseFloat(document.getElementById('roadWidthInput').value);
+            if (isNaN(inputVal) || inputVal <= 0) {
+                Swal.fire('Warning', 'Please enter a valid multiplier greater than 0.', 'warning');
+                return;
+            }
+            currentRoadWidthMultiplier = inputVal;
+            if (lastFetchedOsmGeojson) {
+                renderOSM(lastFetchedOsmGeojson, currentRoadWidthMultiplier);
+                Swal.fire({
+                    toast: true, position: 'top-end', icon: 'success',
+                    title: 'Road width updated successfully!', showConfirmButton: false, timer: 1500
+                });
+            } else {
+                Swal.fire('Info', 'No OSM road data loaded yet. Please upload KML/KMZ or fetch data first.', 'info');
+            }
+        });
+
+        // --- 8. Save State ---
         document.getElementById('btn-save').addEventListener('click', () => {
             const allFeatures = [];
             [kmlGroup, osmGroup, drawGroup].forEach(group => {
-                group.eachLayer(layer => { if (layer.toGeoJSON) allFeatures.push(layer.toGeoJSON()); });
+                group.eachLayer(layer => {
+                    if (layer.toGeoJSON) {
+                        allFeatures.push(layer.toGeoJSON());
+                    }
+                });
             });
-            localStorage.setItem('geoconvert_draft_state', JSON.stringify({ type: "FeatureCollection", features: allFeatures }));
-            Swal.fire({ icon: 'success', title: 'Saved!', text: 'State saved locally.', confirmButtonColor: '#10b981' });
+
+            const featureCollection = { type: "FeatureCollection", features: allFeatures };
+            localStorage.setItem('geoconvert_draft_state', JSON.stringify(featureCollection));
+
+            Swal.fire({
+                icon: 'success', title: 'State Saved!',
+                text: 'Your current edits and layers have been saved locally.',
+                confirmButtonColor: '#10b981'
+            });
         });
+
+        // --- 9. Export to DXF ---
+        function lonLatToMeters(lon, lat) {
+            const x = lon * 20037508.34 / 180;
+            let y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);
+            y = y * 20037508.34 / 180;
+            return [x, y];
+        }
 
         document.getElementById('btn-export').addEventListener('click', () => {
             const allFeatures = [];
@@ -444,46 +601,80 @@
                         let geo = layer.toGeoJSON();
                         if(group === kmlGroup) geo.properties.layer = "KML_Boundary";
                         else if(group === osmGroup && geo.properties.building) geo.properties.layer = "OSM_Buildings";
-                        else if(group === osmGroup && geo.properties.highway) geo.properties.layer = "OSM_Roads";
+                        else if(group === osmGroup && geo.properties.highway) geo.properties.layer = "OSM_Road_Edges";
                         else geo.properties.layer = "User_Drawn";
+                        
                         allFeatures.push(geo);
                     }
                 });
             });
-            if(allFeatures.length === 0) { Swal.fire('Warning', 'Map is empty.', 'warning'); return; }
-            const dxfString = generateDXF({ type: "FeatureCollection", features: allFeatures });
+
+            if(allFeatures.length === 0) {
+                Swal.fire('Warning', 'Map is empty. Please upload data or draw geometries first.', 'warning');
+                return;
+            }
+
+            const featureCollection = { type: "FeatureCollection", features: allFeatures };
+            const dxfString = generateDXF(featureCollection);
+            
             const blob = new Blob([dxfString], { type: 'application/dxf' });
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = 'GeoConvert_Export.dxf'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'GeoConvert_Export.dxf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            Swal.fire({
+                toast: true, position: 'top-end', icon: 'success',
+                title: 'DXF Exported Successfully!', showConfirmButton: false, timer: 2500
+            });
         });
-
-        function lonLatToMeters(lon, lat) {
-            const x = lon * 20037508.34 / 180;
-            let y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);
-            return [x, y * 20037508.34 / 180];
-        }
 
         function generateDXF(featureCollection) {
             let dxf = `  0\nSECTION\n  2\nHEADER\n  9\n$ACADVER\n  1\nAC1015\n  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n`;
             dxf = dxf.replace(/\n/g, "\r\n");
+
             featureCollection.features.forEach((feature) => {
-                let gem = feature.geometry; if (!gem) return;
-                let layerName = (feature.properties.layer || "0").toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+                let gem = feature.geometry;
+                if (!gem) return;
+
+                let layerName = feature.properties.layer || "0";
+                layerName = layerName.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+
                 function addLWPolyline(coords, isClosed) {
-                    let chunk = `  0\r\nLWPOLYLINE\r\n  8\r\n${layerName}\r\n 90\r\n${coords.length}\r\n 70\r\n${isClosed ? 1 : 0}\r\n`;
+                    let chunk = `  0\r\nLWPOLYLINE\r\n`;
+                    chunk += `  8\r\n${layerName}\r\n`;
+                    chunk += ` 90\r\n${coords.length}\r\n`;
+                    chunk += ` 70\r\n${isClosed ? 1 : 0}\r\n`;
+                    
                     coords.forEach(c => {
                         let [x, y] = lonLatToMeters(c[0], c[1]);
-                        chunk += ` 10\r\n${x.toFixed(4)}\r\n 20\r\n${y.toFixed(4)}\r\n`;
+                        chunk += ` 10\r\n${x.toFixed(4)}\r\n`;
+                        chunk += ` 20\r\n${y.toFixed(4)}\r\n`;
                     });
                     dxf += chunk;
                 }
-                if (gem.type === "Polygon") gem.coordinates.forEach(ring => addLWPolyline(ring, true));
-                else if (gem.type === "LineString") addLWPolyline(gem.coordinates, false);
-                else if (gem.type === "MultiPolygon") gem.coordinates.forEach(poly => poly.forEach(ring => addLWPolyline(ring, true)));
-                else if (gem.type === "MultiLineString") gem.coordinates.forEach(line => addLWPolyline(line, false));
+
+                if (gem.type === "Polygon") {
+                    gem.coordinates.forEach(ring => addLWPolyline(ring, true));
+                } else if (gem.type === "LineString") {
+                    addLWPolyline(gem.coordinates, false);
+                } else if (gem.type === "MultiPolygon") {
+                    gem.coordinates.forEach(polygon => {
+                        polygon.forEach(ring => addLWPolyline(ring, true));
+                    });
+                } else if (gem.type === "MultiLineString") {
+                    gem.coordinates.forEach(line => addLWPolyline(line, false));
+                }
             });
-            return dxf + `  0\r\nENDSEC\r\n  0\r\nEOF\r\n`;
+
+            dxf += `  0\r\nENDSEC\r\n  0\r\nEOF\r\n`;
+            return dxf;
         }
+
     </script>
 </body>
 </html>

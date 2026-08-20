@@ -256,7 +256,7 @@
             bindNamePopup(e.layer);
         });
 
-        // --- 3. UI Interactions[cite: 1] ---
+        // --- 3. UI Interactions ---
         const btnMap = document.getElementById('btn-map');
         const btnEarth = document.getElementById('btn-earth');
 
@@ -274,7 +274,7 @@
             btnMap.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
         });
 
-        // --- 4. Popup Binding[cite: 1] ---
+        // --- 4. Popup Binding ---
         function bindNamePopup(layer) {
             layer.on('click', function(e) {
                 let props = layer.feature?.properties || {};
@@ -288,7 +288,7 @@
             });
         }
 
-        // --- 5. File Upload (KML / KMZ)[cite: 1] ---
+        // --- 5. File Upload (KML / KMZ) ---
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -363,7 +363,7 @@
             fetchOSMData(currentBbox);
         }
 
-        // --- 6. Fetch OSM Data (Reusable & Automatic) ---
+        // --- 6. Fetch OSM Data (Safe against HTML Error / Rate Limits) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -394,7 +394,14 @@
                     body: query
                 });
                 
-                const data = await response.json();
+                const responseText = await response.text();
+
+                // Deteksi jika server mengembalikan halaman HTML (Error / Rate Limit / Maintenance)
+                if (responseText.trim().startsWith('<')) {
+                    throw new Error('Overpass API server is busy or rate-limited. Please try again in a few seconds.');
+                }
+
+                const data = JSON.parse(responseText);
                 const geojson = osmtogeojson(data);
                 
                 osmGroup.clearLayers();
@@ -510,8 +517,8 @@
             dxf = dxf.replace(/\n/g, "\r\n");
 
             featureCollection.features.forEach((feature) => {
-                let geom = feature.geometry;
-                if (!geom) return;
+                let gem = feature.geometry;
+                if (!gem) return;
 
                 let layerName = feature.properties.layer || "0";
                 layerName = layerName.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -530,16 +537,16 @@
                     dxf += chunk;
                 }
 
-                if (geom.type === "Polygon") {
-                    geom.coordinates.forEach(ring => addLWPolyline(ring, true));
-                } else if (geom.type === "LineString") {
-                    addLWPolyline(geom.coordinates, false);
-                } else if (geom.type === "MultiPolygon") {
-                    geom.coordinates.forEach(polygon => {
+                if (gem.type === "Polygon") {
+                    gem.coordinates.forEach(ring => addLWPolyline(ring, true));
+                } else if (gem.type === "LineString") {
+                    addLWPolyline(gem.coordinates, false);
+                } else if (gem.type === "MultiPolygon") {
+                    gem.coordinates.forEach(polygon => {
                         polygon.forEach(ring => addLWPolyline(ring, true));
                     });
-                } else if (geom.type === "MultiLineString") {
-                    geom.coordinates.forEach(line => addLWPolyline(line, false));
+                } else if (gem.type === "MultiLineString") {
+                    gem.coordinates.forEach(line => addLWPolyline(line, false));
                 }
             });
 

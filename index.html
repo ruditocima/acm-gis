@@ -363,7 +363,7 @@
             fetchOSMData(currentBbox);
         }
 
-        // --- 6. Fetch OSM Data with Multi-Endpoint Fallback & Retry Logic ---
+        // --- 6. Fetch OSM Data (With Failover Servers) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -388,17 +388,16 @@
                 out skel qt;
             `;
 
-            // Daftar endpoint Overpass API cadangan untuk menghindari rate-limit / server busy
-            const overpassEndpoints = [
+            // List of reliable Overpass API instances
+            const endpoints = [
                 'https://overpass-api.de/api/interpreter',
                 'https://lz4.overpass-api.de/api/interpreter',
                 'https://overpass.kumi.systems/api/interpreter'
             ];
 
             let success = false;
-            let lastError = null;
 
-            for (let endpoint of overpassEndpoints) {
+            for (const endpoint of endpoints) {
                 try {
                     const response = await fetch(endpoint, {
                         method: 'POST',
@@ -407,51 +406,49 @@
                     
                     const responseText = await response.text();
 
-                    // Deteksi jika server mengembalikan halaman HTML (Error / Rate Limit / Maintenance)
-                    if (responseText.trim().startsWith('<')) {
-                        throw new Error(`Server ${new URL(endpoint).hostname} is busy or rate-limited.`);
+                    // Check if response is valid JSON and not an error page (HTML)
+                    if (responseText.trim().startsWith('{')) {
+                        const data = JSON.parse(responseText);
+                        const geojson = osmtogeojson(data);
+                        
+                        osmGroup.clearLayers();
+                        
+                        L.geoJSON(geojson, {
+                            style: function(feature) {
+                                if (feature.properties.building) {
+                                    return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
+                                }
+                                if (feature.properties.highway) {
+                                    return { color: '#9ca3af', weight: 3, opacity: 0.8 };
+                                }
+                                return { color: '#ffffff', weight: 1 };
+                            },
+                            onEachFeature: function(feature, layer) {
+                                if (!feature.properties.name) {
+                                    if(feature.properties.building) feature.properties.name = "Building";
+                                    else if(feature.properties.highway) feature.properties.name = "Road";
+                                }
+                                bindNamePopup(layer);
+                            }
+                        }).addTo(osmGroup);
+
+                        Swal.fire({
+                            toast: true, position: 'top-end', icon: 'success',
+                            title: 'Data loaded successfully!', showConfirmButton: false, timer: 2000
+                        });
+
+                        success = true;
+                        break; // Stop trying other servers
+                    } else {
+                        throw new Error("Invalid response");
                     }
-
-                    const data = JSON.parse(responseText);
-                    const geojson = osmtogeojson(data);
-                    
-                    osmGroup.clearLayers();
-                    
-                    L.geoJSON(geojson, {
-                        style: function(feature) {
-                            if (feature.properties.building) {
-                                return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
-                            }
-                            if (feature.properties.highway) {
-                                return { color: '#9ca3af', weight: 3, opacity: 0.8 };
-                            }
-                            return { color: '#ffffff', weight: 1 };
-                        },
-                        onEachFeature: function(feature, layer) {
-                            if (!feature.properties.name) {
-                                if(feature.properties.building) feature.properties.name = "Building";
-                                else if(feature.properties.highway) feature.properties.name = "Road";
-                            }
-                            bindNamePopup(layer);
-                        }
-                    }).addTo(osmGroup);
-
-                    Swal.fire({
-                        toast: true, position: 'top-end', icon: 'success',
-                        title: 'Environment data loaded automatically!', showConfirmButton: false, timer: 2000
-                    });
-
-                    success = true;
-                    break; // Keluar dari loop jika berhasil
-
                 } catch (err) {
-                    lastError = err;
-                    console.warn(`Endpoint ${endpoint} failed, trying next...`, err.message);
+                    console.warn(`Attempt with ${endpoint} failed. Trying next...`);
                 }
             }
 
             if (!success) {
-                Swal.fire('Error', 'Failed to fetch OSM data from all available servers. Overpass API is busy or rate-limited. Please try again in a few seconds.', 'error');
+                Swal.fire('Error', 'All Overpass API servers are currently busy. Please wait a few seconds and try again.', 'error');
             }
 
             btn.innerHTML = originalHTML;

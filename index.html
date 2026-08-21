@@ -588,7 +588,54 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (Diperbarui: Menghapus relasi berat & memperketat batas area 0.04) ---
+        // --- 6. Fetch OSM Data (Dilengkapi Auto-Splitting Kuadran untuk Mencegah Error 413) ---
+        async function fetchOSMWithAutoSplit(s, w, n, e, endpoint, depth = 0) {
+            const query = `[out:json][timeout:40];
+            (
+              way["building"](${s},${w},${n},${e});
+              way["highway"](${s},${w},${n},${e});
+            );
+            out body;
+            >;
+            out skel qt;`;
+
+            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(endpoint);
+            const response = await fetch(proxyUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: "data=" + encodeURIComponent(query)
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                return data.elements || [];
+            } else if (response.status === 413 && depth < 2) {
+                // Jika terkena Payload Too Large (413), otomatis pecah area jadi 4 sub-kuadran
+                const midLat = (s + n) / 2;
+                const midLon = (w + e) / 2;
+                
+                const quadrants = [
+                    [s, w, midLat, midLon],
+                    [s, midLon, midLat, e],
+                    [midLat, w, n, midLon],
+                    [midLat, midLon, n, e]
+                ];
+
+                let mergedElements = [];
+                for (const quad of quadrants) {
+                    try {
+                        const subElements = await fetchOSMWithAutoSplit(quad[0], quad[1], quad[2], quad[3], endpoint, depth + 1);
+                        mergedElements.push(...subElements);
+                    } catch (err) {
+                        console.warn("Sub-quadrant fetch failed:", err);
+                    }
+                }
+                return mergedElements;
+            } else {
+                throw new Error(`HTTP ${response.status}`);
+            }
+        }
+
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -597,34 +644,10 @@
             const n = bbox.getNorth();
             const e_coord = bbox.getEast();
 
-            const latSpan = Math.abs(n - s);
-            const lonSpan = Math.abs(e_coord - w);
-            
-            // Diperketat ke 0.04 derajat (~4 km) agar terhindar dari HTTP 413 Payload Too Large
-            if (latSpan > 0.04 || lonSpan > 0.04) {
-                Swal.fire({
-                    icon: 'warning',
-                    title: 'Area Terlalu Luas / Padat',
-                    text: 'Cakupan area KML terlalu besar untuk server OSM (HTTP 413). Batas maksimal adalah 0.04 derajat (~4 km). Silakan perkecil area tapak proyek Anda.',
-                    confirmButtonColor: '#10b981'
-                });
-                return;
-            }
-
             const btn = document.getElementById('btn-fetch-osm');
             const originalHTML = btn.innerHTML;
-            btn.innerHTML = 'Fetching Data... <div class="loader"></div>';
+            btn.innerHTML = 'Fetching & Splitting... <div class="loader"></div>';
             btn.disabled = true;
-
-            // Kueri dioptimalkan hanya menarik elemen 'way' (menghindari 'relation' yang membuat payload besar)
-            const overpassQuery = `[out:json][timeout:50];
-            (
-              way["building"](${s},${w},${n},${e_coord});
-              way["highway"](${s},${w},${n},${e_coord});
-            );
-            out body;
-            >;
-            out skel qt;`;
 
             const endpoints = [
                 'https://lz4.overpass-api.de/api/interpreter',
@@ -634,60 +657,31 @@
             ];
 
             let success = false;
-            let fetchedGeoJSON = null;
+            let rawElements = [];
             let errorMessage = "";
 
             for (let targetUrl of endpoints) {
                 try {
-                    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
-                    
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 50000);
-
-                    const response = await fetch(proxyUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded'
-                        },
-                        body: "data=" + encodeURIComponent(overpassQuery),
-                        signal: controller.signal
-                    });
-
-                    clearTimeout(timeoutId);
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data && data.elements) {
-                            if (typeof osmtogeojson !== 'undefined') {
-                                try {
-                                    fetchedGeoJSON = osmtogeojson(data);
-                                } catch (err) {
-                                    console.warn("osmtogeojson execution error, switching to fallback:", err);
-                                    fetchedGeoJSON = customOSMToGeoJSON(data);
-                                }
-                            } else {
-                                fetchedGeoJSON = customOSMToGeoJSON(data);
-                            }
-                            success = true;
-                            break; 
-                        }
-                    } else if (response.status === 413) {
-                        errorMessage = "Area terlalu padat objek (HTTP 413: Payload Too Large). Perkecil area KML.";
-                        break;
-                    } else {
-                        errorMessage = `HTTP Status: ${response.status} (${targetUrl})`;
-                    }
+                    rawElements = await fetchOSMWithAutoSplit(s, w, n, e_coord, targetUrl, 0);
+                    success = true;
+                    break;
                 } catch (error) {
                     console.warn(`Mirror failed (${targetUrl}):`, error);
-                    if (error.name === 'AbortError' || (error.message && error.message.includes('aborted'))) {
-                        errorMessage = "Waktu koneksi habis (Timeout) saat menghubungi Overpass API.";
-                    } else {
-                        errorMessage = error.message;
-                    }
+                    errorMessage = error.message;
                 }
             }
 
-            if (success && fetchedGeoJSON) {
+            if (success) {
+                // Hapus duplikasi elemen dari hasil pemecahan kuadran
+                const seen = new Set();
+                const uniqueElements = rawElements.filter(el => {
+                    const key = el.type + '_' + el.id;
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+
+                const fetchedGeoJSON = customOSMToGeoJSON({ elements: uniqueElements });
                 osmGroup.clearLayers();
                 
                 const roadWidthInput = document.getElementById('roadWidthInput');

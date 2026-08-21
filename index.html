@@ -369,7 +369,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (High-Performance Query + Fast Failover) ---
+        // --- 6. Fetch OSM Data (Bulletproof Multi-Server & Dual Fetch Strategy) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -378,14 +378,14 @@
             const n = bbox.getNorth();
             const e_coord = bbox.getEast();
 
-            // Proteksi Area: Cegah panggilah jika area KML/KMZ terlalu besar (> 0.25 derajat)
+            // Proteksi Area
             const latSpan = Math.abs(n - s);
             const lonSpan = Math.abs(e_coord - w);
-            if (latSpan > 0.35 || lonSpan > 0.35) {
+            if (latSpan > 0.4 || lonSpan > 0.4) {
                 Swal.fire({
                     icon: 'warning',
                     title: 'Area Terlalu Luas',
-                    text: 'Cakupan boundary KML/KMZ Anda sangat besar. Pengambilan otomatis bangunan & jalan dibatalkan untuk mencegah timeout server Overpass API.',
+                    text: 'Cakupan boundary KML/KMZ Anda sangat besar. Silakan gunakan KML dengan cakupan area/tapak lokasi yang lebih spesifik.',
                     confirmButtonColor: '#10b981'
                 });
                 return;
@@ -396,99 +396,100 @@
             btn.innerHTML = 'Fetching Data... <div class="loader"></div>';
             btn.disabled = true;
 
-            // Optimasi Utama: Menggunakan "out geom;" (Beban server jauh lebih ringan & super cepat)
-            const query = `[out:json][timeout:30];
-(
-  way["building"](${s},${w},${n},${e_coord});
-  way["highway"](${s},${w},${n},${e_coord});
-);
-out geom;`;
+            const query = `[out:json][timeout:25];(way["building"](${s},${w},${n},${e_coord});way["highway"](${s},${w},${n},${e_coord}););out geom;`;
 
-            // Daftar server mirror Overpass API yang aktif & cepat
+            // Daftar lengkap server mirror Overpass API terpercaya
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
+                'https://lz4.overpass-api.de/api/interpreter',
+                'https://z.overpass-api.de/api/interpreter',
                 'https://overpass.kumi.systems/api/interpreter',
                 'https://overpass.nchc.org.tw/api/interpreter',
-                'https://overpass.private.coffee/api/interpreter'
+                'https://overpass.private.coffee/api/interpreter',
+                'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
             ];
 
             let success = false;
+            let fetchedGeoJSON = null;
 
-            for (const endpoint of endpoints) {
+            for (let i = 0; i < endpoints.length; i++) {
+                const endpoint = endpoints[i];
+                
                 try {
-                    // AbortController untuk membatasi waktu tunggu per-server maksimal 12 detik
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 12000);
+                    // Percobaan 1: Request POST (Timeout 8 detik agar cepat pindah jika sibuk)
+                    const controllerPost = new AbortController();
+                    const timeoutPost = setTimeout(() => controllerPost.abort(), 8000);
 
-                    const response = await fetch(endpoint, {
+                    let response = await fetch(endpoint, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded'
-                        },
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: 'data=' + encodeURIComponent(query),
-                        signal: controller.signal
-                    });
+                        signal: controllerPost.signal
+                    }).catch(() => null);
 
-                    clearTimeout(timeoutId);
+                    clearTimeout(timeoutPost);
 
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
+                    // Percobaan 2: Fallback ke Request GET jika POST gagal/di-block
+                    if (!response || !response.ok) {
+                        const controllerGet = new AbortController();
+                        const timeoutGet = setTimeout(() => controllerGet.abort(), 8000);
+
+                        const getUrl = `${endpoint}?data=${encodeURIComponent(query)}`;
+                        response = await fetch(getUrl, { signal: controllerGet.signal }).catch(() => null);
+                        clearTimeout(timeoutGet);
                     }
 
-                    const responseText = await response.text();
-
-                    if (responseText.trim().startsWith('{')) {
-                        const data = JSON.parse(responseText);
-                        const geojson = osmtogeojson(data);
-
-                        osmGroup.clearLayers();
-
-                        if (geojson && geojson.features && geojson.features.length > 0) {
-                            L.geoJSON(geojson, {
-                                style: function(feature) {
-                                    if (feature.properties.building) {
-                                        return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
-                                    }
-                                    if (feature.properties.highway) {
-                                        return { color: '#9ca3af', weight: 3, opacity: 0.8 };
-                                    }
-                                    return { color: '#ffffff', weight: 1 };
-                                },
-                                onEachFeature: function(feature, layer) {
-                                    if (!feature.properties.name) {
-                                        if (feature.properties.building) feature.properties.name = "Building";
-                                        else if (feature.properties.highway) feature.properties.name = "Road";
-                                    }
-                                    bindNamePopup(layer);
-                                }
-                            }).addTo(osmGroup);
-
-                            Swal.fire({
-                                toast: true, position: 'top-end', icon: 'success',
-                                title: `Data OSM (${geojson.features.length} objek) dimuat!`, showConfirmButton: false, timer: 2000
-                            });
-                        } else {
-                            Swal.fire({
-                                toast: true, position: 'top-end', icon: 'info',
-                                title: 'Tidak ada bangunan/jalan OSM di area ini.', showConfirmButton: false, timer: 2500
-                            });
+                    if (response && response.ok) {
+                        const text = await response.text();
+                        if (text.trim().startsWith('{')) {
+                            const data = JSON.parse(text);
+                            fetchedGeoJSON = osmtogeojson(data);
+                            success = true;
+                            break; // Berhasil, keluar dari loop
                         }
-
-                        success = true;
-                        break; // Berhasil, keluar dari loop endpoint
-                    } else {
-                        throw new Error("Respon bukan JSON valid");
                     }
                 } catch (err) {
-                    console.warn(`Gagal terhubung ke ${endpoint} (${err.message}). Mencoba server berikutnya...`);
+                    console.warn(`Server ${endpoint} dibatalkan:`, err.message);
                 }
             }
 
-            if (!success) {
+            if (success && fetchedGeoJSON) {
+                osmGroup.clearLayers();
+                if (fetchedGeoJSON.features && fetchedGeoJSON.features.length > 0) {
+                    L.geoJSON(fetchedGeoJSON, {
+                        style: function(feature) {
+                            if (feature.properties.building) {
+                                return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
+                            }
+                            if (feature.properties.highway) {
+                                return { color: '#9ca3af', weight: 3, opacity: 0.8 };
+                            }
+                            return { color: '#ffffff', weight: 1 };
+                        },
+                        onEachFeature: function(feature, layer) {
+                            if (!feature.properties.name) {
+                                if (feature.properties.building) feature.properties.name = "Building";
+                                else if (feature.properties.highway) feature.properties.name = "Road";
+                            }
+                            bindNamePopup(layer);
+                        }
+                    }).addTo(osmGroup);
+
+                    Swal.fire({
+                        toast: true, position: 'top-end', icon: 'success',
+                        title: `Data OSM (${fetchedGeoJSON.features.length} objek) dimuat!`, showConfirmButton: false, timer: 2000
+                    });
+                } else {
+                    Swal.fire({
+                        toast: true, position: 'top-end', icon: 'info',
+                        title: 'Tidak ditemukan jaringan jalan/bangunan di area ini.', showConfirmButton: false, timer: 2500
+                    });
+                }
+            } else {
                 Swal.fire({
                     icon: 'error',
-                    title: 'Gagal Memuat OSM',
-                    text: 'Server Overpass API sedang padat/busy saat ini. Silakan klik tombol "Refresh Buildings & Roads" beberapa saat lagi.',
+                    title: 'Gagal Memuat Data OSM',
+                    text: 'Koneksi ke server Overpass sedang tidak stabil. Silakan periksa koneksi internet Anda atau klik tombol "Refresh Buildings & Roads" sekali lagi.',
                     confirmButtonColor: '#10b981'
                 });
             }

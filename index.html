@@ -588,7 +588,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (Diperbarui dengan Timeout 35 Detik & Penanganan AbortError) ---
+        // --- 6. Fetch OSM Data (Diperbarui dengan Validasi Area Ketat & Penanganan HTTP 413) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -599,11 +599,13 @@
 
             const latSpan = Math.abs(n - s);
             const lonSpan = Math.abs(e_coord - w);
-            if (latSpan > 0.2 || lonSpan > 0.2) {
+            
+            // Diperketat ke 0.08 derajat (~8-9 km) untuk mencegah HTTP 413 Payload Too Large
+            if (latSpan > 0.08 || lonSpan > 0.08) {
                 Swal.fire({
                     icon: 'warning',
-                    title: 'Area Terlalu Luas',
-                    text: 'Cakupan area KML terlalu luas. Perkecil area tapak proyek agar data OSM berhasil dimuat.',
+                    title: 'Area Terlalu Luas / Padat',
+                    text: 'Cakupan area KML melebihi batas aman Overpass API (HTTP 413). Silakan perkecil area tapak proyek Anda.',
                     confirmButtonColor: '#10b981'
                 });
                 return;
@@ -614,7 +616,7 @@
             btn.innerHTML = 'Fetching Data... <div class="loader"></div>';
             btn.disabled = true;
 
-            const overpassQuery = `[out:json][timeout:30];
+            const overpassQuery = `[out:json][timeout:35];
             (
               way["building"](${s},${w},${n},${e_coord});
               way["highway"](${s},${w},${n},${e_coord});
@@ -640,7 +642,7 @@
                     const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
                     
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 35000); // Batas waktu ditingkatkan ke 35 detik
+                    const timeoutId = setTimeout(() => controller.abort(), 35000);
 
                     const response = await fetch(proxyUrl, {
                         method: 'POST',
@@ -669,6 +671,10 @@
                             success = true;
                             break; 
                         }
+                    } else if (response.status === 413) {
+                        // 413 Payload Too Large berarti kueri/area terlalu berat, hentikan perulangan mirror
+                        errorMessage = "Area terlalu besar atau terlalu padat (HTTP 413: Payload Too Large). Perkecil area KML.";
+                        break;
                     } else {
                         errorMessage = `HTTP Status: ${response.status} (${targetUrl})`;
                     }
@@ -874,7 +880,7 @@
                                 if (props.highway) {
                                     return { color: '#3b82f6', weight: 1.5, fillColor: '#3b82f6', fillOpacity: 0.3 };
                                 }
-                                return { color: '#3b82f6', weight: 1.5, fillColor: '#3b82f6', fillOpacity: 0.3 };
+                                return { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 };
                             }
                             return { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 };
                         },

@@ -453,17 +453,15 @@
             }
 
             const layer = L.geoJSON(geojson, {
-                pmIgnore: true, // Mencegah Leaflet Geoman mengedit KML
                 style: {
                     color: '#ef4444',
                     weight: 3,
                     fillOpacity: 0.1
                 },
                 pointToLayer: function(feature, latlng) {
-                    return L.marker(latlng, { icon: blueDotIcon, pmIgnore: true });
+                    return L.marker(latlng, { icon: blueDotIcon });
                 },
                 onEachFeature: function(feature, layer) {
-                    layer.options.pmIgnore = true; // Pastikan sub-layer terkunci
                     bindNamePopup(layer);
                 }
             });
@@ -629,7 +627,6 @@
 
                 if (filteredFeatures.length > 0) {
                     L.geoJSON({ type: "FeatureCollection", features: filteredFeatures }, {
-                        pmIgnore: true, // Mencegah Leaflet Geoman mengedit data OSM
                         style: function(feature) {
                             if (feature.properties.building) {
                                 return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
@@ -640,7 +637,6 @@
                             return { color: '#ffffff', weight: 1 };
                         },
                         onEachFeature: function(feature, layer) {
-                            layer.options.pmIgnore = true; // Pastikan sub-layer terkunci
                             if (!feature.properties.name) {
                                 if (feature.properties.building) feature.properties.name = "Building";
                                 else if (feature.properties.highway) feature.properties.name = "Road";
@@ -651,7 +647,7 @@
 
                     Swal.fire({
                         toast: true, position: 'top-end', icon: 'success',
-                        title: `Data OSM (${filteredFeatures.length} objek) dimuat & dikunci!`, showConfirmButton: false, timer: 2000
+                        title: `Data OSM (${filteredFeatures.length} objek) dimuat dengan kalibrasi Earth!`, showConfirmButton: false, timer: 2000
                     });
                 } else {
                     Swal.fire({

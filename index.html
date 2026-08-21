@@ -6,6 +6,7 @@
     <title>GeoConvert Pro | KML to DXF</title>
 
     <!-- Tailwind CSS (for elegant UI) -->
+    <script src="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/lib/index.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 
     <!-- Leaflet CSS & JS (for Maps) -->
@@ -362,74 +363,19 @@
             removalMode: true,
         });
 
-        // --- Custom Undo & Cancel Control ---
-        L.Control.UndoCancel = L.Control.extend({
-            options: {
-                position: 'topright'
-            },
-            onAdd: function (map) {
-                const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control flex bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden my-2');
-                container.style.marginLeft = '0px';
-                container.style.marginTop = '0px';
-                container.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)';
-
-                // Undo Button
-                const undoBtn = L.DomUtil.create('a', 'flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs transition-colors', container);
-                undoBtn.href = '#';
-                undoBtn.title = 'Undo Last Action';
-                undoBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i>';
-                
-                // Cancel / Disable Active Mode Button
-                const cancelBtn = L.DomUtil.create('a', 'flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs transition-colors border-l border-gray-700', container);
-                cancelBtn.href = '#';
-                cancelBtn.title = 'Cancel / Disable Mode';
-                cancelBtn.innerHTML = '<i class="fa-solid fa-ban"></i>';
-
-                L.DomEvent.disableClickPropagation(container);
-
-                L.DomEvent.on(undoBtn, 'click', (e) => {
-                    L.DomEvent.stopPropagation(e);
-                    L.DomEvent.preventDefault(e);
-                    if (typeof map.pm.undo === 'function') {
-                        map.pm.undo();
-                        Swal.fire({
-                            toast: true, position: 'top-end', icon: 'info',
-                            title: 'Undo executed', showConfirmButton: false, timer: 1500
-                        });
-                    } else {
-                        Swal.fire({
-                            toast: true, position: 'top-end', icon: 'warning',
-                            title: 'Undo not supported', showConfirmButton: false, timer: 1500
-                        });
-                    }
-                });
-
-                L.DomEvent.on(cancelBtn, 'click', (e) => {
-                    L.DomEvent.stopPropagation(e);
-                    L.DomEvent.preventDefault(e);
-                    map.pm.disableGlobalDrawMode();
-                    map.pm.disableGlobalEditMode();
-                    map.pm.disableGlobalRemovalMode();
-                    drawGroup.eachLayer(layer => {
-                        if (layer.pm && layer.pm.enabled()) {
-                            layer.pm.disable();
-                        }
-                    });
-                    Swal.fire({
-                        toast: true, position: 'top-end', icon: 'info',
-                        title: 'Drawing / Editing cancelled', showConfirmButton: false, timer: 1500
-                    });
-                });
-
-                return container;
-            }
+        // PERUBAHAN: Menetapkan ketebalan garis default untuk gambar/garis baru (Menjadi 1.5 piksel)
+        map.pm.setPathOptions({
+            color: '#3b82f6',
+            weight: 1.5,
+            fillOpacity: 0.3
         });
-
-        map.addControl(new L.Control.UndoCancel());
         
         map.on('pm:create', (e) => {
             if (e.shape === 'Marker') {
                 e.layer.setIcon(blueDotIcon);
+            } else if (e.layer.setStyle) {
+                // PERUBAHAN: Memastikan layer yang baru dibuat langsung memiliki ketebalan garis yang tipis
+                e.layer.setStyle({ weight: 1.5 });
             }
             e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Drawn Object' } };
             drawGroup.addLayer(e.layer);
@@ -437,6 +383,7 @@
         });
 
         // --- Proteksi Interaksi Layer (Sesuai Permintaan) ---
+        // 1. Mencegah vertex editing pada OSM Buildings (hanya boleh drag)
         map.on('pm:edit', (e) => {
             if (e.layer && e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.building) {
                 e.layer.pm.disableEdit();
@@ -447,6 +394,7 @@
             }
         });
 
+        // 2. Mencegah penghapusan (removal) pada OSM Buildings
         map.on('pm:remove', (e) => {
             if (e.layer && e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.building) {
                 osmGroup.addLayer(e.layer);
@@ -548,6 +496,7 @@
                     return L.marker(latlng, { icon: blueDotIcon });
                 },
                 onEachFeature: function(feature, layer) {
+                    // 1. KML/KMZ upload dibuat tidak bisa diedit total (pmIgnore = true)
                     layer.options.pmIgnore = true;
                     bindNamePopup(layer);
                 }
@@ -719,7 +668,8 @@
                                 return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
                             }
                             if (feature.properties.highway) {
-                                return { color: '#3b82f6', weight: 3, fillColor: '#3b82f6', fillOpacity: 0.3 };
+                                // PERUBAHAN: Ketebalan garis (weight) jalan OSM diperkecil dari 3 menjadi 1.5
+                                return { color: '#3b82f6', weight: 1.5, fillColor: '#3b82f6', fillOpacity: 0.3 };
                             }
                             return { color: '#ffffff', weight: 1 };
                         },
@@ -729,9 +679,11 @@
                                 else if (feature.properties.highway) feature.properties.name = "Road";
                             }
 
+                            // 2. OSM jalan tidak bisa diedit total (pmIgnore = true)
                             if (feature.properties.highway) {
                                 layer.options.pmIgnore = true;
                             }
+                            // 3. OSM bangunan tidak bisa diedit/dihapus, tetapi biarkan pmIgnore = false agar bisa di-drag
 
                             bindNamePopup(layer);
                         }
@@ -797,7 +749,7 @@
             const allFeatures = [];
             [kmlGroup, osmGroup, drawGroup].forEach(group => {
                 group.eachLayer(layer => {
-                    if (layer.toGeoJSON) {
+                    if (layer.toGeneJSON || layer.toGeoJSON) {
                         let geo = layer.toGeoJSON();
                         if(group === kmlGroup) geo.properties.layer = "KML_Boundary";
                         else if(group === osmGroup && geo.properties.building) geo.properties.layer = "OSM_Buildings";

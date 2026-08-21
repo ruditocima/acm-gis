@@ -782,8 +782,12 @@
                 group.eachLayer(layer => {
                     if (layer.toGeoJSON) {
                         let geo = layer.toGeoJSON();
-                        // Perbaikan: Amankan jika properties bernilai undefined
                         geo.properties = geo.properties || {};
+                        
+                        // [FIX] Salin properti asli dari layer.feature agar tag bangunan/jalan (building/highway) tidak hilang
+                        if (layer.feature && layer.feature.properties) {
+                            geo.properties = { ...layer.feature.properties, ...geo.properties };
+                        }
                         
                         if(group === kmlGroup) geo.properties.sourceGroup = "kml";
                         else if(group === osmGroup) geo.properties.sourceGroup = "osm";
@@ -851,7 +855,13 @@
                             if (props.sourceGroup === 'kml') {
                                 return { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.15 };
                             } else if (props.sourceGroup === 'osm') {
-                                if (props.building) return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
+                                // [FIX] Pertahankan warna asli OSM: Bangunan (#f59e0b) dan Jalan (#3b82f6)
+                                if (props.building) {
+                                    return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
+                                }
+                                if (props.highway) {
+                                    return { color: '#3b82f6', weight: 1.5, fillColor: '#3b82f6', fillOpacity: 0.3 };
+                                }
                                 return { color: '#3b82f6', weight: 1.5, fillColor: '#3b82f6', fillOpacity: 0.3 };
                             }
                             return { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 };
@@ -899,9 +909,13 @@
             const allFeatures = [];
             [kmlGroup, osmGroup, drawGroup].forEach(group => {
                 group.eachLayer(layer => {
-                    if (layer.toGeneJSON || layer.toGeoJSON) {
+                    if (layer.toGeoJSON) {
                         let geo = layer.toGeoJSON();
                         geo.properties = geo.properties || {};
+                        
+                        if (layer.feature && layer.feature.properties) {
+                            geo.properties = { ...layer.feature.properties, ...geo.properties };
+                        }
                         
                         if(group === kmlGroup) geo.properties.layer = "KML_Boundary";
                         else if(group === osmGroup && geo.properties.building) geo.properties.layer = "OSM_Buildings";

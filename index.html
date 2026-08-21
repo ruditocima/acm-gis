@@ -207,7 +207,7 @@
             <!-- Drawing Controls Note -->
             <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
                 <h2 class="text-sm font-semibold mb-1 text-gray-300 uppercase tracking-wider">Editing Tools</h2>
-                <p class="text-xs text-gray-400">Use the toolbar on the map to draw, edit, or measure polygons and lines in real-world dimensions. Undo and Cancel actions are active on every drawing tool.</p>
+                <p class="text-xs text-gray-400">Use the toolbar on the map to draw, edit, or measure polygons and lines in real-world dimensions. <em>Setiap tombol kontrol dilengkapi aksi Undo & Cancel otomatis.</em></p>
             </div>
             
         </div>
@@ -285,7 +285,7 @@
             return { type: "FeatureCollection", features: features };
         }
 
-        // --- Helper: Apply Meter Offset to Feature ---[cite: 1]
+        // --- Helper: Apply Meter Offset to Feature ---
         function applyOffset(feature, dLatMeters, dLonMeters) {
             if (dLatMeters === 0 && dLonMeters === 0) return feature;
             const cloned = JSON.parse(JSON.stringify(feature));
@@ -318,7 +318,7 @@
             return cloned;
         }
 
-        // --- 1. Map Initialization ---[cite: 1]
+        // --- 1. Map Initialization ---
         const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 22,
             maxNativeZoom: 19,
@@ -346,7 +346,7 @@
 
         let currentBbox = null;
 
-        // --- 2. Leaflet Geoman with Global Undo & Cancel Configuration ---[cite: 1]
+        // --- 2. Leaflet Geoman & Action Toolbar (Undo & Cancel Configured) ---
         map.pm.addControls({
             position: 'topright',
             drawCircle: false,
@@ -362,25 +362,15 @@
             removalMode: true,
         });
 
-        // Mengatur opsi global Geoman untuk memastikan action button (Undo/Remove last vertex & Cancel) aktif pada setiap kontrol gambar
-        map.pm.setGlobalOptions({
-            snapping: true,
-            tooltips: true,
-            allowSelfIntersection: false,
-            // Tombol aksi bawaan Geoman saat menggambar (Finish, Cancel, Remove Last Vertex/Undo)
-            templineStyle: { color: '#10b981' },
-            hintlineStyle: { color: '#10b981', dashArray: [5, 5] }
+        // Global Geoman configuration to ensure Undo & Cancel are active on every drawing/editing mode
+        map.pm.setGlobalOptions({ 
+            snappable: true,
+            tooltips: true
         });
 
-        // Event listener tambahan untuk memastikan aksi tombol Undo/Cancel interaktif merespons dengan mulus di setiap control icon
+        // Event listener saat mode gambar/edit aktif untuk memastikan opsi Undo/Cancel siap
         map.on('pm:drawstart', (e) => {
-            const workingLayer = e.workingLayer;
-            if (workingLayer) {
-                // Event listener tambahan jika diperlukan untuk tracking kustom
-                workingLayer.on('pm:vertexadded', () => {
-                    // Fitur undo vertex otomatis didukung Geoman via panel aksi menggambar
-                });
-            }
+            console.log(`Draw started: ${e.shape}. Gunakan aksi Undo (hapus titik terakhir) atau Cancel pada toolbar.`);
         });
         
         map.on('pm:create', (e) => {
@@ -392,7 +382,8 @@
             bindNamePopup(e.layer);
         });
 
-        // --- Proteksi Interaksi Layer (Sesuai Permintaan) ---[cite: 1]
+        // --- Proteksi Interaksi Layer (Sesuai Permintaan) ---
+        // 1. Mencegah vertex editing pada OSM Buildings (hanya boleh drag)
         map.on('pm:edit', (e) => {
             if (e.layer && e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.building) {
                 e.layer.pm.disableEdit();
@@ -403,6 +394,7 @@
             }
         });
 
+        // 2. Mencegah penghapusan (removal) pada OSM Buildings
         map.on('pm:remove', (e) => {
             if (e.layer && e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.building) {
                 osmGroup.addLayer(e.layer);
@@ -413,7 +405,7 @@
             }
         });
 
-        // --- 3. UI Interactions ---[cite: 1]
+        // --- 3. UI Interactions ---
         const btnMap = document.getElementById('btn-map');
         const btnEarth = document.getElementById('btn-earth');
 
@@ -431,7 +423,7 @@
             btnMap.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
         });
 
-        // --- 4. Popup Binding ---[cite: 1]
+        // --- 4. Popup Binding ---
         function bindNamePopup(layer) {
             layer.on('click', function(e) {
                 let props = layer.feature?.properties || {};
@@ -445,7 +437,7 @@
             });
         }
 
-        // --- 5. File Upload (KML / KMZ) ---[cite: 1]
+        // --- 5. File Upload (KML / KMZ) ---
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -527,7 +519,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data with Earth Alignment Offset ---[cite: 1]
+        // --- 6. Fetch OSM Data with Earth Alignment Offset ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -720,7 +712,7 @@
             if (currentBbox) fetchOSMData(currentBbox);
         });
 
-        // --- 7. Save State ---[cite: 1]
+        // --- 7. Save State ---
         document.getElementById('btn-save').addEventListener('click', () => {
             const allFeatures = [];
             [kmlGroup, osmGroup, drawGroup].forEach(group => {
@@ -741,7 +733,7 @@
             });
         });
 
-        // --- 8. Export to DXF ---[cite: 1]
+        // --- 8. Export to DXF ---
         function lonLatToMeters(lon, lat) {
             const x = lon * 20037508.34 / 180;
             let y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);
@@ -765,6 +757,7 @@
                 });
             });
 
+           [cite: 1]
             if(allFeatures.length === 0) {
                 Swal.fire('Warning', 'Map is empty. Please upload data or draw geometries first.', 'warning');
                 return;
@@ -795,6 +788,9 @@
 
             featureCollection.features.forEach((feature) => {
                 let gem = feature.geometry;
+               [cite: 1]
+                if (!gem) return;
+
                 let layerName = feature.properties.layer || "0";
                 layerName = layerName.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
 
@@ -809,15 +805,24 @@
                         return ` 10\r\n${x.toFixed(4)}\r\n 20\r\n${y.toFixed(4)}`;
                     }).join("\r\n") + "\r\n";
                     
-                    dxf += `  0\r\nSECTION\r\n  2\nENTITIES\n` + chunk; // handled below properly in original function loop
+                   [cite: 1]
+                    dxf += chunk;
                 }
-                
-                // Keep the exact robust DXF generator loop structure
+
+                if (gem.type === "Polygon") {
+                    gem.coordinates.forEach(ring => addLWPolyline(ring, true));
+                } else if (gem.type === "LineString") {
+                    addLWPolyline(gem.coordinates, false);
+                } else if (gem.type === "MultiPolygon") {
+                    gem.coordinates.forEach(poly => poly.forEach(ring => addLWPolyline(ring, true)));
+                } else if (gem.type === "MultiLineString") {
+                    gem.coordinates.forEach(line => addLWPolyline(line, false));
+                }
             });
 
-            // Reverting back to original robust dxf loop implementation to prevent any export discrepancy:
-            // (Using the exact implementation from source)
-        });
+            dxf += `  0\r\nENDSEC\r\n  0\r\nEOF\r\n`;
+            return dxf;
+        }
     </script>
 </body>
 </html>

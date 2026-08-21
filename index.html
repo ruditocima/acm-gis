@@ -181,7 +181,7 @@
                     <i class="fa-solid fa-city mr-2"></i> Refresh Buildings & Roads
                 </button>
                 <p class="text-[11px] text-gray-400 mt-2 leading-relaxed">
-                    Click to load real OSM data (buildings & roads) inside your uploaded boundary safely.
+                    Click to load real OSM data safely in optimized chunks.
                 </p>
             </div>
 
@@ -575,14 +575,13 @@
             currentBbox = layer.getBounds();
             document.getElementById('btn-fetch-osm').disabled = false;
             
-            // Auto-fetch dihilangkan untuk mencegah error 504 otomatis, pengguna menekan tombol manual.
             Swal.fire({
                 toast: true, position: 'top-end', icon: 'success',
-                title: 'KML Loaded! Click "Refresh Buildings & Roads" to fetch OSM data.', showConfirmButton: false, timer: 3000
+                title: 'KML Loaded! Click "Refresh Buildings & Roads" to fetch OSM data safely.', showConfirmButton: false, timer: 3000
             });
         }
 
-        // --- 6. Fetch OSM Data with Robust Timeout & Retry Handler ---
+        // --- 6. Fetch OSM Data with Dynamic 3x3 Grid Splitting & Resilient Fallback ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -593,7 +592,7 @@
 
             const btn = document.getElementById('btn-fetch-osm');
             const originalHTML = btn.innerHTML;
-            btn.innerHTML = 'Fetching OSM Safely... <div class="loader"></div>';
+            btn.innerHTML = 'Fetching OSM Safely (Grid Split)... <div class="loader"></div>';
             btn.disabled = true;
 
             const endpoints = [
@@ -602,15 +601,24 @@
                 'https://z.overpass-api.de/api/interpreter'
             ];
 
-            const midLat = (s + n) / 2;
-            const midLon = (w + e_coord) / 2;
+            // Bagi area menjadi 3x3 grid (9 bagian) agar kecil & tidak kena 504 Gateway Timeout
+            const gridDiv = 3;
+            const latSpan = n - s;
+            const lonSpan = e_coord - w;
+            const latStep = latSpan / gridDiv;
+            const lonStep = lonSpan / gridDiv;
 
-            const subBoxes = [
-                { s: s, w: w, n: midLat, e: midLon },
-                { s: s, w: midLon, n: midLat, e: e_coord },
-                { s: midLat, w: w, n: n, e: midLon },
-                { s: midLat, w: midLon, n: n, e: e_coord }
-            ];
+            const subBoxes = [];
+            for (let r = 0; r < gridDiv; r++) {
+                for (let c = 0; c < gridDiv; c++) {
+                    subBoxes.push({
+                        s: s + r * latStep,
+                        w: w + c * lonStep,
+                        n: s + (r + 1) * latStep,
+                        e: w + (c + 1) * lonStep
+                    });
+                }
+            }
 
             let allElements = [];
             let successCount = 0;
@@ -645,11 +653,11 @@
                                     break;
                                 }
                             } else {
-                                await new Promise(resolve => setTimeout(resolve, 2000));
+                                await new Promise(resolve => setTimeout(resolve, 1500));
                                 retries--;
                             }
                         } catch (error) {
-                            await new Promise(resolve => setTimeout(resolve, 2000));
+                            await new Promise(resolve => setTimeout(resolve, 1500));
                             retries--;
                         }
                     }
@@ -658,8 +666,9 @@
 
                 if (boxSuccess) successCount++;
 
+                // Jeda antar grid request agar server tidak memblokir / timeout
                 if (i < subBoxes.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                 }
             }
 
@@ -769,7 +778,7 @@
                 Swal.fire({
                     icon: 'error',
                     title: 'Koneksi ke Server OSM Timeout',
-                    html: 'Server Overpass sedang mengalami gangguan/sibuk (504 Gateway Timeout).<br><br>Silakan tunggu beberapa saat, lalu klik tombol <b>Refresh Buildings & Roads</b> kembali.',
+                    html: 'Boundary area KML Anda mungkin terlalu besar untuk server publik. Silakan coba gunakan area KML yang lebih spesifik/fokus.',
                     confirmButtonText: 'OK',
                     confirmButtonColor: '#10b981'
                 });

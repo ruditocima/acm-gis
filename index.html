@@ -207,7 +207,7 @@
             <!-- Drawing Controls Note -->
             <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
                 <h2 class="text-sm font-semibold mb-1 text-gray-300 uppercase tracking-wider">Editing Tools</h2>
-                <p class="text-xs text-gray-400">Use the toolbar on the map to draw, edit, or measure polygons and lines in real-world dimensions. <em>Setiap tombol kontrol dilengkapi aksi Undo & Cancel otomatis.</em></p>
+                <p class="text-xs text-gray-400">Use the toolbar on the map to draw, edit, or measure polygons and lines in real-world dimensions.</p>
             </div>
             
         </div>
@@ -346,7 +346,7 @@
 
         let currentBbox = null;
 
-        // --- 2. Leaflet Geoman & Action Toolbar (Undo & Cancel Configured) ---
+        // --- 2. Leaflet Geoman ---
         map.pm.addControls({
             position: 'topright',
             drawCircle: false,
@@ -362,16 +362,70 @@
             removalMode: true,
         });
 
-        // Global Geoman configuration to ensure Undo & Cancel are active on every drawing/editing mode
-        map.pm.setGlobalOptions({ 
-            snappable: true,
-            tooltips: true
+        // --- Custom Undo & Cancel Control ---
+        L.Control.UndoCancel = L.Control.extend({
+            options: {
+                position: 'topright'
+            },
+            onAdd: function (map) {
+                const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control flex bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden my-2');
+                container.style.marginLeft = '0px';
+                container.style.marginTop = '0px';
+                container.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)';
+
+                // Undo Button
+                const undoBtn = L.DomUtil.create('a', 'flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs transition-colors', container);
+                undoBtn.href = '#';
+                undoBtn.title = 'Undo Last Action';
+                undoBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i>';
+                
+                // Cancel / Disable Active Mode Button
+                const cancelBtn = L.DomUtil.create('a', 'flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs transition-colors border-l border-gray-700', container);
+                cancelBtn.href = '#';
+                cancelBtn.title = 'Cancel / Disable Mode';
+                cancelBtn.innerHTML = '<i class="fa-solid fa-ban"></i>';
+
+                L.DomEvent.disableClickPropagation(container);
+
+                L.DomEvent.on(undoBtn, 'click', (e) => {
+                    L.DomEvent.stopPropagation(e);
+                    L.DomEvent.preventDefault(e);
+                    if (typeof map.pm.undo === 'function') {
+                        map.pm.undo();
+                        Swal.fire({
+                            toast: true, position: 'top-end', icon: 'info',
+                            title: 'Undo executed', showConfirmButton: false, timer: 1500
+                        });
+                    } else {
+                        Swal.fire({
+                            toast: true, position: 'top-end', icon: 'warning',
+                            title: 'Undo not supported', showConfirmButton: false, timer: 1500
+                        });
+                    }
+                });
+
+                L.DomEvent.on(cancelBtn, 'click', (e) => {
+                    L.DomEvent.stopPropagation(e);
+                    L.DomEvent.preventDefault(e);
+                    map.pm.disableGlobalDrawMode();
+                    map.pm.disableGlobalEditMode();
+                    map.pm.disableGlobalRemovalMode();
+                    drawGroup.eachLayer(layer => {
+                        if (layer.pm && layer.pm.enabled()) {
+                            layer.pm.disable();
+                        }
+                    });
+                    Swal.fire({
+                        toast: true, position: 'top-end', icon: 'info',
+                        title: 'Drawing / Editing cancelled', showConfirmButton: false, timer: 1500
+                    });
+                });
+
+                return container;
+            }
         });
 
-        // Event listener saat mode gambar/edit aktif untuk memastikan opsi Undo/Cancel siap
-        map.on('pm:drawstart', (e) => {
-            console.log(`Draw started: ${e.shape}. Gunakan aksi Undo (hapus titik terakhir) atau Cancel pada toolbar.`);
-        });
+        map.addControl(new L.Control.UndoCancel());
         
         map.on('pm:create', (e) => {
             if (e.shape === 'Marker') {
@@ -383,7 +437,6 @@
         });
 
         // --- Proteksi Interaksi Layer (Sesuai Permintaan) ---
-        // 1. Mencegah vertex editing pada OSM Buildings (hanya boleh drag)
         map.on('pm:edit', (e) => {
             if (e.layer && e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.building) {
                 e.layer.pm.disableEdit();
@@ -394,7 +447,6 @@
             }
         });
 
-        // 2. Mencegah penghapusan (removal) pada OSM Buildings
         map.on('pm:remove', (e) => {
             if (e.layer && e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.building) {
                 osmGroup.addLayer(e.layer);
@@ -757,7 +809,6 @@
                 });
             });
 
-           [cite: 1]
             if(allFeatures.length === 0) {
                 Swal.fire('Warning', 'Map is empty. Please upload data or draw geometries first.', 'warning');
                 return;
@@ -788,7 +839,6 @@
 
             featureCollection.features.forEach((feature) => {
                 let gem = feature.geometry;
-               [cite: 1]
                 if (!gem) return;
 
                 let layerName = feature.properties.layer || "0";
@@ -805,7 +855,6 @@
                         return ` 10\r\n${x.toFixed(4)}\r\n 20\r\n${y.toFixed(4)}`;
                     }).join("\r\n") + "\r\n";
                     
-                   [cite: 1]
                     dxf += chunk;
                 }
 

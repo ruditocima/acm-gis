@@ -611,7 +611,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data with CORS-Safe Mirrors & Safe 2x2 Grid Chunking ---
+        // --- 6. Fetch OSM Data with Robust Timeout & Retry Handler ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -625,14 +625,12 @@
             btn.innerHTML = 'Fetching OSM Safely... <div class="loader"></div>';
             btn.disabled = true;
 
-            // Hanya menggunakan mirror yang terbukti mendukung CORS dari frontend browser
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
                 'https://lz4.overpass-api.de/api/interpreter',
                 'https://z.overpass-api.de/api/interpreter'
             ];
 
-            // Pecah area boundary menjadi 2x2 grid (4 kotak optimal) dengan jeda aman anti 429
             const midLat = (s + n) / 2;
             const midLon = (w + e_coord) / 2;
 
@@ -648,7 +646,7 @@
 
             for (let i = 0; i < subBoxes.length; i++) {
                 let box = subBoxes[i];
-                const query = `[out:json][timeout:25];
+                const query = `[out:json][timeout:30];
                 (
                   way["building"](${box.s},${box.w},${box.n},${box.e});
                   way["highway"](${box.s},${box.w},${box.n},${box.e});
@@ -659,7 +657,7 @@
 
                 let boxSuccess = false;
                 for (let targetUrl of endpoints) {
-                    let retries = 2;
+                    let retries = 3;
                     while (retries > 0 && !boxSuccess) {
                         try {
                             const response = await fetch(targetUrl, {
@@ -670,21 +668,22 @@
 
                             if (response.ok) {
                                 const data = await response.json();
-                                if (data.elements) {
+                                if (data && data.elements) {
                                     allElements = allElements.concat(data.elements);
                                     boxSuccess = true;
                                     break;
                                 }
-                            } else if (response.status === 429) {
-                                console.warn(`Rate limited (429) on ${targetUrl}, waiting 5s...`);
-                                await new Promise(resolve => setTimeout(resolve, 5000));
-                                retries--;
                             } else {
-                                break; // Gagal selain 429, lanjut ke mirror lain
+                                // Tangkap status error 429, 504, 502, 503
+                                console.warn(`Server status ${response.status} on ${targetUrl}, retrying...`);
+                                await new Promise(resolve => setTimeout(resolve, 3000));
+                                retries--;
                             }
                         } catch (error) {
-                            console.warn(`Mirror failed (${targetUrl}):`, error);
-                            break;
+                            // Tangkap network error/timeout (ERR_CONNECTION_TIMED_OUT)
+                            console.warn(`Network timeout/error on ${targetUrl}, retrying...`, error);
+                            await new Promise(resolve => setTimeout(resolve, 3000));
+                            retries--;
                         }
                     }
                     if (boxSuccess) break;
@@ -692,9 +691,9 @@
 
                 if (boxSuccess) successCount++;
 
-                // Jeda aman 3.5 detik antar kuadran agar tidak terkena limit 429
+                // Jeda aman antar kuadran untuk menjaga stabilitas koneksi
                 if (i < subBoxes.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 3500));
+                    await new Promise(resolve => setTimeout(resolve, 3000));
                 }
             }
 
@@ -804,8 +803,8 @@
             } else {
                 Swal.fire({
                     icon: 'error',
-                    title: 'Gagal Memuat Data OSM',
-                    html: 'Server Overpass sedang membatasi permintaan (Rate Limited).<br><br>Silakan tunggu sekitar 30 detik sebelum mencoba klik tombol Refresh kembali.',
+                    title: 'Koneksi ke Server OSM Timeout',
+                    html: 'Server Overpass sedang mengalami gangguan/sibuk (504 Gateway Timeout).<br><br>Silakan tunggu beberapa saat, lalu klik tombol <b>Refresh Buildings & Roads</b> kembali.',
                     confirmButtonText: 'OK',
                     confirmButtonColor: '#10b981'
                 });

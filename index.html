@@ -363,7 +363,6 @@
             removalMode: true,
         });
 
-        // PERUBAHAN: Menetapkan ketebalan garis default untuk gambar/garis baru (Menjadi 1.5 piksel)
         map.pm.setPathOptions({
             color: '#3b82f6',
             weight: 1.5,
@@ -374,7 +373,6 @@
             if (e.shape === 'Marker') {
                 e.layer.setIcon(blueDotIcon);
             } else if (e.layer.setStyle) {
-                // PERUBAHAN: Memastikan layer yang baru dibuat langsung memiliki ketebalan garis yang tipis
                 e.layer.setStyle({ weight: 1.5 });
             }
             e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Drawn Object' } };
@@ -382,8 +380,7 @@
             bindNamePopup(e.layer);
         });
 
-        // --- Proteksi Interaksi Layer (Sesuai Permintaan) ---
-        // 1. Mencegah vertex editing pada OSM Buildings (hanya boleh drag)
+        // --- Proteksi Interaksi Layer ---
         map.on('pm:edit', (e) => {
             if (e.layer && e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.building) {
                 e.layer.pm.disableEdit();
@@ -394,7 +391,6 @@
             }
         });
 
-        // 2. Mencegah penghapusan (removal) pada OSM Buildings
         map.on('pm:remove', (e) => {
             if (e.layer && e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.building) {
                 osmGroup.addLayer(e.layer);
@@ -488,15 +484,14 @@
 
             const layer = L.geoJSON(geojson, {
                 style: {
-                    color: '#ef4444',
-                    weight: 3,
+                    color: '#10b981', // MODIFIKASI: Diubah menjadi hijau (warna emerald)
+                    weight: 1.5,      // MODIFIKASI: Ketebalan garis diperkecil menjadi 1.5 piksel
                     fillOpacity: 0.1
                 },
                 pointToLayer: function(feature, latlng) {
                     return L.marker(latlng, { icon: blueDotIcon });
                 },
                 onEachFeature: function(feature, layer) {
-                    // 1. KML/KMZ upload dibuat tidak bisa diedit total (pmIgnore = true)
                     layer.options.pmIgnore = true;
                     bindNamePopup(layer);
                 }
@@ -668,7 +663,6 @@
                                 return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
                             }
                             if (feature.properties.highway) {
-                                // PERUBAHAN: Ketebalan garis (weight) jalan OSM diperkecil dari 3 menjadi 1.5
                                 return { color: '#3b82f6', weight: 1.5, fillColor: '#3b82f6', fillOpacity: 0.3 };
                             }
                             return { color: '#ffffff', weight: 1 };
@@ -679,11 +673,9 @@
                                 else if (feature.properties.highway) feature.properties.name = "Road";
                             }
 
-                            // 2. OSM jalan tidak bisa diedit total (pmIgnore = true)
                             if (feature.properties.highway) {
                                 layer.options.pmIgnore = true;
                             }
-                            // 3. OSM bangunan tidak bisa diedit/dihapus, tetapi biarkan pmIgnore = false agar bisa di-drag
 
                             bindNamePopup(layer);
                         }

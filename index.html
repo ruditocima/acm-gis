@@ -415,7 +415,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (With Robust Fallback Check) ---
+        // --- 6. Fetch OSM Data (With Left/Right Road Offset Generation) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -477,7 +477,6 @@
                 if (response.ok) {
                     const data = await response.json();
                     if (data && data.elements) {
-                        // Cek apakah pustaka luar tersedia, jika tidak gunakan fallback mandiri
                         if (typeof osmtogeojson !== 'undefined') {
                             try {
                                 fetchedGeoJSON = osmtogeojson(data);
@@ -505,21 +504,66 @@
                     f.properties && (f.properties.building || f.properties.highway)
                 );
 
-                if (filteredFeatures.length > 0) {
-                    L.geoJSON({ type: "FeatureCollection", features: filteredFeatures }, {
+                // Process features: Generate Left & Right lines for roads using Turf.js lineOffset
+                const expandedFeatures = [];
+                filteredFeatures.forEach(f => {
+                    if (f.properties.building) {
+                        expandedFeatures.push(f);
+                    } else if (f.properties.highway) {
+                        if (typeof turf !== 'undefined') {
+                            if (f.geometry.type === 'LineString') {
+                                try {
+                                    const offsetDist = 3; // Jarak offset 3 meter ke sisi kiri & kanan jalan
+                                    const leftLine = turf.lineOffset(f, offsetDist, { units: 'meters' });
+                                    const rightLine = turf.lineOffset(f, -offsetDist, { units: 'meters' });
+                                    
+                                    leftLine.properties = { ...f.properties, name: (f.properties.name || 'Jalan OSM') + ' (Sisi Kiri)' };
+                                    rightLine.properties = { ...f.properties, name: (f.properties.name || 'Jalan OSM') + ' (Sisi Kanan)' };
+                                    
+                                    expandedFeatures.push(leftLine);
+                                    expandedFeatures.push(rightLine);
+                                } catch (e) {
+                                    expandedFeatures.push(f);
+                                }
+                            } else if (f.geometry.type === 'MultiLineString') {
+                                f.geometry.coordinates.forEach(coords => {
+                                    const singleLine = { type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: f.properties };
+                                    try {
+                                        const offsetDist = 3;
+                                        const leftLine = turf.lineOffset(singleLine, offsetDist, { units: 'meters' });
+                                        const rightLine = turf.lineOffset(singleLine, -offsetDist, { units: 'meters' });
+                                        leftLine.properties = { ...f.properties, name: (f.properties.name || 'Jalan OSM') + ' (Sisi Kiri)' };
+                                        rightLine.properties = { ...f.properties, name: (f.properties.name || 'Jalan OSM') + ' (Sisi Kanan)' };
+                                        expandedFeatures.push(leftLine);
+                                        expandedFeatures.push(rightLine);
+                                    } catch (err) {
+                                        expandedFeatures.push(singleLine);
+                                    }
+                                });
+                            } else {
+                                expandedFeatures.push(f);
+                            }
+                        } else {
+                            expandedFeatures.push(f);
+                        }
+                    }
+                });
+
+                if (expandedFeatures.length > 0) {
+                    L.geoJSON({ type: "FeatureCollection", features: expandedFeatures }, {
                         style: function(feature) {
                             if (feature.properties.building) {
                                 return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
                             }
                             if (feature.properties.highway) {
-                                return { color: '#9ca3af', weight: 3, opacity: 0.8 };
+                                return { color: '#38bdf8', weight: 2, opacity: 0.9 }; // Cyan distinct styling for road edges
                             }
                             return { color: '#ffffff', weight: 1 };
                         },
                         onEachFeature: function(feature, layer) {
                             if (!feature.properties.name) {
                                 if (feature.properties.building) feature.properties.name = "Building";
-                                else if (feature.properties.highway) feature.properties.name = "Road";
+                                else if (feature.properties.highway) feature.properties.name = "Road Edge";
                             }
                             bindNamePopup(layer);
                         }
@@ -527,7 +571,7 @@
 
                     Swal.fire({
                         toast: true, position: 'top-end', icon: 'success',
-                        title: `Data OSM (${filteredFeatures.length} objek) dimuat!`, showConfirmButton: false, timer: 2000
+                        title: `Data OSM (${expandedFeatures.length} objek tepi jalan & bangunan) dimuat!`, showConfirmButton: false, timer: 2000
                     });
                 } else {
                     Swal.fire({
@@ -590,7 +634,7 @@
                         let geo = layer.toGeoJSON();
                         if(group === kmlGroup) geo.properties.layer = "KML_Boundary";
                         else if(group === osmGroup && geo.properties.building) geo.properties.layer = "OSM_Buildings";
-                        else if(group === osmGroup && geo.properties.highway) geo.properties.layer = "OSM_Roads";
+                        else if(group === osmGroup && (geo.properties.highway || geo.properties.name?.includes('Sisi'))) geo.properties.layer = "OSM_Road_Edges";
                         else geo.properties.layer = "User_Drawn";
                         
                         allFeatures.push(geo);

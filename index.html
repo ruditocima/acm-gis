@@ -459,9 +459,12 @@
                     fillOpacity: 0.1
                 },
                 pointToLayer: function(feature, latlng) {
-                    return L.marker(latlng, { icon: blueDotIcon });
+                    const marker = L.marker(latlng, { icon: blueDotIcon });
+                    marker.options.pmIgnore = true; // Mencegah marker KML diedit/digeser
+                    return marker;
                 },
                 onEachFeature: function(feature, layer) {
+                    layer.options.pmIgnore = true; // Mencegah geometri KML diedit/dihapus via Geoman
                     bindNamePopup(layer);
                 }
             });
@@ -632,11 +635,13 @@
                                 return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
                             }
                             if (feature.properties.highway) {
-                                return { color: '#6b7280', weight: 1, fillColor: '#9ca3af', fillOpacity: 0.6 };
+                                // PERUBAHAN: Warna jalan diubah menjadi biru transparan
+                                return { color: '#3b82f6', weight: 1, fillColor: '#3b82f6', fillOpacity: 0.4 };
                             }
                             return { color: '#ffffff', weight: 1 };
                         },
                         onEachFeature: function(feature, layer) {
+                            layer.options.pmIgnore = true; // Mencegah bangunan & jalan OSM diedit/dihapus via Geoman
                             if (!feature.properties.name) {
                                 if (feature.properties.building) feature.properties.name = "Building";
                                 else if (feature.properties.highway) feature.properties.name = "Road";

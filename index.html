@@ -611,7 +611,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data with 4x4 Grid Chunking (Ultimate Anti-Timeout 504 & 429) ---
+        // --- 6. Fetch OSM Data with CORS-Safe Mirrors & Safe 2x2 Grid Chunking ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -622,38 +622,33 @@
 
             const btn = document.getElementById('btn-fetch-osm');
             const originalHTML = btn.innerHTML;
-            btn.innerHTML = 'Fetching OSM (4x4 Grid)... <div class="loader"></div>';
+            btn.innerHTML = 'Fetching OSM Safely... <div class="loader"></div>';
             btn.disabled = true;
 
+            // Hanya menggunakan mirror yang terbukti mendukung CORS dari frontend browser
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
                 'https://lz4.overpass-api.de/api/interpreter',
-                'https://z.overpass-api.de/api/interpreter',
-                'https://overpass.kumi.systems/api/interpreter'
+                'https://z.overpass-api.de/api/interpreter'
             ];
 
-            // Pecah area boundary menjadi 4x4 grid (16 kotak kecil) agar server tidak pernah 504 Timeout
-            const latStep = (n - s) / 4;
-            const lonStep = (e_coord - w) / 4;
-            const subBoxes = [];
+            // Pecah area boundary menjadi 2x2 grid (4 kotak optimal) dengan jeda aman anti 429
+            const midLat = (s + n) / 2;
+            const midLon = (w + e_coord) / 2;
 
-            for (let r = 0; r < 4; r++) {
-                for (let c = 0; c < 4; c++) {
-                    subBoxes.push({
-                        s: s + (r * latStep),
-                        w: w + (c * lonStep),
-                        n: s + ((r + 1) * latStep),
-                        e: w + ((c + 1) * lonStep)
-                    });
-                }
-            }
+            const subBoxes = [
+                { s: s, w: w, n: midLat, e: midLon },
+                { s: s, w: midLon, n: midLat, e: e_coord },
+                { s: midLat, w: w, n: n, e: midLon },
+                { s: midLat, w: midLon, n: n, e: e_coord }
+            ];
 
             let allElements = [];
             let successCount = 0;
 
             for (let i = 0; i < subBoxes.length; i++) {
                 let box = subBoxes[i];
-                const query = `[out:json][timeout:15];
+                const query = `[out:json][timeout:25];
                 (
                   way["building"](${box.s},${box.w},${box.n},${box.e});
                   way["highway"](${box.s},${box.w},${box.n},${box.e});
@@ -664,33 +659,42 @@
 
                 let boxSuccess = false;
                 for (let targetUrl of endpoints) {
-                    try {
-                        const response = await fetch(targetUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                            body: "data=" + encodeURIComponent(query)
-                        });
+                    let retries = 2;
+                    while (retries > 0 && !boxSuccess) {
+                        try {
+                            const response = await fetch(targetUrl, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                body: "data=" + encodeURIComponent(query)
+                            });
 
-                        if (response.ok) {
-                            const data = await response.json();
-                            if (data.elements) {
-                                allElements = allElements.concat(data.elements);
-                                boxSuccess = true;
-                                break;
+                            if (response.ok) {
+                                const data = await response.json();
+                                if (data.elements) {
+                                    allElements = allElements.concat(data.elements);
+                                    boxSuccess = true;
+                                    break;
+                                }
+                            } else if (response.status === 429) {
+                                console.warn(`Rate limited (429) on ${targetUrl}, waiting 5s...`);
+                                await new Promise(resolve => setTimeout(resolve, 5000));
+                                retries--;
+                            } else {
+                                break; // Gagal selain 429, lanjut ke mirror lain
                             }
-                        } else if (response.status === 429) {
-                            console.warn(`Rate limited (429) on ${targetUrl}, waiting...`);
-                            await new Promise(resolve => setTimeout(resolve, 3000));
+                        } catch (error) {
+                            console.warn(`Mirror failed (${targetUrl}):`, error);
+                            break;
                         }
-                    } catch (error) {
-                        console.warn(`Mirror failed (${targetUrl}) for micro-box ${i}:`, error);
                     }
+                    if (boxSuccess) break;
                 }
+
                 if (boxSuccess) successCount++;
 
-                // Jeda aman 800ms antar kuadran mikro untuk mencegah error 429
+                // Jeda aman 3.5 detik antar kuadran agar tidak terkena limit 429
                 if (i < subBoxes.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 800));
+                    await new Promise(resolve => setTimeout(resolve, 3500));
                 }
             }
 
@@ -801,7 +805,7 @@
                 Swal.fire({
                     icon: 'error',
                     title: 'Gagal Memuat Data OSM',
-                    html: 'Server Overpass sedang sibuk atau mengalami timeout.<br><br>Silakan coba gunakan file KML dengan area yang lebih spesifik/kecil.',
+                    html: 'Server Overpass sedang membatasi permintaan (Rate Limited).<br><br>Silakan tunggu sekitar 30 detik sebelum mencoba klik tombol Refresh kembali.',
                     confirmButtonText: 'OK',
                     confirmButtonColor: '#10b981'
                 });

@@ -494,7 +494,7 @@
             });
         }
 
-        // --- 5. File Upload (KML / KMZ) ---[cite: 1]
+        // --- 5. File Upload (KML / KMZ) ---
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -588,7 +588,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data ---[cite: 1]
+        // --- 6. Fetch OSM Data ---
         async function fetchOSMWithAutoSplit(s, w, n, e, endpoint, depth = 0) {
             const query = `[out:json][timeout:40];
             (
@@ -808,7 +808,7 @@
             });
         }
 
-        // --- 7. Save Project File ---[cite: 1]
+        // --- 7. Save Project File ---
         document.getElementById('btn-save').addEventListener('click', async () => {
             const allFeatures = [];
             extractFeaturesTo(kmlGroup, 'kml', allFeatures);
@@ -852,7 +852,7 @@
             }
         });
 
-        // --- 8. Load Project File (Updated with Auto-Center/Zoom) ---[cite: 1]
+        // --- 8. Load Project File (Updated with Auto-Center & Color Restoration) ---
         document.getElementById('loadProjectInput').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -866,18 +866,29 @@
                     osmGroup.clearLayers();
                     drawGroup.clearLayers();
 
-                    // FITUR BARU: Hitung Bounds secara instan dan pusatkan di layar
+                    // 1. Auto-Center & Zoom
                     const tempGeoLayer = L.geoJSON(geojson);
                     if (tempGeoLayer.getBounds().isValid()) {
                         map.fitBounds(tempGeoLayer.getBounds(), { padding: [50, 50] });
                     }
 
+                    // 2. Load with Color Restoration Logic
                     L.geoJSON(geojson, {
                         style: function(feature) {
                             const props = feature.properties || {};
+                            const geomType = feature.geometry ? feature.geometry.type : '';
+
+                            // Logika untuk source KML
                             if (props.sourceGroup === 'kml') {
-                                return { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.15 };
-                            } else if (props.sourceGroup === 'osm') {
+                                if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
+                                    return { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.15 };
+                                } else {
+                                    // Memastikan Garis/LineString kembali merah
+                                    return { color: '#ef4444', weight: 3 };
+                                }
+                            } 
+                            // Logika untuk source OSM
+                            else if (props.sourceGroup === 'osm') {
                                 if (props.building) {
                                     return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
                                 }
@@ -886,6 +897,8 @@
                                 }
                                 return { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 };
                             }
+                            
+                            // Default / User Drawn
                             return { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 };
                         },
                         pointToLayer: function(feature, latlng) {
@@ -919,7 +932,7 @@
             e.target.value = '';
         });
 
-        // --- 9. Export to DXF ---[cite: 1]
+        // --- 9. Export to DXF ---
         function lonLatToMeters(lon, lat) {
             const x = lon * 20037508.34 / 180;
             let y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);

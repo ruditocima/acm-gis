@@ -5,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GeoConvert Pro | KML to DXF</title>
 
-    <!-- Tailwind CSS (for elegant UI) -->
-    <script src="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/lib/index.min.js"></script>
+    <!-- Tailwind CSS (Clean & Production Safe) -->
     <script src="https://cdn.tailwindcss.com"></script>
 
     <!-- Leaflet CSS & JS (for Maps) -->
@@ -23,13 +22,10 @@
     <!-- toGeoJSON (for KML to GeoJSON) -->
     <script src="https://unpkg.com/@tmcw/togeojson@4.2.0/dist/togeojson.umd.js"></script>
 
-    <!-- OSM to GeoJSON -->
-    <script src="https://cdn.jsdelivr.net/npm/osmtogeojson@3.2.1/osmtogeojson.js"></script>
-
     <!-- Turf.js (for spatial processing & bounding boxes) -->
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
-    <!-- SweetAlert2 (for expensive-looking alerts) -->
+    <!-- SweetAlert2 (for alerts) -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <!-- FontAwesome -->
@@ -243,7 +239,7 @@
             iconAnchor: [5, 5]
         });
 
-        // --- 0. Built-in Fall-back Converter ---
+        // --- 0. Built-in Reliable OSM to GeoJSON Converter ---
         function customOSMToGeoJSON(data) {
             const nodes = {};
             const features = [];
@@ -319,7 +315,7 @@
         let currentBbox = null;
         let clipboardGeoJSON = null;
         let lastSelectedLayer = null;
-        let uploadedKmlFeatures = []; // Global storage for KML boundary features for spatial filtering
+        let uploadedKmlFeatures = []; 
 
         // --- 2. Leaflet Geoman ---
         map.pm.addControls({
@@ -359,7 +355,6 @@
             lastSelectedLayer = e.layer;
         });
 
-        // --- Proteksi Interaksi Layer ---
         map.on('pm:edit', (e) => {
             if (e.layer && e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.building) {
                 e.layer.pm.disableEdit();
@@ -591,7 +586,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (Direct Fetch with Partial Success & Mirror Fallback) ---
+        // --- 6. Fetch OSM Data (Single Unified Request with Server Fallback to Prevent 429 & 504) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -605,15 +600,6 @@
             btn.innerHTML = 'Fetching OSM... <div class="loader"></div>';
             btn.disabled = true;
 
-            const midLat = (s + n) / 2;
-            const midLon = (w + e_coord) / 2;
-            const subBoxes = [
-                [s, w, midLat, midLon],
-                [s, midLon, midLat, e_coord],
-                [midLat, w, n, midLon],
-                [midLat, midLon, n, e_coord]
-            ];
-
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
                 'https://lz4.overpass-api.de/api/interpreter',
@@ -624,51 +610,33 @@
             let allElements = [];
             let success = false;
 
+            const query = `[out:json][timeout:30];
+            (
+              way["building"](${s},${w},${n},${e_coord});
+              way["highway"](${s},${w},${n},${e_coord});
+            );
+            out body;
+            >;
+            out skel qt;`;
+
             for (let targetUrl of endpoints) {
-                let tempElements = [];
-                let collectedCount = 0;
+                try {
+                    const response = await fetch(targetUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: "data=" + encodeURIComponent(query)
+                    });
 
-                for (let i = 0; i < subBoxes.length; i++) {
-                    const box = subBoxes[i];
-                    
-                    if (i > 0) {
-                        await new Promise(resolve => setTimeout(resolve, 800));
-                    }
-
-                    try {
-                        const query = `[out:json][timeout:20];
-                        (
-                          way["building"](${box[0]},${box[1]},${box[2]},${box[3]});
-                          way["highway"](${box[0]},${box[1]},${box[2]},${box[3]});
-                        );
-                        out body;
-                        >;
-                        out skel qt;`;
-
-                        // Menggunakan direct fetch karena Overpass mendukung CORS native
-                        const response = await fetch(targetUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                            body: "data=" + encodeURIComponent(query)
-                        });
-
-                        if (response.ok) {
-                            const data = await response.json();
-                            if (data.elements) {
-                                tempElements.push(...data.elements);
-                                collectedCount++;
-                            }
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.elements) {
+                            allElements = data.elements;
+                            success = true;
+                            break;
                         }
-                    } catch (error) {
-                        console.warn(`Sub-box ${i} failed on ${targetUrl}:`, error);
                     }
-                }
-
-                // Jika server ini berhasil merespon setidaknya 1 sub-grid, anggap sukses parsial
-                if (collectedCount > 0) {
-                    allElements = tempElements;
-                    success = true;
-                    break;
+                } catch (error) {
+                    console.warn(`Mirror failed (${targetUrl}):`, error);
                 }
             }
 
@@ -779,10 +747,10 @@
                 Swal.fire({
                     icon: 'error',
                     title: 'Gagal Memuat Data OSM',
-                    html: 'Detail Error: HTTP 504 / Gateway Timeout.<br><br>Seluruh server publik Overpass sedang padat. Silakan coba beberapa saat lagi atau lanjutkan ekspor menggunakan boundary KML & objek gambar manual.',
+                    html: 'Server Overpass sedang sibuk atau area terlalu padat (Error 429/504).<br><br>Silakan coba beberapa saat lagi.',
                     showCancelButton: true,
                     confirmButtonText: 'Coba Lagi',
-                    cancelButtonText: 'Abaikan OSM',
+                    cancelButtonText: 'Abaikan',
                     confirmButtonColor: '#10b981',
                     cancelButtonColor: '#6b7280'
                 }).then((result) => {

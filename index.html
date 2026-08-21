@@ -415,7 +415,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (With Left/Right Road Offset Generation) ---
+        // --- 6. Fetch OSM Data (Multi-Mirror Failover to Handle Status 521) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -452,49 +452,58 @@
             >;
             out skel qt;`;
 
-            const targetUrl = 'https://overpass-api.de/api/interpreter';
-            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
+            // Daftar mirror Overpass API untuk bypass error 521 / gangguan server
+            const endpoints = [
+                'https://overpass-api.de/api/interpreter',
+                'https://overpass.kumi.systems/api/interpreter',
+                'https://overpass.openstreetmap.fr/api/interpreter'
+            ];
 
             let success = false;
             let fetchedGeoJSON = null;
             let errorMessage = "";
 
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 20000);
+            for (let targetUrl of endpoints) {
+                try {
+                    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
+                    
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-                const response = await fetch(proxyUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    body: "data=" + encodeURIComponent(overpassQuery),
-                    signal: controller.signal
-                });
+                    const response = await fetch(proxyUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: "data=" + encodeURIComponent(overpassQuery),
+                        signal: controller.signal
+                    });
 
-                clearTimeout(timeoutId);
+                    clearTimeout(timeoutId);
 
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data && data.elements) {
-                        if (typeof osmtogeojson !== 'undefined') {
-                            try {
-                                fetchedGeoJSON = osmtogeojson(data);
-                            } catch (err) {
-                                console.warn("osmtogeojson execution error, switching to fallback:", err);
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data && data.elements) {
+                            if (typeof osmtogeojson !== 'undefined') {
+                                try {
+                                    fetchedGeoJSON = osmtogeojson(data);
+                                } catch (err) {
+                                    console.warn("osmtogeojson execution error, switching to fallback:", err);
+                                    fetchedGeoJSON = customOSMToGeoJSON(data);
+                                }
+                            } else {
                                 fetchedGeoJSON = customOSMToGeoJSON(data);
                             }
-                        } else {
-                            fetchedGeoJSON = customOSMToGeoJSON(data);
+                            success = true;
+                            break; // Berhenti looping jika salah satu mirror berhasil
                         }
-                        success = true;
+                    } else {
+                        errorMessage = `HTTP Status: ${response.status} (${targetUrl})`;
                     }
-                } else {
-                    errorMessage = `HTTP Status: ${response.status}`;
+                } catch (error) {
+                    console.warn(`Mirror failed (${targetUrl}):`, error);
+                    errorMessage = error.message;
                 }
-            } catch (error) {
-                console.warn("Proxy fetch error:", error);
-                errorMessage = error.message;
             }
 
             if (success && fetchedGeoJSON) {
@@ -504,66 +513,21 @@
                     f.properties && (f.properties.building || f.properties.highway)
                 );
 
-                // Process features: Generate Left & Right lines for roads using Turf.js lineOffset
-                const expandedFeatures = [];
-                filteredFeatures.forEach(f => {
-                    if (f.properties.building) {
-                        expandedFeatures.push(f);
-                    } else if (f.properties.highway) {
-                        if (typeof turf !== 'undefined') {
-                            if (f.geometry.type === 'LineString') {
-                                try {
-                                    const offsetDist = 3; // Jarak offset 3 meter ke sisi kiri & kanan jalan
-                                    const leftLine = turf.lineOffset(f, offsetDist, { units: 'meters' });
-                                    const rightLine = turf.lineOffset(f, -offsetDist, { units: 'meters' });
-                                    
-                                    leftLine.properties = { ...f.properties, name: (f.properties.name || 'Jalan OSM') + ' (Sisi Kiri)' };
-                                    rightLine.properties = { ...f.properties, name: (f.properties.name || 'Jalan OSM') + ' (Sisi Kanan)' };
-                                    
-                                    expandedFeatures.push(leftLine);
-                                    expandedFeatures.push(rightLine);
-                                } catch (e) {
-                                    expandedFeatures.push(f);
-                                }
-                            } else if (f.geometry.type === 'MultiLineString') {
-                                f.geometry.coordinates.forEach(coords => {
-                                    const singleLine = { type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: f.properties };
-                                    try {
-                                        const offsetDist = 3;
-                                        const leftLine = turf.lineOffset(singleLine, offsetDist, { units: 'meters' });
-                                        const rightLine = turf.lineOffset(singleLine, -offsetDist, { units: 'meters' });
-                                        leftLine.properties = { ...f.properties, name: (f.properties.name || 'Jalan OSM') + ' (Sisi Kiri)' };
-                                        rightLine.properties = { ...f.properties, name: (f.properties.name || 'Jalan OSM') + ' (Sisi Kanan)' };
-                                        expandedFeatures.push(leftLine);
-                                        expandedFeatures.push(rightLine);
-                                    } catch (err) {
-                                        expandedFeatures.push(singleLine);
-                                    }
-                                });
-                            } else {
-                                expandedFeatures.push(f);
-                            }
-                        } else {
-                            expandedFeatures.push(f);
-                        }
-                    }
-                });
-
-                if (expandedFeatures.length > 0) {
-                    L.geoJSON({ type: "FeatureCollection", features: expandedFeatures }, {
+                if (filteredFeatures.length > 0) {
+                    L.geoJSON({ type: "FeatureCollection", features: filteredFeatures }, {
                         style: function(feature) {
                             if (feature.properties.building) {
                                 return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
                             }
                             if (feature.properties.highway) {
-                                return { color: '#38bdf8', weight: 2, opacity: 0.9 }; // Cyan distinct styling for road edges
+                                return { color: '#9ca3af', weight: 3, opacity: 0.8 };
                             }
                             return { color: '#ffffff', weight: 1 };
                         },
                         onEachFeature: function(feature, layer) {
                             if (!feature.properties.name) {
                                 if (feature.properties.building) feature.properties.name = "Building";
-                                else if (feature.properties.highway) feature.properties.name = "Road Edge";
+                                else if (feature.properties.highway) feature.properties.name = "Road";
                             }
                             bindNamePopup(layer);
                         }
@@ -571,7 +535,7 @@
 
                     Swal.fire({
                         toast: true, position: 'top-end', icon: 'success',
-                        title: `Data OSM (${expandedFeatures.length} objek tepi jalan & bangunan) dimuat!`, showConfirmButton: false, timer: 2000
+                        title: `Data OSM (${filteredFeatures.length} objek) dimuat!`, showConfirmButton: false, timer: 2000
                     });
                 } else {
                     Swal.fire({
@@ -634,7 +598,7 @@
                         let geo = layer.toGeoJSON();
                         if(group === kmlGroup) geo.properties.layer = "KML_Boundary";
                         else if(group === osmGroup && geo.properties.building) geo.properties.layer = "OSM_Buildings";
-                        else if(group === osmGroup && (geo.properties.highway || geo.properties.name?.includes('Sisi'))) geo.properties.layer = "OSM_Road_Edges";
+                        else if(group === osmGroup && geo.properties.highway) geo.properties.layer = "OSM_Roads";
                         else geo.properties.layer = "User_Drawn";
                         
                         allFeatures.push(geo);
@@ -683,6 +647,7 @@
                     chunk += ` 90\r\n${coords.length}\r\n`;
                     chunk += ` 70\r\n${isClosed ? 1 : 0}\r\n`;
                     
+                    coords.exports = coords.forEach?.bind(coords);
                     coords.forEach(c => {
                         let [x, y] = lonLatToMeters(c[0], c[1]);
                         chunk += ` 10\r\n${x.toFixed(4)}\r\n`;

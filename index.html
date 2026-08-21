@@ -214,6 +214,56 @@
             <button id="btn-save" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center">
                 <i class="fa-solid fa-floppy-disk mr-2"></i> Save State (Supabase)
             </button>
+            <button id="btn-load" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center">
+                <i class="fa-solid fa-folder-open mr-2"></i> Load Saved State
+            </button>
+            // --- 7b. Load State ---
+document.getElementById('btn-load').addEventListener('click', () => {
+    const savedData = localStorage.getItem('geoconvert_draft_state');
+    
+    if (!savedData) {
+        Swal.fire({
+            icon: 'info',
+            title: 'No Saved Data',
+            text: 'Tidak ada data tersimpan di browser Anda.',
+            confirmButtonColor: '#10b981'
+        });
+        return;
+    }
+
+    try {
+        const featureCollection = JSON.parse(savedData);
+
+        // Bersihkan layer yang ada agar tidak menumpuk
+        kmlGroup.clearLayers();
+        osmGroup.clearLayers();
+        drawGroup.clearLayers();
+
+        // Masukkan data yang tersimpan ke dalam drawGroup
+        L.geoJSON(featureCollection, {
+            style: {
+                color: '#3b82f6',
+                weight: 1.5,
+                fillOpacity: 0.3
+            },
+            pointToLayer: function(feature, latlng) {
+                return L.marker(latlng, { icon: blueDotIcon });
+            },
+            onEachFeature: function(feature, layer) {
+                bindNamePopup(layer);
+            }
+        }).addTo(drawGroup);
+
+        Swal.fire({
+            icon: 'success',
+            title: 'State Loaded!',
+            text: 'Data sesi terakhir berhasil dimuat ke peta.',
+            confirmButtonColor: '#10b981'
+        });
+    } catch (e) {
+        Swal.fire('Error', 'Gagal memuat data: ' + e.message, 'error');
+    }
+});
             <!-- Export DXF -->
             <button id="btn-export" class="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg font-bold text-sm transition-all shadow-lg shadow-emerald-900/40 flex items-center justify-center">
                 <i class="fa-solid fa-file-export mr-2"></i> Export to DXF

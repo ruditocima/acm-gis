@@ -172,7 +172,7 @@
                 </div>
             </div>
 
-            <!-- Fetch OSM Data & Earth Alignment Calibration -->
+            <!-- Fetch OSM Data -->
             <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Environment Data</h2>
                 
@@ -181,21 +181,6 @@
                     <label for="roadWidthInput" class="text-xs font-medium text-gray-300 block mb-1">Lebar Jalan OSM (Meter)</label>
                     <input type="number" id="roadWidthInput" value="6" min="1" max="50" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
                 </div>
-
-                <!-- Kalibrasi Offset Posisi OSM untuk Tampilan Earth -->
-                <div class="mb-3 grid grid-cols-2 gap-2">
-                    <div>
-                        <label for="offsetLatInput" class="text-xs font-medium text-gray-300 block mb-1">Offset Lat (m)</label>
-                        <input type="number" id="offsetLatInput" value="0" step="0.5" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500" title="Geser Utara (+)/Selatan (-)">
-                    </div>
-                    <div>
-                        <label for="offsetLonInput" class="text-xs font-medium text-gray-300 block mb-1">Offset Lon (m)</label>
-                        <input type="number" id="offsetLonInput" value="0" step="0.5" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500" title="Geser Timur (+)/Barat (-)">
-                    </div>
-                </div>
-                <p class="text-[10px] text-gray-400 mb-3 leading-relaxed">
-                    Atur offset meter jika posisi OSM belum pas dengan citra Earth.
-                </p>
 
                 <button id="btn-fetch-osm" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium text-sm transition-colors shadow-lg shadow-blue-900/20 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed" disabled>
                     <i class="fa-solid fa-city mr-2"></i> Refresh Buildings & Roads
@@ -208,7 +193,17 @@
             <!-- Drawing Controls Note -->
             <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
                 <h2 class="text-sm font-semibold mb-1 text-gray-300 uppercase tracking-wider">Editing Tools</h2>
-                <p class="text-xs text-gray-400">Use the toolbar on the map to draw, edit, or measure polygons and lines in real-world dimensions.</p>
+                <p class="text-xs text-gray-400 mb-3">Use the toolbar on the map to draw, edit, or measure polygons and lines in real-world dimensions.</p>
+                
+                <!-- Copy & Paste Feature Buttons -->
+                <div class="grid grid-cols-2 gap-2 mt-2">
+                    <button id="btn-copy" class="py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
+                        <i class="fa-solid fa-copy mr-1"></i> Copy Selected
+                    </button>
+                    <button id="btn-paste" class="py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
+                        <i class="fa-solid fa-paste mr-1"></i> Paste
+                    </button>
+                </div>
             </div>
             
         </div>
@@ -286,39 +281,6 @@
             return { type: "FeatureCollection", features: features };
         }
 
-        // --- Helper: Apply Meter Offset to Feature ---
-        function applyOffset(feature, dLatMeters, dLonMeters) {
-            if (dLatMeters === 0 && dLonMeters === 0) return feature;
-            const cloned = JSON.parse(JSON.stringify(feature));
-            
-            function shiftCoord(coord) {
-                const lon = coord[0];
-                const lat = coord[1];
-                const metersPerLat = 111320;
-                const metersPerLon = 111320 * Math.cos(lat * Math.PI / 180);
-                
-                const newLat = lat + (dLatMeters / metersPerLat);
-                const newLon = lon + (dLonMeters / metersPerLon);
-                return [newLon, newLat];
-            }
-
-            function processGeometry(geom) {
-                if (!geom || !geom.coordinates) return;
-                if (geom.type === 'Point') {
-                    geom.coordinates = shiftCoord(geom.coordinates);
-                } else if (geom.type === 'LineString' || geom.type === 'MultiPoint') {
-                    geom.coordinates = geom.coordinates.map(c => shiftCoord(c));
-                } else if (geom.type === 'Polygon' || geom.type === 'MultiLineString') {
-                    geom.coordinates = geom.coordinates.map(ring => ring.map(c => shiftCoord(c)));
-                } else if (geom.type === 'MultiPolygon') {
-                    geom.coordinates = geom.coordinates.map(poly => poly.map(ring => ring.map(c => shiftCoord(c))));
-                }
-            }
-
-            processGeometry(cloned.geometry);
-            return cloned;
-        }
-
         // --- 1. Map Initialization ---
         const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 22,
@@ -346,6 +308,8 @@
         const drawGroup = L.featureGroup().addTo(map);
 
         let currentBbox = null;
+        let clipboardGeoJSON = null;
+        let lastSelectedLayer = null;
 
         // --- 2. Leaflet Geoman ---
         map.pm.addControls({
@@ -378,6 +342,12 @@
             e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Drawn Object' } };
             drawGroup.addLayer(e.layer);
             bindNamePopup(e.layer);
+            lastSelectedLayer = e.layer;
+        });
+
+        // Track selected layer when clicked
+        drawGroup.on('click', (e) => {
+            lastSelectedLayer = e.layer;
         });
 
         // --- Proteksi Interaksi Layer ---
@@ -419,9 +389,92 @@
             btnMap.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
         });
 
+        // --- Copy & Paste Handlers ---
+        document.getElementById('btn-copy').addEventListener('click', () => {
+            if (!lastSelectedLayer) {
+                let layers = drawGroup.getLayers();
+                if (layers.length > 0) {
+                    lastSelectedLayer = layers[layers.length - 1];
+                }
+            }
+            
+            if (!lastSelectedLayer || !lastSelectedLayer.toGeoJSON) {
+                Swal.fire({
+                    toast: true, position: 'top-end', icon: 'warning',
+                    title: 'No drawn object selected to copy!', showConfirmButton: false, timer: 2000
+                });
+                return;
+            }
+
+            clipboardGeoJSON = lastSelectedLayer.toGeoJSON();
+            Swal.fire({
+                toast: true, position: 'top-end', icon: 'success',
+                title: 'Object copied to clipboard!', showConfirmButton: false, timer: 2000
+            });
+        });
+
+        document.getElementById('btn-paste').addEventListener('click', () => {
+            if (!clipboardGeoJSON) {
+                Swal.fire({
+                    toast: true, position: 'top-end', icon: 'warning',
+                    title: 'Clipboard is empty. Copy an object first!', showConfirmButton: false, timer: 2000
+                });
+                return;
+            }
+
+            const pastedGeo = JSON.parse(JSON.stringify(clipboardGeoJSON));
+            
+            function shiftCoords(coords, geomType) {
+                const offsetStep = 0.0001; // Geser sedikit agar tidak menumpuk persis
+                if (geomType === 'Point') {
+                    return [coords[0] + offsetStep, coords[1] + offsetStep];
+                } else if (geomType === 'LineString' || geomType === 'MultiPoint') {
+                    return coords.map(c => [c[0] + offsetStep, c[1] + offsetStep]);
+                } else if (geomType === 'Polygon' || geomType === 'MultiLineString') {
+                    return coords.map(ring => ring.map(c => [c[0] + offsetStep, c[1] + offsetStep]));
+                } else if (geomType === 'MultiPolygon') {
+                    return coords.map(poly => poly.map(ring => ring.map(c => [c[0] + offsetStep, c[1] + offsetStep])));
+                }
+                return coords;
+            }
+
+            if (pastedGeo.geometry) {
+                pastedGeo.geometry.coordinates = shiftCoords(pastedGeo.geometry.coordinates, pastedGeo.geometry.type);
+            }
+
+            if (pastedGeo.properties) {
+                pastedGeo.properties.name = (pastedGeo.properties.name || 'Object') + ' (Copy)';
+            }
+
+            const newLayer = L.geoJSON(pastedGeo, {
+                style: {
+                    color: '#3b82f6',
+                    weight: 1.5,
+                    fillOpacity: 0.3
+                },
+                pointToLayer: function(feature, latlng) {
+                    return L.marker(latlng, { icon: blueDotIcon });
+                },
+                onEachFeature: function(feature, layer) {
+                    bindNamePopup(layer);
+                }
+            });
+
+            newLayer.eachLayer(lyr => {
+                drawGroup.addLayer(lyr);
+                lastSelectedLayer = lyr;
+            });
+
+            Swal.fire({
+                toast: true, position: 'top-end', icon: 'success',
+                title: 'Object pasted successfully!', showConfirmButton: false, timer: 2000
+            });
+        });
+
         // --- 4. Popup Binding ---
         function bindNamePopup(layer) {
             layer.on('click', function(e) {
+                lastSelectedLayer = layer;
                 let props = layer.feature?.properties || {};
                 let name = props.name || props.Name || props.NAME || props.type || props.building || props.highway || 'Object';
                 let desc = props.description || props.Description || '';
@@ -483,10 +536,22 @@
             }
 
             const layer = L.geoJSON(geojson, {
-                style: {
-                    color: '#10b981', // MODIFIKASI: Diubah menjadi hijau (warna emerald)
-                    weight: 1.5,      // MODIFIKASI: Ketebalan garis diperkecil menjadi 1.5 piksel
-                    fillOpacity: 0.1
+                style: function(feature) {
+                    const geomType = feature.geometry ? feature.geometry.type : '';
+                    if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
+                        return {
+                            color: '#10b981', // HIJAU untuk Boundary/Polygon KML
+                            weight: 2,
+                            fillColor: '#10b981',
+                            fillOpacity: 0.15
+                        };
+                    } else if (geomType === 'LineString' || geomType === 'MultiLineString') {
+                        return {
+                            color: '#ef4444', // MERAH untuk Line/Garis KML
+                            weight: 3
+                        };
+                    }
+                    return { color: '#ef4444', weight: 2 };
                 },
                 pointToLayer: function(feature, latlng) {
                     return L.marker(latlng, { icon: blueDotIcon });
@@ -515,7 +580,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data with Earth Alignment Offset ---
+        // --- 6. Fetch OSM Data ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -612,11 +677,6 @@
                 const userRoadWidth = roadWidthInput ? parseFloat(roadWidthInput.value) || 6 : 6;
                 const bufferRadius = userRoadWidth / 2;
 
-                const offsetLatInput = document.getElementById('offsetLatInput');
-                const offsetLonInput = document.getElementById('offsetLonInput');
-                const userOffsetLat = offsetLatInput ? parseFloat(offsetLatInput.value) || 0 : 0;
-                const userOffsetLon = offsetLonInput ? parseFloat(offsetLonInput.value) || 0 : 0;
-
                 const processedFeatures = [];
 
                 fetchedGeoJSON.features.forEach(f => {
@@ -633,8 +693,7 @@
                                     if (buffered.type === 'FeatureCollection') {
                                         buffered.features.forEach(bf => {
                                             bf.properties = { ...f.properties };
-                                            const adjusted = applyOffset(bf, userOffsetLat, userOffsetLon);
-                                            processedFeatures.push(adjusted);
+                                            processedFeatures.push(bf);
                                         });
                                         return;
                                     } else {
@@ -648,8 +707,7 @@
                         }
                     }
 
-                    const adjusted = applyOffset(targetFeature, userOffsetLat, userOffsetLon);
-                    processedFeatures.push(adjusted);
+                    processedFeatures.push(targetFeature);
                 });
 
                 const filteredFeatures = processedFeatures.filter(f => 
@@ -683,7 +741,7 @@
 
                     Swal.fire({
                         toast: true, position: 'top-end', icon: 'success',
-                        title: `Data OSM (${filteredFeatures.length} objek) dimuat dengan kalibrasi Earth!`, showConfirmButton: false, timer: 2000
+                        title: `Data OSM (${filteredFeatures.length} objek) berhasil dimuat!`, showConfirmButton: false, timer: 2000
                     });
                 } else {
                     Swal.fire({
@@ -804,7 +862,7 @@
 
                 if (gem.type === "Polygon") {
                     gem.coordinates.forEach(ring => addLWPolyline(ring, true));
-                } else if (gem.type === "LineString") {
+                } else if (gem.type ===- "LineString" || gem.type === "LineString") {
                     addLWPolyline(gem.coordinates, false);
                 } else if (gem.type === "MultiPolygon") {
                     gem.coordinates.forEach(poly => poly.forEach(ring => addLWPolyline(ring, true)));

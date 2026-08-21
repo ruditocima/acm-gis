@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GeoConvert Pro | KML to DXF (Production Ready)</title>
 
-    <!-- Tailwind CSS (Static Production Build - No Console Warnings) -->
+    <!-- Tailwind CSS (Static Production Build) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
 
     <!-- Leaflet CSS & JS (for Maps) -->
@@ -181,7 +181,7 @@
                     <i class="fa-solid fa-city mr-2"></i> Refresh Buildings & Roads
                 </button>
                 <p class="text-xs text-gray-400 mt-2 leading-relaxed">
-                    Mengambil data gedung & jalan secara langsung menggunakan server Overpass yang paling stabil.
+                    Mengambil data gedung & jalan secara otomatis dari server mirror OpenStreetMap aktif.
                 </p>
             </div>
 
@@ -233,7 +233,6 @@
             iconAnchor: [5, 5]
         });
 
-        // Parser cepat untuk 'out geom;' tanpa rekursi node yang berat
         function customOSMToGeoJSON(data) {
             const features = [];
             if (!data || !data.elements) return { type: "FeatureCollection", features: [] };
@@ -543,7 +542,7 @@
             });
         }
 
-        // --- 6. Fetch OSM Data (Single Safe Request + Endpoint Failover Pool) ---
+        // --- 6. Fetch OSM Data (Refreshed Stable Endpoints) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -552,16 +551,14 @@
             const n = bbox.getNorth();
             const e = bbox.getEast();
 
-            // Hitung luas area menggunakan Turf.js untuk mencegah timeout server
             const bboxPolygon = turf.bboxPolygon([w, s, e, n]);
-            const areaInSqKm = turf.area(bboxPolygon) / 1000000; // Konversi m2 ke km2
+            const areaInSqKm = turf.area(bboxPolygon) / 1000000;
 
-            // Jika area lebih besar dari 15 km², cegah request dan beri peringatan
             if (areaInSqKm > 15) {
                 Swal.fire({
                     icon: 'warning',
                     title: 'Area Terlalu Luas',
-                    html: `Luas area KML Anda adalah <b>${areaInSqKm.toFixed(2)} km²</b>.<br><br>Untuk mencegah error <i>504 Gateway Timeout</i> pada server umum OpenStreetMap, harap gunakan file KML dengan area di bawah <b>15 km²</b>.`,
+                    html: `Luas area KML Anda adalah <b>${areaInSqKm.toFixed(2)} km²</b>.<br><br>Harap gunakan file KML dengan area di bawah <b>15 km²</b> untuk menghindari pembatasan timeout server publik.`,
                     confirmButtonText: 'Paham',
                     confirmButtonColor: '#10b981'
                 });
@@ -573,15 +570,14 @@
             btn.innerHTML = 'Mengambil Data OSM... <div class="loader"></div>';
             btn.disabled = true;
 
-            // Pool Server Overpass Global paling stabil & cepat
+            // Daftar mirror server Overpass yang terverifikasi aktif & stabil
             const endpoints = [
-                'https://overpass.kumi.systems/api/interpreter',
-                'https://overpass.private.coffee/api/interpreter',
                 'https://overpass-api.de/api/interpreter',
-                'https://overpass.nchc.org.tw/api/interpreter'
+                'https://overpass.openstreetmap.fr/api/interpreter',
+                'https://overpass.kumi.systems/api/interpreter',
+                'https://overpass.private.coffee/api/interpreter'
             ];
 
-            // 1 Request ringkas langsung tanpa loop yang memicu Error 429
             const query = `[out:json][timeout:30];
             (
               way["building"](${s},${w},${n},${e});
@@ -590,13 +586,11 @@
             out geom;`;
 
             let successData = null;
-            let activeEndpoint = '';
 
-            // Failover otomatis: Coba server 1, jika gagal pindah ke server berikutnya
             for (let targetUrl of endpoints) {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 detik timeout per endpoint
+                    const timeoutId = setTimeout(() => controller.abort(), 20000);
 
                     const response = await fetch(targetUrl, {
                         method: 'POST',
@@ -610,12 +604,11 @@
                         const data = await response.json();
                         if (data && data.elements) {
                             successData = data;
-                            activeEndpoint = targetUrl;
                             break; 
                         }
                     }
                 } catch (error) {
-                    console.warn(`Endpoint ${targetUrl} gagal/timeout, mencoba mirror berikutnya...`);
+                    console.warn(`Mirror ${targetUrl} tidak merespons, mencoba mirror berikutnya...`);
                 }
             }
 
@@ -658,7 +651,6 @@
                     processedFeatures.push(targetFeature);
                 });
 
-                // Filter hanya objek yang berada di/berpotongan dengan boundary KML
                 const filteredFeatures = processedFeatures.filter(f => {
                     if (!f.properties || (!f.properties.building && !f.properties.highway)) return false;
 
@@ -706,7 +698,7 @@
 
                     Swal.fire({
                         toast: true, position: 'top-end', icon: 'success',
-                        title: `Berhasil memuat ${filteredFeatures.length} gedung & jalan dari OSM!`, showConfirmButton: false, timer: 3000
+                        title: `Berhasil memuat ${filteredFeatures.length} objek dari OSM!`, showConfirmButton: false, timer: 3000
                     });
                 } else {
                     Swal.fire({
@@ -718,7 +710,7 @@
                 Swal.fire({
                     icon: 'error',
                     title: 'Gagal Memuat Data OSM',
-                    text: 'Seluruh server OSM publik sedang sibuk atau mengalami timeout. Silakan coba lagi dalam beberapa saat.',
+                    html: 'Seluruh server OSM publik sedang sibuk atau diblokir oleh ekstensi browser.<br><br><b>Tips:</b> Matikan ekstensi AdBlock/uBlock pada halaman ini dan coba lagi.',
                     confirmButtonText: 'OK',
                     confirmButtonColor: '#10b981'
                 });
@@ -732,7 +724,6 @@
             if (currentBbox) fetchOSMData(currentBbox);
         });
 
-        // --- Helper Ekstraksi Feature ---
         function extractFeaturesTo(group, sourceGroupName, targetArray) {
             group.eachLayer(layer => {
                 if (typeof layer.toGeoJSON === 'function') {

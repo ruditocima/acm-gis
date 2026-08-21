@@ -354,7 +354,6 @@
             lastSelectedLayer = e.layer;
         });
 
-        // Track selected layer when clicked
         drawGroup.on('click', (e) => {
             lastSelectedLayer = e.layer;
         });
@@ -589,7 +588,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data ---
+        // --- 6. Fetch OSM Data (Diperbarui dengan Timeout 35 Detik & Penanganan AbortError) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -615,7 +614,7 @@
             btn.innerHTML = 'Fetching Data... <div class="loader"></div>';
             btn.disabled = true;
 
-            const overpassQuery = `[out:json][timeout:25];
+            const overpassQuery = `[out:json][timeout:30];
             (
               way["building"](${s},${w},${n},${e_coord});
               way["highway"](${s},${w},${n},${e_coord});
@@ -641,7 +640,7 @@
                     const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
                     
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 15000);
+                    const timeoutId = setTimeout(() => controller.abort(), 35000); // Batas waktu ditingkatkan ke 35 detik
 
                     const response = await fetch(proxyUrl, {
                         method: 'POST',
@@ -675,7 +674,11 @@
                     }
                 } catch (error) {
                     console.warn(`Mirror failed (${targetUrl}):`, error);
-                    errorMessage = error.message;
+                    if (error.name === 'AbortError' || (error.message && error.message.includes('aborted'))) {
+                        errorMessage = "Waktu koneksi habis (Timeout) saat menghubungi Overpass API.";
+                    } else {
+                        errorMessage = error.message;
+                    }
                 }
             }
 

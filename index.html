@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GeoConvert Pro | KML to DXF</title>
 
-    <!-- Tailwind CSS (Clean & Production Safe) -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
 
     <!-- Leaflet CSS & JS (for Maps) -->
@@ -339,7 +339,34 @@
             fillOpacity: 0.3
         });
         
+        // --- Solusi Kunci: Nonaktifkan Interaksi Layer Latar (KML/OSM) saat Mode Gambar Aktif ---
+        map.on('pm:drawstart', (e) => {
+            kmlGroup.eachLayer(layer => {
+                if (layer.setStyle) layer.setStyle({ interactive: false });
+            });
+            osmGroup.eachLayer(layer => {
+                if (layer.setStyle) layer.setStyle({ interactive: false });
+            });
+        });
+
+        map.on('pm:drawend', (e) => {
+            kmlGroup.eachLayer(layer => {
+                if (layer.setStyle) layer.setStyle({ interactive: true });
+            });
+            osmGroup.eachLayer(layer => {
+                if (layer.setStyle) layer.setStyle({ interactive: true });
+            });
+        });
+
         map.on('pm:create', (e) => {
+            // Kembalikan interaktivitas layer latar setelah selesai membuat objek
+            kmlGroup.eachLayer(layer => {
+                if (layer.setStyle) layer.setStyle({ interactive: true });
+            });
+            osmGroup.eachLayer(layer => {
+                if (layer.setStyle) layer.setStyle({ interactive: true });
+            });
+
             if (e.shape === 'Marker') {
                 e.layer.setIcon(blueDotIcon);
             } else if (e.layer.setStyle) {
@@ -586,7 +613,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (Single Unified Request with Server Fallback to Prevent 429 & 504) ---
+        // --- 6. Fetch OSM Data (Single Unified Request with Server Fallback) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 

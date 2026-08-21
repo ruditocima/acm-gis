@@ -588,7 +588,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (Diperbarui dengan Mirror Performa Tinggi & Timeout 50 Detik + Opsi Lewati) ---
+        // --- 6. Fetch OSM Data (Diperbarui: Menghapus relasi berat & memperketat batas area 0.04) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -600,11 +600,12 @@
             const latSpan = Math.abs(n - s);
             const lonSpan = Math.abs(e_coord - w);
             
-            if (latSpan > 0.08 || lonSpan > 0.08) {
+            // Diperketat ke 0.04 derajat (~4 km) agar terhindar dari HTTP 413 Payload Too Large
+            if (latSpan > 0.04 || lonSpan > 0.04) {
                 Swal.fire({
                     icon: 'warning',
                     title: 'Area Terlalu Luas / Padat',
-                    text: 'Cakupan area KML melebihi batas aman Overpass API (HTTP 413). Silakan perkecil area tapak proyek Anda.',
+                    text: 'Cakupan area KML terlalu besar untuk server OSM (HTTP 413). Batas maksimal adalah 0.04 derajat (~4 km). Silakan perkecil area tapak proyek Anda.',
                     confirmButtonColor: '#10b981'
                 });
                 return;
@@ -615,18 +616,16 @@
             btn.innerHTML = 'Fetching Data... <div class="loader"></div>';
             btn.disabled = true;
 
+            // Kueri dioptimalkan hanya menarik elemen 'way' (menghindari 'relation' yang membuat payload besar)
             const overpassQuery = `[out:json][timeout:50];
             (
               way["building"](${s},${w},${n},${e_coord});
               way["highway"](${s},${w},${n},${e_coord});
-              relation["building"](${s},${w},${n},${e_coord});
-              relation["highway"](${s},${w},${n},${e_coord});
             );
             out body;
             >;
             out skel qt;`;
 
-            // Daftar mirror server cadangan dengan beban ringan
             const endpoints = [
                 'https://lz4.overpass-api.de/api/interpreter',
                 'https://z.overpass-api.de/api/interpreter',
@@ -643,7 +642,7 @@
                     const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
                     
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 50000); // Timeout dinaikkan ke 50 detik
+                    const timeoutId = setTimeout(() => controller.abort(), 50000);
 
                     const response = await fetch(proxyUrl, {
                         method: 'POST',
@@ -673,7 +672,7 @@
                             break; 
                         }
                     } else if (response.status === 413) {
-                        errorMessage = "Area terlalu besar atau terlalu padat (HTTP 413: Payload Too Large). Perkecil area KML.";
+                        errorMessage = "Area terlalu padat objek (HTTP 413: Payload Too Large). Perkecil area KML.";
                         break;
                     } else {
                         errorMessage = `HTTP Status: ${response.status} (${targetUrl})`;
@@ -768,11 +767,10 @@
                     });
                 }
             } else {
-                // Berikan opsi agar pengguna bisa mencoba ulang atau melewati OSM jika server publik sedang gangguan
                 Swal.fire({
                     icon: 'error',
                     title: 'Gagal Memuat Data OSM',
-                    html: 'Detail Error: ' + (errorMessage || 'Koneksi terhalang firewall atau jaringan lokal.') + '<br><br>Server publik Overpass sedang sibuk atau timeout.',
+                    html: 'Detail Error: ' + (errorMessage || 'Koneksi terhalang firewall atau jaringan lokal.') + '<br><br>Server publik Overpass sedang sibuk atau area terlalu padat.',
                     showCancelButton: true,
                     confirmButtonText: 'Coba Lagi',
                     cancelButtonText: 'Lewati OSM & Lanjutkan',

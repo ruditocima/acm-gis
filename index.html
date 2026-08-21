@@ -369,7 +369,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (Bulletproof Local File CORS Bypass) ---
+        // --- 6. Fetch OSM Data (100% CORS Bypass menggunakan POST API Asli) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -378,14 +378,14 @@
             const n = bbox.getNorth();
             const e_coord = bbox.getEast();
 
-            // Proteksi Ukuran Area (Max ~22km span)
+            // Cek Luasan Area (Max 0.2 derajat agar server tidak overload)
             const latSpan = Math.abs(n - s);
             const lonSpan = Math.abs(e_coord - w);
             if (latSpan > 0.2 || lonSpan > 0.2) {
                 Swal.fire({
                     icon: 'warning',
                     title: 'Area Terlalu Luas',
-                    text: 'Cakupan boundary KML/KMZ Anda terlalu luas untuk diunduh. Silakan gunakan KML dengan area yang lebih spesifik.',
+                    text: 'Cakupan area KML Anda melampaui batas wajar. Gunakan area tapak proyek yang lebih spesifik agar data berhasil dimuat.',
                     confirmButtonColor: '#10b981'
                 });
                 return;
@@ -396,59 +396,68 @@
             btn.innerHTML = 'Fetching Data... <div class="loader"></div>';
             btn.disabled = true;
 
-            const rawQuery = `[out:json][timeout:25];(way["building"](${s},${w},${n},${e_coord});way["highway"](${s},${w},${n},${e_coord}););out geom;`;
-            const encodedQuery = encodeURIComponent(rawQuery);
-            const baseOverpassUrl = `https://overpass-api.de/api/interpreter?data=${encodedQuery}`;
+            // Query OSM Murni (Ini adalah format yang disukai osmtogeojson, mencegah parser error)
+            const overpassQuery = `[out:json][timeout:25];
+            (
+              way["building"](${s},${w},${n},${e_coord});
+              way["highway"](${s},${w},${n},${e_coord});
+              relation["building"](${s},${w},${n},${e_coord});
+              relation["highway"](${s},${w},${n},${e_coord});
+            );
+            out body;
+            >;
+            out skel qt;`;
 
-            let fetchedGeoJSON = null;
+            // Server-server utama dan server backup internasional yang andal
+            const endpoints = [
+                'https://overpass-api.de/api/interpreter',
+                'https://overpass.kumi.systems/api/interpreter',
+                'https://overpass.nchc.org.tw/api/interpreter'
+            ];
+
             let success = false;
+            let fetchedGeoJSON = null;
+            let errorMessage = "";
 
-            // Helper function to handle different fetch strategies
-            async function attemptFetch(url, isWrappedJSON) {
+            // Lakukan Loop pada server. Menggunakan metode POST agar tidak diblokir browser.
+            for (const url of endpoints) {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
-                    
-                    const response = await fetch(url, { signal: controller.signal });
+                    const timeoutId = setTimeout(() => controller.abort(), 15000); // Batas tunggu 15 detik
+
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: "data=" + encodeURIComponent(overpassQuery),
+                        signal: controller.signal
+                    });
+
                     clearTimeout(timeoutId);
 
                     if (response.ok) {
-                        let data;
-                        if (isWrappedJSON) {
-                            // Untuk allorigins.win/get yang membungkus response di dalam { contents: "..." }
-                            const wrappedData = await response.json();
-                            data = JSON.parse(wrappedData.contents);
-                        } else {
-                            data = await response.json();
-                        }
-
+                        const data = await response.json();
+                        // Memastikan format data valid
                         if (data && data.elements) {
-                            return osmtogeojson(data);
+                            fetchedGeoJSON = osmtogeojson(data);
+                            success = true;
+                            break; // Keluar dari loop jika berhasil
                         }
+                    } else {
+                        errorMessage = `HTTP Error ${response.status}`;
                     }
                 } catch (error) {
-                    console.warn("Fetch attempt failed:", error);
+                    console.warn(`Gagal memuat dari ${url}:`, error);
+                    errorMessage = error.message;
                 }
-                return null;
             }
 
-            // STRATEGI 1: Coba API Direct (Bekerja jika ditaruh di Web Hosting / Server)
-            fetchedGeoJSON = await attemptFetch(baseOverpassUrl, false);
-            if (fetchedGeoJSON) success = true;
-
-            // STRATEGI 2: Fallback ke "Wrapped JSON Proxy" (Solusi Pasti untuk file:// Lokal)
-            if (!success) {
-                console.log("Direct API blocked, using Wrapped Proxy Bypass...");
-                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(baseOverpassUrl)}`;
-                fetchedGeoJSON = await attemptFetch(proxyUrl, true);
-                if (fetchedGeoJSON) success = true;
-            }
-
-            // RENDER DATA KE MAP
+            // RENDER DATA KE MAP JIKA BERHASIL
             if (success && fetchedGeoJSON) {
                 osmGroup.clearLayers();
                 
-                // Filter hanya bangunan dan jalan (mencegah error rendering)
+                // Menyaring agar hanya tipe "Building" dan "Road" yang tergambar
                 const filteredFeatures = fetchedGeoJSON.features.filter(f => 
                     f.properties && (f.properties.building || f.properties.highway)
                 );
@@ -480,14 +489,14 @@
                 } else {
                     Swal.fire({
                         toast: true, position: 'top-end', icon: 'info',
-                        title: 'Tidak ditemukan jalan/bangunan pada area KML ini.', showConfirmButton: false, timer: 3000
+                        title: 'Tidak ditemukan jalan/bangunan pada area lokasi ini.', showConfirmButton: false, timer: 3000
                     });
                 }
             } else {
                 Swal.fire({
                     icon: 'error',
                     title: 'Gagal Memuat Data OSM',
-                    text: 'Server gagal merespon atau memproses data. Silakan coba unggah ulang file KML Anda.',
+                    text: 'Detail Error: ' + (errorMessage || 'Timeout Jaringan. Pastikan internet stabil.'),
                     confirmButtonColor: '#10b981'
                 });
             }

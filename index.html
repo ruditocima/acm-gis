@@ -214,7 +214,7 @@
 
         <!-- Footer Actions -->
         <div class="p-6 border-t border-gray-700/50 flex flex-col gap-3 bg-gray-800/30">
-            <!-- Save State -->
+            <!-- Save State (Supabase prep) -->
             <button id="btn-save" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center">
                 <i class="fa-solid fa-floppy-disk mr-2"></i> Save State (Supabase)
             </button>
@@ -371,6 +371,29 @@
             bindNamePopup(e.layer);
         });
 
+        // --- Proteksi Interaksi Layer (Sesuai Permintaan) ---
+        // 1. Mencegah vertex editing pada OSM Buildings (hanya boleh drag)
+        map.on('pm:edit', (e) => {
+            if (e.layer && e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.building) {
+                e.layer.pm.disableEdit();
+                Swal.fire({
+                    toast: true, position: 'top-end', icon: 'info',
+                    title: 'OSM buildings cannot be edited, only dragged.', showConfirmButton: false, timer: 2000
+                });
+            }
+        });
+
+        // 2. Mencegah penghapusan (removal) pada OSM Buildings
+        map.on('pm:remove', (e) => {
+            if (e.layer && e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.building) {
+                osmGroup.addLayer(e.layer);
+                Swal.fire({
+                    toast: true, position: 'top-end', icon: 'error',
+                    title: 'OSM buildings cannot be removed!', showConfirmButton: false, timer: 2000
+                });
+            }
+        });
+
         // --- 3. UI Interactions ---
         const btnMap = document.getElementById('btn-map');
         const btnEarth = document.getElementById('btn-earth');
@@ -403,7 +426,7 @@
             });
         }
 
-        // --- 5. File Upload (KML / KMZ) - Locked / Non-editable ---
+        // --- 5. File Upload (KML / KMZ) ---
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -459,10 +482,10 @@
                     fillOpacity: 0.1
                 },
                 pointToLayer: function(feature, latlng) {
-                    return L.marker(latlng, { icon: blueDotIcon, pmIgnore: true });
+                    return L.marker(latlng, { icon: blueDotIcon });
                 },
                 onEachFeature: function(feature, layer) {
-                    // REQUIREMENT 1: KML/KMZ contents made completely non-editable (ignored by Geoman)
+                    // 1. KML/KMZ upload dibuat tidak bisa diedit total (pmIgnore = true)
                     layer.options.pmIgnore = true;
                     bindNamePopup(layer);
                 }
@@ -486,7 +509,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data with Modifications (Road Color Transparent Blue, Non-editable Roads, Draggable-only Buildings) ---
+        // --- 6. Fetch OSM Data with Earth Alignment Offset ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -634,8 +657,8 @@
                                 return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
                             }
                             if (feature.properties.highway) {
-                                // REQUIREMENT 4: Road color changed to transparent blue
-                                return { color: '#3b82f6', weight: 1, fillColor: '#3b82f6', fillOpacity: 0.3 };
+                                // 4. Warna jalan diganti warna blue transparan
+                                return { color: '#3b82f6', weight: 3, fillColor: '#3b82f6', fillOpacity: 0.3 };
                             }
                             return { color: '#ffffff', weight: 1 };
                         },
@@ -644,20 +667,14 @@
                                 if (feature.properties.building) feature.properties.name = "Building";
                                 else if (feature.properties.highway) feature.properties.name = "Road";
                             }
-                            bindNamePopup(layer);
 
+                            // 2. OSM jalan tidak bisa diedit total (pmIgnore = true)
                             if (feature.properties.highway) {
-                                // REQUIREMENT 2: OSM Roads made completely non-editable (ignored by Geoman)
                                 layer.options.pmIgnore = true;
-                            } else if (feature.properties.building) {
-                                // REQUIREMENT 3: OSM Buildings cannot be vertex-edited, but allowed to be dragged/moved
-                                layer.options.pmIgnore = false;
-                                setTimeout(() => {
-                                    if (layer.pm) {
-                                        layer.pm.enable({ draggable: true, allowEditing: false });
-                                    }
-                                }, 100);
                             }
+                            // 3. OSM bangunan tidak bisa diedit/dihapus, tetapi biarkan pmIgnore = false agar bisa di-drag
+
+                            bindNamePopup(layer);
                         }
                     }).addTo(osmGroup);
 
@@ -774,18 +791,23 @@
                     chunk += ` 90\r\n${coords.length}\r\n`;
                     chunk += ` 70\r\n${isClosed ? 1 : 0}\r\n`;
                     
-                    coords.forEach(c => {
+                    chunk += coords.map(c => {
                         let [x, y] = lonLatToMeters(c[0], c[1]);
-                        chunk += ` 10\r\n${x.toFixed(4)}\r\n`;
-                        chunk += ` 20\r\n${y.toFixed(4)}\r\n`;
-                    });
+                        return ` 10\r\n${x.toFixed(4)}\r\n 20\r\n${y.toFixed(4)}`;
+                    }).join("\r\n") + "\r\n";
+                    
                     dxf += chunk;
                 }
 
-                (gem.type === "Polygon") && gem.coordinates.forEach(ring => addLWPolyline(ring, true));
-                (gem.type === "LineString") && addLWPolyline(gem.coordinates, false);
-                (gem.type === "MultiPolygon") && gem.coordinates.forEach(polygon => polygon.forEach(ring => addLWPolyline(ring, true)));
-                (gem.type === "MultiLineString") && gem.coordinates.forEach(line => addLWPolyline(line, false));
+                if (gem.type === "Polygon") {
+                    gem.coordinates.forEach(ring => addLWPolyline(ring, true));
+                } else if (gem.type === "LineString") {
+                    addLWPolyline(gem.coordinates, false);
+                } else if (gem.type === "MultiPolygon") {
+                    gem.coordinates.forEach(poly => poly.forEach(ring => addLWPolyline(ring, true)));
+                } else if (gem.type === "MultiLineString") {
+                    gem.coordinates.forEach(line => addLWPolyline(line, false));
+                }
             });
 
             dxf += `  0\r\nENDSEC\r\n  0\r\nEOF\r\n`;

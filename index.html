@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GeoConvert Pro | KML to DXF (Optimized)</title>
+    <title>GeoConvert Pro | KML to DXF (Production Ready)</title>
 
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tailwind CSS (Static Production Build - No Console Warnings) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
 
     <!-- Leaflet CSS & JS (for Maps) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-    <!-- Leaflet Geoman (for elegant drawing/editing) -->
+    <!-- Leaflet Geoman (for drawing/editing) -->
     <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.14.2/dist/leaflet-geoman.css" />
     <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.14.2/dist/leaflet-geoman.min.js"></script>
 
@@ -22,7 +22,7 @@
     <!-- toGeoJSON (for KML to GeoJSON) -->
     <script src="https://unpkg.com/@tmcw/togeojson@4.2.0/dist/togeojson.umd.js"></script>
 
-    <!-- Turf.js (for spatial processing & bounding boxes) -->
+    <!-- Turf.js (for spatial processing, buffer & area calculation) -->
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
     <!-- SweetAlert2 (for alerts) -->
@@ -48,7 +48,7 @@
 
         /* Glassmorphism Panel */
         .glass-panel {
-            background: rgba(23, 25, 35, 0.85);
+            background: rgba(23, 25, 35, 0.90);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             border-right: 1px solid rgba(255, 255, 255, 0.1);
@@ -109,12 +109,12 @@
             border: 3px solid #f3f3f3;
             border-top: 3px solid #10b981;
             border-radius: 50%;
-            width: 20px;
-            height: 20px;
+            width: 18px;
+            height: 18px;
             animation: spin 1s linear infinite;
             display: inline-block;
             vertical-align: middle;
-            margin-left: 10px;
+            margin-left: 8px;
         }
         
         @keyframes spin {
@@ -128,9 +128,9 @@
     <!-- Sidebar / Main Menu -->
     <div class="glass-panel w-80 h-screen flex flex-col shadow-2xl absolute left-0 top-0 transition-transform duration-300">
         <!-- Header -->
-        <div class="p-6 border-b border-gray-700/50 flex items-center justify-between">
+        <div class="p-6 border-b border-gray-700 border-opacity-50 flex items-center justify-between">
             <div>
-                <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-cyan-400 tracking-wide">
+                <h1 class="text-xl font-bold text-emerald-400 tracking-wide">
                     <i class="fa-solid fa-layer-group text-emerald-400 mr-2"></i> GeoConvert Pro
                 </h1>
                 <p class="text-xs text-gray-400 mt-1">KMZ to DXF / DWG Converter</p>
@@ -141,10 +141,10 @@
         <div class="p-6 flex-1 overflow-y-auto space-y-6">
             
             <!-- Layer Control (Map vs Earth) -->
-            <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
+            <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Base Layer</h2>
                 <div class="flex bg-gray-900 rounded-lg p-1">
-                    <button id="btn-map" class="flex-1 py-2 text-sm rounded-md bg-emerald-500/20 text-emerald-400 font-medium transition-all">
+                    <button id="btn-map" class="flex-1 py-2 text-sm rounded-md bg-emerald-500 bg-opacity-20 text-emerald-400 font-medium transition-all">
                         <i class="fa-solid fa-map mr-2"></i> Maps (OSM)
                     </button>
                     <button id="btn-earth" class="flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all">
@@ -154,10 +154,10 @@
             </div>
 
             <!-- Upload Section -->
-            <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
+            <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Import Data</h2>
                 <div class="file-upload-wrapper">
-                    <button class="w-full py-3 px-4 border-2 border-dashed border-gray-600 rounded-lg hover:border-emerald-500 hover:bg-emerald-500/10 transition-colors flex flex-col items-center justify-center gap-2 group">
+                    <button class="w-full py-3 px-4 border-2 border-dashed border-gray-600 rounded-lg hover:border-emerald-500 hover:bg-emerald-500 hover:bg-opacity-10 transition-colors flex flex-col items-center justify-center gap-2 group">
                         <i class="fa-solid fa-cloud-arrow-up text-2xl text-gray-400 group-hover:text-emerald-400"></i>
                         <span class="text-sm font-medium text-gray-300 group-hover:text-emerald-300">Upload KML / KMZ</span>
                     </button>
@@ -169,7 +169,7 @@
             </div>
 
             <!-- Fetch OSM Data -->
-            <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
+            <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Environment Data</h2>
                 
                 <div class="mb-3">
@@ -177,18 +177,18 @@
                     <input type="number" id="roadWidthInput" value="6" min="1" max="50" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
                 </div>
 
-                <button id="btn-fetch-osm" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium text-sm transition-colors shadow-lg shadow-blue-900/20 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                <button id="btn-fetch-osm" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium text-sm transition-colors shadow-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed" disabled>
                     <i class="fa-solid fa-city mr-2"></i> Refresh Buildings & Roads
                 </button>
-                <p class="text-[11px] text-gray-400 mt-2 leading-relaxed">
-                    Click to load real OSM data safely using optimized geometry streams.
+                <p class="text-xs text-gray-400 mt-2 leading-relaxed">
+                    Mengambil data gedung & jalan secara langsung menggunakan server Overpass yang paling stabil.
                 </p>
             </div>
 
             <!-- Drawing Controls Note -->
-            <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
+            <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-1 text-gray-300 uppercase tracking-wider">Editing Tools</h2>
-                <p class="text-xs text-gray-400 mb-3">Use the toolbar on the map to draw, edit, or measure polygons and lines in real-world dimensions.</p>
+                <p class="text-xs text-gray-400 mb-3">Gunakan toolbar di kanan atas peta untuk menggambar atau mengedit polygon/garis.</p>
                 
                 <div class="grid grid-cols-2 gap-2 mt-2">
                     <button id="btn-copy" class="py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
@@ -203,7 +203,7 @@
         </div>
 
         <!-- Footer Actions -->
-        <div class="p-6 border-t border-gray-700/50 flex flex-col gap-3 bg-gray-800/30">
+        <div class="p-6 border-t border-gray-700 border-opacity-50 flex flex-col gap-3 bg-gray-800 bg-opacity-30">
             <button id="btn-save" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center">
                 <i class="fa-solid fa-floppy-disk mr-2"></i> Save Project File
             </button>
@@ -215,7 +215,7 @@
                 <input type="file" id="loadProjectInput" accept=".json,.geojson" />
             </div>
 
-            <button id="btn-export" class="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-bold text-sm transition-all shadow-lg shadow-emerald-900/40 flex items-center justify-center">
+            <button id="btn-export" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-lg transition-all shadow-lg flex items-center justify-center">
                 <i class="fa-solid fa-file-export mr-2"></i> Export to DXF
             </button>
         </div>
@@ -233,7 +233,7 @@
             iconAnchor: [5, 5]
         });
 
-        // Parser khusus menggunakan 'out geom;' dari Overpass (sangat ringan & cepat)
+        // Parser cepat untuk 'out geom;' tanpa rekursi node yang berat
         function customOSMToGeoJSON(data) {
             const features = [];
             if (!data || !data.elements) return { type: "FeatureCollection", features: [] };
@@ -305,7 +305,7 @@
         let lastSelectedLayer = null;
         let uploadedKmlFeatures = []; 
 
-        // --- 2. Leaflet Geoman Optimized ---
+        // --- 2. Leaflet Geoman Controls ---
         map.pm.addControls({
             position: 'topright',
             drawCircle: false,
@@ -348,41 +348,21 @@
             lastSelectedLayer = e.layer;
         });
 
-        map.on('pm:edit', (e) => {
-            if (e.layer && e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.building) {
-                e.layer.pm.disableEdit();
-                Swal.fire({
-                    toast: true, position: 'top-end', icon: 'info',
-                    title: 'OSM buildings cannot be edited, only dragged.', showConfirmButton: false, timer: 2000
-                });
-            }
-        });
-
-        map.on('pm:remove', (e) => {
-            if (e.layer && e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.building) {
-                osmGroup.addLayer(e.layer);
-                Swal.fire({
-                    toast: true, position: 'top-end', icon: 'error',
-                    title: 'OSM buildings cannot be removed!', showConfirmButton: false, timer: 2000
-                });
-            }
-        });
-
-        // --- 3. UI Interactions ---
+        // --- 3. UI Layer Switcher ---
         const btnMap = document.getElementById('btn-map');
         const btnEarth = document.getElementById('btn-earth');
 
         btnMap.addEventListener('click', () => {
             map.removeLayer(earthLayer);
             map.addLayer(osmLayer);
-            btnMap.className = "flex-1 py-2 text-sm rounded-md bg-emerald-500/20 text-emerald-400 font-medium transition-all";
+            btnMap.className = "flex-1 py-2 text-sm rounded-md bg-emerald-500 bg-opacity-20 text-emerald-400 font-medium transition-all";
             btnEarth.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
         });
 
         btnEarth.addEventListener('click', () => {
             map.removeLayer(osmLayer);
             map.addLayer(earthLayer);
-            btnEarth.className = "flex-1 py-2 text-sm rounded-md bg-emerald-500/20 text-emerald-400 font-medium transition-all";
+            btnEarth.className = "flex-1 py-2 text-sm rounded-md bg-emerald-500 bg-opacity-20 text-emerald-400 font-medium transition-all";
             btnMap.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
         });
 
@@ -398,7 +378,7 @@
             if (!lastSelectedLayer || !lastSelectedLayer.toGeoJSON) {
                 Swal.fire({
                     toast: true, position: 'top-end', icon: 'warning',
-                    title: 'No drawn object selected to copy!', showConfirmButton: false, timer: 2000
+                    title: 'Tidak ada objek yang dipilih untuk di-copy!', showConfirmButton: false, timer: 2000
                 });
                 return;
             }
@@ -406,7 +386,7 @@
             clipboardGeoJSON = lastSelectedLayer.toGeoJSON();
             Swal.fire({
                 toast: true, position: 'top-end', icon: 'success',
-                title: 'Object copied to clipboard!', showConfirmButton: false, timer: 2000
+                title: 'Objek berhasil di-copy!', showConfirmButton: false, timer: 2000
             });
         });
 
@@ -414,7 +394,7 @@
             if (!clipboardGeoJSON) {
                 Swal.fire({
                     toast: true, position: 'top-end', icon: 'warning',
-                    title: 'Clipboard is empty. Copy an object first!', showConfirmButton: false, timer: 2000
+                    title: 'Clipboard kosong. Silakan copy objek terlebih dahulu!', showConfirmButton: false, timer: 2000
                 });
                 return;
             }
@@ -445,11 +425,7 @@
 
             const newLayer = L.geoJSON(pastedGeo, {
                 renderer: L.canvas(),
-                style: {
-                    color: '#3b82f6',
-                    weight: 1.5,
-                    fillOpacity: 0.3
-                },
+                style: { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 },
                 pointToLayer: function(feature, latlng) {
                     return L.marker(latlng, { icon: blueDotIcon });
                 },
@@ -465,7 +441,7 @@
 
             Swal.fire({
                 toast: true, position: 'top-end', icon: 'success',
-                title: 'Object pasted successfully!', showConfirmButton: false, timer: 2000
+                title: 'Objek berhasil di-paste!', showConfirmButton: false, timer: 2000
             });
         });
 
@@ -507,16 +483,16 @@
                         const kmlText = await kmlFile.async('text');
                         parseKML(kmlText);
                     } else {
-                        Swal.fire('Error', 'No KML file found inside the KMZ.', 'error');
+                        Swal.fire('Error', 'Tidak ada file KML di dalam paket KMZ ini.', 'error');
                     }
                 } else if (file.name.toLowerCase().endsWith('.kml')) {
                     const kmlText = await file.text();
                     parseKML(kmlText);
                 } else {
-                    Swal.fire('Error', 'Invalid file format. Please upload KML or KMZ.', 'error');
+                    Swal.fire('Error', 'Format file tidak valid. Upload file .kml atau .kmz', 'error');
                 }
             } catch (err) {
-                Swal.fire('Error', 'Failed to read file: ' + err.message, 'error');
+                Swal.fire('Error', 'Gagal membaca file: ' + err.message, 'error');
             }
             e.target.value = '';
         });
@@ -529,7 +505,7 @@
             const geojson = (typeof toGeoJSON !== 'undefined') ? toGeoJSON.kml(xmlDoc) : null;
             
             if (!geojson || !geojson.features || geojson.features.length === 0) {
-                Swal.fire('Warning', 'No geometries found or parser error in the uploaded file.', 'warning');
+                Swal.fire('Warning', 'Tidak ditemukan geometri pada file KML ini.', 'warning');
                 return;
             }
 
@@ -540,17 +516,9 @@
                 style: function(feature) {
                     const geomType = feature.geometry ? feature.geometry.type : '';
                     if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
-                        return {
-                            color: '#10b981', 
-                            weight: 2,
-                            fillColor: '#10b981',
-                            fillOpacity: 0.15
-                        };
+                        return { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.15 };
                     } else if (geomType === 'LineString' || geomType === 'MultiLineString') {
-                        return {
-                            color: '#ef4444', 
-                            weight: 3
-                        };
+                        return { color: '#ef4444', weight: 3 };
                     }
                     return { color: '#ef4444', weight: 2 };
                 },
@@ -571,110 +539,88 @@
             
             Swal.fire({
                 toast: true, position: 'top-end', icon: 'success',
-                title: 'KML Loaded! Click "Refresh Buildings & Roads" to fetch OSM data safely.', showConfirmButton: false, timer: 3000
+                title: 'KML Berhasil Dimuat!', showConfirmButton: false, timer: 3000
             });
         }
 
-        // --- 6. Fetch OSM Data using Lightweight Grid (3x3) & 'out geom;' Stream ---
+        // --- 6. Fetch OSM Data (Single Safe Request + Endpoint Failover Pool) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
             const s = bbox.getSouth();
             const w = bbox.getWest();
             const n = bbox.getNorth();
-            const e_coord = bbox.getEast();
+            const e = bbox.getEast();
+
+            // Hitung luas area menggunakan Turf.js untuk mencegah timeout server
+            const bboxPolygon = turf.bboxPolygon([w, s, e, n]);
+            const areaInSqKm = turf.area(bboxPolygon) / 1000000; // Konversi m2 ke km2
+
+            // Jika area lebih besar dari 15 km², cegah request dan beri peringatan
+            if (areaInSqKm > 15) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Area Terlalu Luas',
+                    html: `Luas area KML Anda adalah <b>${areaInSqKm.toFixed(2)} km²</b>.<br><br>Untuk mencegah error <i>504 Gateway Timeout</i> pada server umum OpenStreetMap, harap gunakan file KML dengan area di bawah <b>15 km²</b>.`,
+                    confirmButtonText: 'Paham',
+                    confirmButtonColor: '#10b981'
+                });
+                return;
+            }
 
             const btn = document.getElementById('btn-fetch-osm');
             const originalHTML = btn.innerHTML;
-            btn.innerHTML = 'Fetching OSM via Geometry Stream... <div class="loader"></div>';
+            btn.innerHTML = 'Mengambil Data OSM... <div class="loader"></div>';
             btn.disabled = true;
 
+            // Pool Server Overpass Global paling stabil & cepat
             const endpoints = [
+                'https://overpass.kumi.systems/api/interpreter',
+                'https://overpass.private.coffee/api/interpreter',
                 'https://overpass-api.de/api/interpreter',
-                'https://lz4.overpass-api.de/api/interpreter',
-                'https://z.overpass-api.de/api/interpreter'
+                'https://overpass.nchc.org.tw/api/interpreter'
             ];
 
-            // Grid 3x3 (9 kotak) sudah sangat optimal karena menggunakan 'out geom;'
-            const gridDiv = 3;
-            const latSpan = n - s;
-            const lonSpan = e_coord - w;
-            const latStep = latSpan / gridDiv;
-            const lonStep = lonSpan / gridDiv;
+            // 1 Request ringkas langsung tanpa loop yang memicu Error 429
+            const query = `[out:json][timeout:30];
+            (
+              way["building"](${s},${w},${n},${e});
+              way["highway"](${s},${w},${n},${e});
+            );
+            out geom;`;
 
-            const subBoxes = [];
-            for (let r = 0; r < gridDiv; r++) {
-                for (let c = 0; c < gridDiv; c++) {
-                    subBoxes.push({
-                        s: s + r * latStep,
-                        w: w + c * lonStep,
-                        n: s + (r + 1) * latStep,
-                        e: w + (c + 1) * lonStep
+            let successData = null;
+            let activeEndpoint = '';
+
+            // Failover otomatis: Coba server 1, jika gagal pindah ke server berikutnya
+            for (let targetUrl of endpoints) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 detik timeout per endpoint
+
+                    const response = await fetch(targetUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: "data=" + encodeURIComponent(query),
+                        signal: controller.signal
                     });
-                }
-            }
+                    clearTimeout(timeoutId);
 
-            let allElements = [];
-            let successCount = 0;
-
-            for (let i = 0; i < subBoxes.length; i++) {
-                let box = subBoxes[i];
-                // Menggunakan 'out geom;' untuk menghindari node recursion berat (504 & 429 prevention)
-                const query = `[out:json][timeout:25];
-                (
-                  way["building"](${box.s},${box.w},${box.n},${box.e});
-                  way["highway"](${box.s},${box.w},${box.n},${box.e});
-                );
-                out geom;`;
-
-                let boxSuccess = false;
-                for (let targetUrl of endpoints) {
-                    let retries = 2;
-                    while (retries > 0 && !boxSuccess) {
-                        try {
-                            const response = await fetch(targetUrl, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                                body: "data=" + encodeURIComponent(query)
-                            });
-
-                            if (response.ok) {
-                                const data = await response.json();
-                                if (data && data.elements) {
-                                    allElements = allElements.concat(data.elements);
-                                    boxSuccess = true;
-                                    break;
-                                }
-                            } else {
-                                await new Promise(resolve => setTimeout(resolve, 1500));
-                                retries--;
-                            }
-                        } catch (error) {
-                            await new Promise(resolve => setTimeout(resolve, 1500));
-                            retries--;
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data && data.elements) {
+                            successData = data;
+                            activeEndpoint = targetUrl;
+                            break; 
                         }
                     }
-                    if (boxSuccess) break;
-                }
-
-                if (boxSuccess) successCount++;
-
-                // Jeda aman antar kotak untuk menghindari 429 Too Many Requests
-                if (i < subBoxes.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 800));
+                } catch (error) {
+                    console.warn(`Endpoint ${targetUrl} gagal/timeout, mencoba mirror berikutnya...`);
                 }
             }
 
-            if (successCount > 0) {
-                const seen = new Set();
-                const uniqueElements = allElements.filter(el => {
-                    const key = el.type + '_' + el.id;
-                    if (seen.has(key)) return false;
-                    seen.add(key);
-                    return true;
-                });
-
-                const fetchedGeoJSON = customOSMToGeoJSON({ elements: uniqueElements });
+            if (successData && successData.elements) {
+                const fetchedGeoJSON = customOSMToGeoJSON(successData);
                 osmGroup.clearLayers();
                 
                 const roadWidthInput = document.getElementById('roadWidthInput');
@@ -712,6 +658,7 @@
                     processedFeatures.push(targetFeature);
                 });
 
+                // Filter hanya objek yang berada di/berpotongan dengan boundary KML
                 const filteredFeatures = processedFeatures.filter(f => {
                     if (!f.properties || (!f.properties.building && !f.properties.highway)) return false;
 
@@ -759,19 +706,19 @@
 
                     Swal.fire({
                         toast: true, position: 'top-end', icon: 'success',
-                        title: `Data OSM (${filteredFeatures.length} objek) berhasil dimuat!`, showConfirmButton: false, timer: 2000
+                        title: `Berhasil memuat ${filteredFeatures.length} gedung & jalan dari OSM!`, showConfirmButton: false, timer: 3000
                     });
                 } else {
                     Swal.fire({
                         toast: true, position: 'top-end', icon: 'info',
-                        title: 'Tidak ditemukan jalan/bangunan di dalam boundary ini.', showConfirmButton: false, timer: 3000
+                        title: 'Tidak ada gedung/jalan ditemukan pada area ini.', showConfirmButton: false, timer: 3000
                     });
                 }
             } else {
                 Swal.fire({
                     icon: 'error',
-                    title: 'Koneksi ke Server OSM Timeout',
-                    html: 'Boundary area KML Anda terlalu luas untuk server publik. Coba perkecil area KML.',
+                    title: 'Gagal Memuat Data OSM',
+                    text: 'Seluruh server OSM publik sedang sibuk atau mengalami timeout. Silakan coba lagi dalam beberapa saat.',
                     confirmButtonText: 'OK',
                     confirmButtonColor: '#10b981'
                 });
@@ -785,6 +732,7 @@
             if (currentBbox) fetchOSMData(currentBbox);
         });
 
+        // --- Helper Ekstraksi Feature ---
         function extractFeaturesTo(group, sourceGroupName, targetArray) {
             group.eachLayer(layer => {
                 if (typeof layer.toGeoJSON === 'function') {
@@ -818,7 +766,7 @@
             extractFeaturesTo(drawGroup, 'draw', allFeatures);
 
             if (allFeatures.length === 0) {
-                Swal.fire('Warning', 'Tidak ada data atau objek di peta untuk disimpan.', 'warning');
+                Swal.fire('Warning', 'Tidak ada data di peta untuk disimpan.', 'warning');
                 return;
             }
 
@@ -826,7 +774,7 @@
                 title: 'Simpan Proyek Peta',
                 input: 'text',
                 inputLabel: 'Masukkan nama file proyek:',
-                inputValue: 'proyek_geoconvert_ku',
+                inputValue: 'proyek_geoconvert',
                 showCancelButton: true,
                 confirmButtonColor: '#10b981',
                 inputValidator: (value) => {
@@ -849,7 +797,7 @@
 
                 Swal.fire({
                     toast: true, position: 'top-end', icon: 'success',
-                    title: 'Proyek berhasil disimpan sebagai file!', showConfirmButton: false, timer: 2000
+                    title: 'Proyek berhasil disimpan!', showConfirmButton: false, timer: 2000
                 });
             }
         });
@@ -917,12 +865,12 @@
                     Swal.fire({
                         icon: 'success',
                         title: 'Proyek Berhasil Dimuat!',
-                        text: `File "${file.name}" berhasil dimuat dengan pengaturan warna yang tepat.`,
+                        text: `File "${file.name}" telah berhasil dimuat ke peta.`,
                         confirmButtonColor: '#10b981'
                     });
 
                 } catch (err) {
-                    Swal.fire('Error', 'Gagal membaca file proyek: Format file tidak valid.', 'error');
+                    Swal.fire('Error', 'Gagal membaca file proyek: Format JSON/GeoJSON tidak valid.', 'error');
                 }
             };
             reader.readAsText(file);
@@ -969,7 +917,7 @@
             });
 
             if(allFeatures.length === 0) {
-                Swal.fire('Warning', 'Map is empty. Please upload data or draw geometries first.', 'warning');
+                Swal.fire('Warning', 'Peta masih kosong. Upload KML atau gambar objek terlebih dahulu.', 'warning');
                 return;
             }
 
@@ -988,7 +936,7 @@
             
             Swal.fire({
                 toast: true, position: 'top-end', icon: 'success',
-                title: 'DXF Exported Successfully!', showConfirmButton: false, timer: 2500
+                title: 'DXF Berhasil Di-export!', showConfirmButton: false, timer: 2500
             });
         });
 

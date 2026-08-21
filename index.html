@@ -22,8 +22,8 @@
     <!-- toGeoJSON (for KML to GeoJSON) -->
     <script src="https://unpkg.com/@tmcw/togeojson@4.2.0/dist/togeojson.umd.js"></script>
 
-    <!-- OSM to GeoJSON -->
-    <script src="https://unpkg.com/osmtogeojson@3.2.1/osmtogeojson.js"></script>
+    <!-- OSM to GeoJSON (Fixed with stable jsDelivr CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/osmtogeojson@3.2.1/osmtogeojson.js"></script>
 
     <!-- Turf.js (for spatial processing & bounding boxes) -->
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
@@ -369,9 +369,20 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (Bypass Failed to fetch with Public CORS Proxy) ---
+        // --- 6. Fetch OSM Data (With osmtogeojson Safety Check & Proxy) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
+
+            // Periksa ketersediaan library osmtogeojson secara global
+            if (typeof osmtogeojson === 'undefined') {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Library Error',
+                    text: 'Library osmtogeojson belum termuat sempurna. Periksa koneksi internet Anda.',
+                    confirmButtonColor: '#10b981'
+                });
+                return;
+            }
 
             const s = bbox.getSouth();
             const w = bbox.getWest();
@@ -408,7 +419,6 @@
             out skel qt;`;
 
             const targetUrl = 'https://overpass-api.de/api/interpreter';
-            // Menggunakan corsproxy.io untuk membungkus permintaan POST/GET agar tidak terkena "Failed to fetch" di browser lokal
             const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
 
             let success = false;

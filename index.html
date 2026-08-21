@@ -592,53 +592,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (With Boundary Spatial Filtering) ---
-        async function fetchOSMWithAutoSplit(s, w, n, e, endpoint, depth = 0) {
-            const query = `[out:json][timeout:40];
-            (
-              way["building"](${s},${w},${n},${e});
-              way["highway"](${s},${w},${n},${e});
-            );
-            out body;
-            >;
-            out skel qt;`;
-
-            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(endpoint);
-            const response = await fetch(proxyUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: "data=" + encodeURIComponent(query)
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                return data.elements || [];
-            } else if (response.status === 413 && depth < 2) {
-                const midLat = (s + n) / 2;
-                const midLon = (w + e) / 2;
-                
-                const quadrants = [
-                    [s, w, midLat, midLon],
-                    [s, midLon, midLat, e],
-                    [midLat, w, n, midLon],
-                    [midLat, midLon, n, e]
-                ];
-
-                let mergedElements = [];
-                for (const quad of quadrants) {
-                    try {
-                        const subElements = await fetchOSMWithAutoSplit(quad[0], quad[1], quad[2], quad[3], endpoint, depth + 1);
-                        mergedElements.push(...subElements);
-                    } catch (err) {
-                        console.warn("Sub-quadrant fetch failed:", err);
-                    }
-                }
-                return mergedElements;
-            } else {
-                throw new Error(`HTTP ${response.status}`);
-            }
-        }
-
+        // --- 6. Fetch OSM Data (Direct Request without Quadtree Subdivision) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -649,8 +603,17 @@
 
             const btn = document.getElementById('btn-fetch-osm');
             const originalHTML = btn.innerHTML;
-            btn.innerHTML = 'Fetching & Splitting... <div class="loader"></div>';
+            btn.innerHTML = 'Fetching OSM... <div class="loader"></div>';
             btn.disabled = true;
+
+            const query = `[out:json][timeout:60];
+            (
+              way["building"](${s},${w},${n},${e_coord});
+              way["highway"](${s},${w},${n},${e_coord});
+            );
+            out body;
+            >;
+            out skel qt;`;
 
             const endpoints = [
                 'https://lz4.overpass-api.de/api/interpreter',
@@ -665,9 +628,21 @@
 
             for (let targetUrl of endpoints) {
                 try {
-                    rawElements = await fetchOSMWithAutoSplit(s, w, n, e_coord, targetUrl, 0);
-                    success = true;
-                    break;
+                    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
+                    const response = await fetch(proxyUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: "data=" + encodeURIComponent(query)
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        rawElements = data.elements || [];
+                        success = true;
+                        break;
+                    } else {
+                        errorMessage = `HTTP ${response.status}`;
+                    }
                 } catch (error) {
                     console.warn(`Mirror failed (${targetUrl}):`, error);
                     errorMessage = error.message;
@@ -723,7 +698,7 @@
                     processedFeatures.push(targetFeature);
                 });
 
-                // Filter agar hanya objek yang beririsan/di dalam boundary KML yang dimuat
+                // Filter agar hanya objek yang beririsan/di dalam boundary KML yang dimuat secara presisi
                 const filteredFeatures = processedFeatures.filter(f => {
                     if (!f.properties || (!f.properties.building && !f.properties.highway)) return false;
 
@@ -737,7 +712,7 @@
                                     break;
                                 }
                             } catch (err) {
-                                // Jika terjadi error pada geometri kompleks, abaikan dan lanjutkan
+                                // Abaikan jika geometri kompleks gagal diuji
                             }
                         }
                         return intersects;

@@ -181,7 +181,7 @@
                     <input type="number" id="roadWidthInput" value="6" min="1" max="50" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
                 </div>
 
-                <!-- Kalibrasi Offset Posisi OSM untuk Tampilan Earth -->
+                <!-- NEW: Kalibrasi Offset Posisi OSM untuk Tampilan Earth -->
                 <div class="mb-3 grid grid-cols-2 gap-2">
                     <div>
                         <label for="offsetLatInput" class="text-xs font-medium text-gray-300 block mb-1">Offset Lat (m)</label>
@@ -214,7 +214,7 @@
 
         <!-- Footer Actions -->
         <div class="p-6 border-t border-gray-700/50 flex flex-col gap-3 bg-gray-800/30">
-            <!-- Save State -->
+            <!-- Save State (Supabase prep) -->
             <button id="btn-save" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center">
                 <i class="fa-solid fa-floppy-disk mr-2"></i> Save State (Supabase)
             </button>
@@ -230,6 +230,14 @@
 
     <!-- Application Logic -->
     <script>
+        // --- Custom Blue Dot Symbol with White Outline ---
+        const blueDotIcon = L.divIcon({
+            className: 'custom-blue-dot-symbol',
+            html: '<div style="background-color: #2563eb; width: 14px; height: 14px; border: 2px solid #ffffff; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.4);"></div>',
+            iconSize: [14, 14],
+            iconAnchor: [7, 7]
+        });
+
         // --- 0. Built-in Fall-back Converter ---
         function customOSMToGeoJSON(data) {
             const nodes = {};
@@ -356,31 +364,11 @@
         
         map.on('pm:create', (e) => {
             if (e.shape === 'Marker') {
-                const latlng = e.layer.getLatLng();
-                map.removeLayer(e.layer);
-                const circleMarker = L.circleMarker(latlng, {
-                    radius: 5,
-                    fillColor: '#10b981',
-                    color: '#ffffff',
-                    weight: 1,
-                    opacity: 1,
-                    fillOpacity: 0.9
-                });
-                circleMarker.feature = {
-                    type: 'Feature',
-                    geometry: {
-                        type: 'Point',
-                        coordinates: [latlng.lng, latlng.lat]
-                    },
-                    properties: { name: 'User Drawn Point' }
-                };
-                drawGroup.addLayer(circleMarker);
-                bindNamePopup(circleMarker);
-            } else {
-                e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Drawn Object' } };
-                drawGroup.addLayer(e.layer);
-                bindNamePopup(e.layer);
+                e.layer.setIcon(blueDotIcon);
             }
+            e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Drawn Object' } };
+            drawGroup.addLayer(e.layer);
+            bindNamePopup(e.layer);
         });
 
         // --- 3. UI Interactions ---
@@ -465,20 +453,13 @@
             }
 
             const layer = L.geoJSON(geojson, {
-                pointToLayer: function (feature, latlng) {
-                    return L.circleMarker(latlng, {
-                        radius: 5,
-                        fillColor: '#ef4444',
-                        color: '#ffffff',
-                        weight: 1,
-                        opacity: 1,
-                        fillOpacity: 0.9
-                    });
-                },
                 style: {
                     color: '#ef4444',
                     weight: 3,
                     fillOpacity: 0.1
+                },
+                pointToLayer: function(feature, latlng) {
+                    return L.marker(latlng, { icon: blueDotIcon });
                 },
                 onEachFeature: function(feature, layer) {
                     bindNamePopup(layer);
@@ -785,28 +766,10 @@
                     dxf += chunk;
                 }
 
-                function addPointEntity(coord) {
-                    let [x, y] = lonLatToMeters(coord[0], coord[1]);
-                    let chunk = `  0\r\nPOINT\r\n`;
-                    chunk += `  8\r\n${layerName}\r\n`;
-                    chunk += ` 10\r\n${x.toFixed(4)}\r\n`;
-                    chunk += ` 20\r\n${y.toFixed(4)}\r\n`;
-                    dxf += chunk;
-                }
-
-                if (gem.type === "Polygon") {
-                    gem.coordinates.forEach(ring => addLWPolyline(ring, true));
-                } else if (gem.type === "LineString") {
-                    addLWPolyline(gem.coordinates, false);
-                } else if (gem.type === "MultiPolygon") {
-                    gem.coordinates.forEach(polygon => polygon.forEach(ring => addLWPolyline(ring, true)));
-                } else if (gem.type === "MultiLineString") {
-                    gem.coordinates.forEach(line => addLWPolyline(line, false));
-                } else if (gem.type === "Point") {
-                    addPointEntity(gem.coordinates);
-                } else if (gem.type === "MultiPoint") {
-                    gem.coordinates.forEach(c => addPointEntity(c));
-                }
+                (gem.type === "Polygon") && gem.coordinates.forEach(ring => addLWPolyline(ring, true));
+                (gem.type === "LineString") && addLWPolyline(gem.coordinates, false);
+                (gem.type === "MultiPolygon") && gem.coordinates.forEach(polygon => polygon.forEach(ring => addLWPolyline(ring, true)));
+                (gem.type === "MultiLineString") && gem.coordinates.forEach(line => addLWPolyline(line, false));
             });
 
             dxf += `  0\r\nENDSEC\r\n  0\r\nEOF\r\n`;

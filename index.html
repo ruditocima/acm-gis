@@ -775,28 +775,38 @@
             if (currentBbox) fetchOSMData(currentBbox);
         });
 
-        // --- 7. Save Project File (Download as JSON with Custom Name) ---
-        document.getElementById('btn-save').addEventListener('click', async () => {
-            const allFeatures = [];
-            [kmlGroup, osmGroup, drawGroup].forEach(group => {
-                group.eachLayer(layer => {
-                    if (layer.toGeoJSON) {
-                        let geo = layer.toGeoJSON();
+        // --- Helper untuk meratakan dan mengekstrak fitur dari grup peta ---
+        function extractFeaturesTo(group, sourceGroupName, targetArray) {
+            group.eachLayer(layer => {
+                if (typeof layer.toGeoJSON === 'function') {
+                    let geo = layer.toGeoJSON();
+                    if (geo.type === 'FeatureCollection' && geo.features) {
+                        geo.features.forEach(f => {
+                            f.properties = f.properties || {};
+                            if (layer.feature && layer.feature.properties) {
+                                f.properties = { ...layer.feature.properties, ...f.properties };
+                            }
+                            f.properties.sourceGroup = sourceGroupName;
+                            targetArray.push(f);
+                        });
+                    } else if (geo.type === 'Feature') {
                         geo.properties = geo.properties || {};
-                        
-                        // [FIX] Salin properti asli dari layer.feature agar tag bangunan/jalan (building/highway) tidak hilang
                         if (layer.feature && layer.feature.properties) {
                             geo.properties = { ...layer.feature.properties, ...geo.properties };
                         }
-                        
-                        if(group === kmlGroup) geo.properties.sourceGroup = "kml";
-                        else if(group === osmGroup) geo.properties.sourceGroup = "osm";
-                        else geo.properties.sourceGroup = "draw";
-                        
-                        allFeatures.push(geo);
+                        geo.properties.sourceGroup = sourceGroupName;
+                        targetArray.push(geo);
                     }
-                });
+                }
             });
+        }
+
+        // --- 7. Save Project File (Download as JSON with Custom Name) ---
+        document.getElementById('btn-save').addEventListener('click', async () => {
+            const allFeatures = [];
+            extractFeaturesTo(kmlGroup, 'kml', allFeatures);
+            extractFeaturesTo(osmGroup, 'osm', allFeatures);
+            extractFeaturesTo(drawGroup, 'draw', allFeatures);
 
             if (allFeatures.length === 0) {
                 Swal.fire('Warning', 'Tidak ada data atau objek di peta untuk disimpan.', 'warning');
@@ -855,7 +865,6 @@
                             if (props.sourceGroup === 'kml') {
                                 return { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.15 };
                             } else if (props.sourceGroup === 'osm') {
-                                // [FIX] Pertahankan warna asli OSM: Bangunan (#f59e0b) dan Jalan (#3b82f6)
                                 if (props.building) {
                                     return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
                                 }
@@ -907,22 +916,31 @@
 
         document.getElementById('btn-export').addEventListener('click', () => {
             const allFeatures = [];
+            
             [kmlGroup, osmGroup, drawGroup].forEach(group => {
                 group.eachLayer(layer => {
-                    if (layer.toGeoJSON) {
+                    if (typeof layer.toGeoJSON === 'function') {
                         let geo = layer.toGeoJSON();
-                        geo.properties = geo.properties || {};
                         
-                        if (layer.feature && layer.feature.properties) {
-                            geo.properties = { ...layer.feature.properties, ...geo.properties };
+                        const processFeature = (f) => {
+                            f.properties = f.properties || {};
+                            if (layer.feature && layer.feature.properties) {
+                                f.properties = { ...layer.feature.properties, ...f.properties };
+                            }
+                            
+                            if (group === kmlGroup) f.properties.layer = "KML_Boundary";
+                            else if (group === osmGroup && f.properties.building) f.properties.layer = "OSM_Buildings";
+                            else if (group === osmGroup && f.properties.highway) f.properties.layer = "OSM_Roads";
+                            else f.properties.layer = "User_Drawn";
+                            
+                            allFeatures.push(f);
+                        };
+
+                        if (geo.type === 'FeatureCollection' && geo.features) {
+                            geo.features.forEach(processFeature);
+                        } else if (geo.type === 'Feature') {
+                            processFeature(geo);
                         }
-                        
-                        if(group === kmlGroup) geo.properties.layer = "KML_Boundary";
-                        else if(group === osmGroup && geo.properties.building) geo.properties.layer = "OSM_Buildings";
-                        else if(group === osmGroup && geo.properties.highway) geo.properties.layer = "OSM_Roads";
-                        else geo.properties.layer = "User_Drawn";
-                        
-                        allFeatures.push(geo);
                     }
                 });
             });

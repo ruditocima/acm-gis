@@ -369,7 +369,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (100% CORS Bypass menggunakan POST API Asli) ---
+        // --- 6. Fetch OSM Data (Bypass Failed to fetch with Public CORS Proxy) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -378,14 +378,14 @@
             const n = bbox.getNorth();
             const e_coord = bbox.getEast();
 
-            // Cek Luasan Area (Max 0.2 derajat agar server tidak overload)
+            // Batasi area agar tidak overload
             const latSpan = Math.abs(n - s);
             const lonSpan = Math.abs(e_coord - w);
             if (latSpan > 0.2 || lonSpan > 0.2) {
                 Swal.fire({
                     icon: 'warning',
                     title: 'Area Terlalu Luas',
-                    text: 'Cakupan area KML Anda melampaui batas wajar. Gunakan area tapak proyek yang lebih spesifik agar data berhasil dimuat.',
+                    text: 'Cakupan area KML terlalu luas. Perkecil area tapak proyek agar data OSM berhasil dimuat.',
                     confirmButtonColor: '#10b981'
                 });
                 return;
@@ -396,7 +396,6 @@
             btn.innerHTML = 'Fetching Data... <div class="loader"></div>';
             btn.disabled = true;
 
-            // Query OSM Murni (Ini adalah format yang disukai osmtogeojson, mencegah parser error)
             const overpassQuery = `[out:json][timeout:25];
             (
               way["building"](${s},${w},${n},${e_coord});
@@ -408,56 +407,47 @@
             >;
             out skel qt;`;
 
-            // Server-server utama dan server backup internasional yang andal
-            const endpoints = [
-                'https://overpass-api.de/api/interpreter',
-                'https://overpass.kumi.systems/api/interpreter',
-                'https://overpass.nchc.org.tw/api/interpreter'
-            ];
+            const targetUrl = 'https://overpass-api.de/api/interpreter';
+            // Menggunakan corsproxy.io untuk membungkus permintaan POST/GET agar tidak terkena "Failed to fetch" di browser lokal
+            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
 
             let success = false;
             let fetchedGeoJSON = null;
             let errorMessage = "";
 
-            // Lakukan Loop pada server. Menggunakan metode POST agar tidak diblokir browser.
-            for (const url of endpoints) {
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 15000); // Batas tunggu 15 detik
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 20000);
 
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded'
-                        },
-                        body: "data=" + encodeURIComponent(overpassQuery),
-                        signal: controller.signal
-                    });
+                const response = await fetch(proxyUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: "data=" + encodeURIComponent(overpassQuery),
+                    signal: controller.signal
+                });
 
-                    clearTimeout(timeoutId);
+                clearTimeout(timeoutId);
 
-                    if (response.ok) {
-                        const data = await response.json();
-                        // Memastikan format data valid
-                        if (data && data.elements) {
-                            fetchedGeoJSON = osmtogeojson(data);
-                            success = true;
-                            break; // Keluar dari loop jika berhasil
-                        }
-                    } else {
-                        errorMessage = `HTTP Error ${response.status}`;
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.elements) {
+                        fetchedGeoJSON = osmtogeojson(data);
+                        success = true;
                     }
-                } catch (error) {
-                    console.warn(`Gagal memuat dari ${url}:`, error);
-                    errorMessage = error.message;
+                } else {
+                    errorMessage = `HTTP Status: ${response.status}`;
                 }
+            } catch (error) {
+                console.warn("Proxy fetch error:", error);
+                errorMessage = error.message;
             }
 
-            // RENDER DATA KE MAP JIKA BERHASIL
+            // RENDER DATA KE PETA
             if (success && fetchedGeoJSON) {
                 osmGroup.clearLayers();
                 
-                // Menyaring agar hanya tipe "Building" dan "Road" yang tergambar
                 const filteredFeatures = fetchedGeoJSON.features.filter(f => 
                     f.properties && (f.properties.building || f.properties.highway)
                 );
@@ -489,14 +479,14 @@
                 } else {
                     Swal.fire({
                         toast: true, position: 'top-end', icon: 'info',
-                        title: 'Tidak ditemukan jalan/bangunan pada area lokasi ini.', showConfirmButton: false, timer: 3000
+                        title: 'Tidak ditemukan jalan/bangunan pada area ini.', showConfirmButton: false, timer: 3000
                     });
                 }
             } else {
                 Swal.fire({
                     icon: 'error',
                     title: 'Gagal Memuat Data OSM',
-                    text: 'Detail Error: ' + (errorMessage || 'Timeout Jaringan. Pastikan internet stabil.'),
+                    text: 'Detail Error: ' + (errorMessage || 'Koneksi terhalang firewall atau jaringan lokal.'),
                     confirmButtonColor: '#10b981'
                 });
             }

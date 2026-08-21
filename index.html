@@ -319,6 +319,7 @@
         let currentBbox = null;
         let clipboardGeoJSON = null;
         let lastSelectedLayer = null;
+        let uploadedKmlFeatures = []; // Global storage for KML boundary features for spatial filtering
 
         // --- 2. Leaflet Geoman ---
         map.pm.addControls({
@@ -543,6 +544,9 @@
                 return;
             }
 
+            // Simpan fitur KML ke variabel global untuk filter spasial OSM
+            uploadedKmlFeatures = geojson.features;
+
             const layer = L.geoJSON(geojson, {
                 style: function(feature) {
                     const geomType = feature.geometry ? feature.geometry.type : '';
@@ -588,7 +592,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data ---
+        // --- 6. Fetch OSM Data (With Boundary Spatial Filtering) ---
         async function fetchOSMWithAutoSplit(s, w, n, e, endpoint, depth = 0) {
             const query = `[out:json][timeout:40];
             (
@@ -719,9 +723,27 @@
                     processedFeatures.push(targetFeature);
                 });
 
-                const filteredFeatures = processedFeatures.filter(f => 
-                    f.properties && (f.properties.building || f.properties.highway)
-                );
+                // Filter agar hanya objek yang beririsan/di dalam boundary KML yang dimuat
+                const filteredFeatures = processedFeatures.filter(f => {
+                    if (!f.properties || (!f.properties.building && !f.properties.highway)) return false;
+
+                    if (uploadedKmlFeatures.length > 0) {
+                        let intersects = false;
+                        for (const kmlF of uploadedKmlFeatures) {
+                            if (!kmlF.geometry) continue;
+                            try {
+                                if (turf.booleanIntersects(f, kmlF)) {
+                                    intersects = true;
+                                    break;
+                                }
+                            } catch (err) {
+                                // Jika terjadi error pada geometri kompleks, abaikan dan lanjutkan
+                            }
+                        }
+                        return intersects;
+                    }
+                    return true;
+                });
 
                 if (filteredFeatures.length > 0) {
                     L.geoJSON({ type: "FeatureCollection", features: filteredFeatures }, {
@@ -750,12 +772,12 @@
 
                     Swal.fire({
                         toast: true, position: 'top-end', icon: 'success',
-                        title: `Data OSM (${filteredFeatures.length} objek) berhasil dimuat!`, showConfirmButton: false, timer: 2000
+                        title: `Data OSM (${filteredFeatures.length} objek) dalam boundary berhasil dimuat!`, showConfirmButton: false, timer: 2000
                     });
                 } else {
                     Swal.fire({
                         toast: true, position: 'top-end', icon: 'info',
-                        title: 'Tidak ditemukan jalan/bangunan pada area ini.', showConfirmButton: false, timer: 3000
+                        title: 'Tidak ditemukan jalan/bangunan di dalam boundary ini.', showConfirmButton: false, timer: 3000
                     });
                 }
             } else {
@@ -852,7 +874,7 @@
             }
         });
 
-        // --- 8. Load Project File (Updated with Auto-Center & Color Restoration) ---
+        // --- 8. Load Project File (With Geometry Color Logic & Auto-Center) ---
         document.getElementById('loadProjectInput').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -866,28 +888,23 @@
                     osmGroup.clearLayers();
                     drawGroup.clearLayers();
 
-                    // 1. Auto-Center & Zoom
                     const tempGeoLayer = L.geoJSON(geojson);
                     if (tempGeoLayer.getBounds().isValid()) {
                         map.fitBounds(tempGeoLayer.getBounds(), { padding: [50, 50] });
                     }
 
-                    // 2. Load with Color Restoration Logic
                     L.geoJSON(geojson, {
                         style: function(feature) {
                             const props = feature.properties || {};
                             const geomType = feature.geometry ? feature.geometry.type : '';
 
-                            // Logika untuk source KML
                             if (props.sourceGroup === 'kml') {
                                 if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
                                     return { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.15 };
                                 } else {
-                                    // Memastikan Garis/LineString kembali merah
                                     return { color: '#ef4444', weight: 3 };
                                 }
                             } 
-                            // Logika untuk source OSM
                             else if (props.sourceGroup === 'osm') {
                                 if (props.building) {
                                     return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
@@ -898,7 +915,6 @@
                                 return { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 };
                             }
                             
-                            // Default / User Drawn
                             return { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 };
                         },
                         pointToLayer: function(feature, latlng) {
@@ -920,7 +936,7 @@
                     Swal.fire({
                         icon: 'success',
                         title: 'Proyek Berhasil Dimuat!',
-                        text: `File "${file.name}" berhasil dibuka dan ditampilkan di tengah layar.`,
+                        text: `File "${file.name}" berhasil dimuat dengan pengaturan warna yang tepat.`,
                         confirmButtonColor: '#10b981'
                     });
 

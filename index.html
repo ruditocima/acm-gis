@@ -22,7 +22,7 @@
     <!-- toGeoJSON (for KML to GeoJSON) -->
     <script src="https://unpkg.com/@tmcw/togeojson@4.2.0/dist/togeojson.umd.js"></script>
 
-    <!-- OSM to GeoJSON (Fixed with stable jsDelivr CDN) -->
+    <!-- OSM to GeoJSON -->
     <script src="https://cdn.jsdelivr.net/npm/osmtogeojson@3.2.1/osmtogeojson.js"></script>
 
     <!-- Turf.js (for spatial processing & bounding boxes) -->
@@ -208,6 +208,53 @@
 
     <!-- Application Logic -->
     <script>
+        // --- 0. Built-in Fallback Converter (Safeguard if CDN script is blocked) ---
+        function customOSMToGeoJSON(data) {
+            const nodes = {};
+            const features = [];
+            if (!data || !data.elements) return { type: "FeatureCollection", features: [] };
+
+            data.elements.forEach(el => {
+                if (el.type === 'node') {
+                    nodes[el.id] = [el.lon, el.lat];
+                }
+            });
+
+            data.elements.forEach(el => {
+                if (el.type === 'way' && el.nodes && el.tags) {
+                    const coords = el.nodes.map(id => nodes[id]).filter(coord => coord !== undefined);
+                    if (coords.length < 2) return;
+
+                    let isPolygon = false;
+                    if (el.tags.building || el.tags.landuse || el.tags.amenity || el.tags.leisure) {
+                        isPolygon = true;
+                    }
+                    if (coords.length >= 4 && coords[0][0] === coords[coords.length - 1][0] && coords[0][1] === coords[coords.length - 1][1]) {
+                        isPolygon = true;
+                    }
+
+                    if (isPolygon) {
+                        if (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1]) {
+                            coords.push(coords[0]);
+                        }
+                        features.push({
+                            type: "Feature",
+                            geometry: { type: "Polygon", coordinates: [coords] },
+                            properties: el.tags
+                        });
+                    } else {
+                        features.push({
+                            type: "Feature",
+                            geometry: { type: "LineString", coordinates: coords },
+                            properties: el.tags
+                        });
+                    }
+                }
+            });
+
+            return { type: "FeatureCollection", features: features };
+        }
+
         // --- 1. Map Initialization (OSM & Google Satellite) ---
         const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 22,
@@ -222,7 +269,7 @@
         });
 
         const map = L.map('map', {
-            center: [-0.7893, 113.9213], // Default center (Indonesia)
+            center: [-0.7893, 113.9213],
             zoom: 5,
             layers: [osmLayer],
             zoomControl: false 
@@ -280,7 +327,7 @@
         function bindNamePopup(layer) {
             layer.on('click', function(e) {
                 let props = layer.feature?.properties || {};
-                let name = props.name || props.Name || props.NAME || props.type || 'Object';
+                let name = props.name || props.Name || props.NAME || props.type || props.building || props.highway || 'Object';
                 let desc = props.description || props.Description || '';
                 
                 let content = `<b>${name}</b>`;
@@ -361,7 +408,6 @@
                 title: 'KML loaded! Fetching OSM data...', showConfirmButton: false, timer: 1500
             });
 
-            // AUTOMATIC TRIGGER: Fetch OSM data
             setTimeout(() => {
                 if (currentBbox) {
                     fetchOSMData(currentBbox);
@@ -369,27 +415,15 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (With osmtogeojson Safety Check & Proxy) ---
+        // --- 6. Fetch OSM Data (With Robust Fallback Check) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
-
-            // Periksa ketersediaan library osmtogeojson secara global
-            if (typeof osmtogeojson === 'undefined') {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Library Error',
-                    text: 'Library osmtogeojson belum termuat sempurna. Periksa koneksi internet Anda.',
-                    confirmButtonColor: '#10b981'
-                });
-                return;
-            }
 
             const s = bbox.getSouth();
             const w = bbox.getWest();
             const n = bbox.getNorth();
             const e_coord = bbox.getEast();
 
-            // Batasi area agar tidak overload
             const latSpan = Math.abs(n - s);
             const lonSpan = Math.abs(e_coord - w);
             if (latSpan > 0.2 || lonSpan > 0.2) {
@@ -443,7 +477,17 @@
                 if (response.ok) {
                     const data = await response.json();
                     if (data && data.elements) {
-                        fetchedGeoJSON = osmtogeojson(data);
+                        // Cek apakah pustaka luar tersedia, jika tidak gunakan fallback mandiri
+                        if (typeof osmtogeojson !== 'undefined') {
+                            try {
+                                fetchedGeoJSON = osmtogeojson(data);
+                            } catch (err) {
+                                console.warn("osmtogeojson execution error, switching to fallback:", err);
+                                fetchedGeoJSON = customOSMToGeoJSON(data);
+                            }
+                        } else {
+                            fetchedGeoJSON = customOSMToGeoJSON(data);
+                        }
                         success = true;
                     }
                 } else {
@@ -454,7 +498,6 @@
                 errorMessage = error.message;
             }
 
-            // RENDER DATA KE PETA
             if (success && fetchedGeoJSON) {
                 osmGroup.clearLayers();
                 
@@ -505,7 +548,7 @@
             btn.disabled = false;
         }
 
-        // Manual trigger button event
+        document.getElementById('btn-fetch-npm')?.addEventListener('click', () => {}); // placeholder safe
         document.getElementById('btn-fetch-osm').addEventListener('click', () => {
             if (currentBbox) fetchOSMData(currentBbox);
         });

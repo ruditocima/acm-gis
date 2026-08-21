@@ -592,7 +592,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (Direct Request without Quadtree Subdivision) ---
+        // --- 6. Fetch OSM Data (Smart 2x2 Grid Chunking to prevent HTTP 504 Timeout) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -606,14 +606,15 @@
             btn.innerHTML = 'Fetching OSM... <div class="loader"></div>';
             btn.disabled = true;
 
-            const query = `[out:json][timeout:60];
-            (
-              way["building"](${s},${w},${n},${e_coord});
-              way["highway"](${s},${w},${n},${e_coord});
-            );
-            out body;
-            >;
-            out skel qt;`;
+            // Bagi bbox menjadi 2x2 grid agar tidak terkena HTTP 504 Timeout di server publik Overpass
+            const midLat = (s + n) / 2;
+            const midLon = (w + e_coord) / 2;
+            const subBoxes = [
+                [s, w, midLat, midLon],
+                [s, midLon, midLat, e_coord],
+                [midLat, w, n, midLon],
+                [midLat, midLon, n, e_coord]
+            ];
 
             const endpoints = [
                 'https://lz4.overpass-api.de/api/interpreter',
@@ -622,26 +623,48 @@
                 'https://overpass.kumi.systems/api/interpreter'
             ];
 
+            let allElements = [];
             let success = false;
-            let rawElements = [];
             let errorMessage = "";
 
             for (let targetUrl of endpoints) {
                 try {
-                    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
-                    const response = await fetch(proxyUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: "data=" + encodeURIComponent(query)
-                    });
+                    let tempElements = [];
+                    let gridSuccess = true;
 
-                    if (response.ok) {
-                        const data = await response.json();
-                        rawElements = data.elements || [];
+                    for (const box of subBoxes) {
+                        const query = `[out:json][timeout:30];
+                        (
+                          way["building"](${box[0]},${box[1]},${box[2]},${box[3]});
+                          way["highway"](${box[0]},${box[1]},${box[2]},${box[3]});
+                        );
+                        out body;
+                        >;
+                        out skel qt;`;
+
+                        const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
+                        const response = await fetch(proxyUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: "data=" + encodeURIComponent(query)
+                        });
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.elements) {
+                                tempElements.push(...data.elements);
+                            }
+                        } else {
+                            gridSuccess = false;
+                            errorMessage = `HTTP ${response.status}`;
+                            break;
+                        }
+                    }
+
+                    if (gridSuccess) {
+                        allElements = tempElements;
                         success = true;
                         break;
-                    } else {
-                        errorMessage = `HTTP ${response.status}`;
                     }
                 } catch (error) {
                     console.warn(`Mirror failed (${targetUrl}):`, error);
@@ -651,7 +674,7 @@
 
             if (success) {
                 const seen = new Set();
-                const uniqueElements = rawElements.filter(el => {
+                const uniqueElements = allElements.filter(el => {
                     const key = el.type + '_' + el.id;
                     if (seen.has(key)) return false;
                     seen.add(key);

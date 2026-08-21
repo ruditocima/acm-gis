@@ -591,7 +591,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (Sequential 2x2 Grid with Anti-Throttle Delay) ---
+        // --- 6. Fetch OSM Data (Direct Fetch with Partial Success & Mirror Fallback) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -615,30 +615,28 @@
             ];
 
             const endpoints = [
+                'https://overpass-api.de/api/interpreter',
                 'https://lz4.overpass-api.de/api/interpreter',
                 'https://z.overpass-api.de/api/interpreter',
-                'https://overpass-api.de/api/interpreter',
                 'https://overpass.kumi.systems/api/interpreter'
             ];
 
             let allElements = [];
             let success = false;
-            let errorMessage = "";
 
             for (let targetUrl of endpoints) {
-                try {
-                    let tempElements = [];
-                    let gridSuccess = true;
+                let tempElements = [];
+                let collectedCount = 0;
 
-                    for (let i = 0; i < subBoxes.length; i++) {
-                        const box = subBoxes[i];
-                        
-                        // Jeda waktu (1.5 detik) antar permintaan grid untuk mencegah HTTP 504 / Rate Limit
-                        if (i > 0) {
-                            await new Promise(resolve => setTimeout(resolve, 1500));
-                        }
+                for (let i = 0; i < subBoxes.length; i++) {
+                    const box = subBoxes[i];
+                    
+                    if (i > 0) {
+                        await new Promise(resolve => setTimeout(resolve, 800));
+                    }
 
-                        const query = `[out:json][timeout:25];
+                    try {
+                        const query = `[out:json][timeout:20];
                         (
                           way["building"](${box[0]},${box[1]},${box[2]},${box[3]});
                           way["highway"](${box[0]},${box[1]},${box[2]},${box[3]});
@@ -647,8 +645,8 @@
                         >;
                         out skel qt;`;
 
-                        const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
-                        const response = await fetch(proxyUrl, {
+                        // Menggunakan direct fetch karena Overpass mendukung CORS native
+                        const response = await fetch(targetUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                             body: "data=" + encodeURIComponent(query)
@@ -658,22 +656,19 @@
                             const data = await response.json();
                             if (data.elements) {
                                 tempElements.push(...data.elements);
+                                collectedCount++;
                             }
-                        } else {
-                            gridSuccess = false;
-                            errorMessage = `HTTP ${response.status}`;
-                            break;
                         }
+                    } catch (error) {
+                        console.warn(`Sub-box ${i} failed on ${targetUrl}:`, error);
                     }
+                }
 
-                    if (gridSuccess) {
-                        allElements = tempElements;
-                        success = true;
-                        break;
-                    }
-                } catch (error) {
-                    console.warn(`Mirror failed (${targetUrl}):`, error);
-                    errorMessage = error.message;
+                // Jika server ini berhasil merespon setidaknya 1 sub-grid, anggap sukses parsial
+                if (collectedCount > 0) {
+                    allElements = tempElements;
+                    success = true;
+                    break;
                 }
             }
 
@@ -772,7 +767,7 @@
 
                     Swal.fire({
                         toast: true, position: 'top-end', icon: 'success',
-                        title: `Data OSM (${filteredFeatures.length} objek) dalam boundary berhasil dimuat!`, showConfirmButton: false, timer: 2000
+                        title: `Data OSM (${filteredFeatures.length} objek) berhasil dimuat!`, showConfirmButton: false, timer: 2000
                     });
                 } else {
                     Swal.fire({
@@ -784,10 +779,10 @@
                 Swal.fire({
                     icon: 'error',
                     title: 'Gagal Memuat Data OSM',
-                    html: 'Detail Error: ' + (errorMessage || 'Koneksi terhalang firewall atau jaringan lokal.') + '<br><br>Server publik Overpass sedang sibuk atau area terlalu padat.',
+                    html: 'Detail Error: HTTP 504 / Gateway Timeout.<br><br>Seluruh server publik Overpass sedang padat. Silakan coba beberapa saat lagi atau lanjutkan ekspor menggunakan boundary KML & objek gambar manual.',
                     showCancelButton: true,
                     confirmButtonText: 'Coba Lagi',
-                    cancelButtonText: 'Lewati OSM & Lanjutkan',
+                    cancelButtonText: 'Abaikan OSM',
                     confirmButtonColor: '#10b981',
                     cancelButtonColor: '#6b7280'
                 }).then((result) => {

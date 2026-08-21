@@ -181,7 +181,7 @@
                     <i class="fa-solid fa-city mr-2"></i> Refresh Buildings & Roads
                 </button>
                 <p class="text-[11px] text-gray-400 mt-2 leading-relaxed">
-                    Click to load real OSM data safely in optimized chunks.
+                    Click to load real OSM data safely in optimized micro-chunks.
                 </p>
             </div>
 
@@ -581,7 +581,7 @@
             });
         }
 
-        // --- 6. Fetch OSM Data with Dynamic 3x3 Grid Splitting & Resilient Fallback ---
+        // --- 6. Fetch OSM Data with Dynamic 5x5 Grid Splitting (25 Sub-boxes) & Resilient Fallback ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -592,7 +592,7 @@
 
             const btn = document.getElementById('btn-fetch-osm');
             const originalHTML = btn.innerHTML;
-            btn.innerHTML = 'Fetching OSM Safely (Grid Split)... <div class="loader"></div>';
+            btn.innerHTML = 'Fetching OSM Safely (Micro-Grid)... <div class="loader"></div>';
             btn.disabled = true;
 
             const endpoints = [
@@ -601,8 +601,8 @@
                 'https://z.overpass-api.de/api/interpreter'
             ];
 
-            // Bagi area menjadi 3x3 grid (9 bagian) agar kecil & tidak kena 504 Gateway Timeout
-            const gridDiv = 3;
+            // Ubah grid menjadi 5x5 (25 bagian kecil) untuk menghindari timeout 504 pada area luas
+            const gridDiv = 5;
             const latSpan = n - s;
             const lonSpan = e_coord - w;
             const latStep = latSpan / gridDiv;
@@ -625,7 +625,7 @@
 
             for (let i = 0; i < subBoxes.length; i++) {
                 let box = subBoxes[i];
-                const query = `[out:json][timeout:25];
+                const query = `[out:json][timeout:20];
                 (
                   way["building"](${box.s},${box.w},${box.n},${box.e});
                   way["highway"](${box.s},${box.w},${box.n},${box.e});
@@ -653,11 +653,11 @@
                                     break;
                                 }
                             } else {
-                                await new Promise(resolve => setTimeout(resolve, 1500));
+                                await new Promise(resolve => setTimeout(resolve, 1000));
                                 retries--;
                             }
                         } catch (error) {
-                            await new Promise(resolve => setTimeout(resolve, 1500));
+                            await new Promise(resolve => setTimeout(resolve, 1000));
                             retries--;
                         }
                     }
@@ -666,9 +666,9 @@
 
                 if (boxSuccess) successCount++;
 
-                // Jeda antar grid request agar server tidak memblokir / timeout
+                // Jeda micro-delay antar kotak kecil agar server tidak memblokir
                 if (i < subBoxes.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    await new Promise(resolve => setTimeout(resolve, 400));
                 }
             }
 
@@ -778,7 +778,7 @@
                 Swal.fire({
                     icon: 'error',
                     title: 'Koneksi ke Server OSM Timeout',
-                    html: 'Boundary area KML Anda mungkin terlalu besar untuk server publik. Silakan coba gunakan area KML yang lebih spesifik/fokus.',
+                    html: 'Boundary area KML Anda sangat luas. Silakan coba gunakan area KML yang lebih spesifik.',
                     confirmButtonText: 'OK',
                     confirmButtonColor: '#10b981'
                 });

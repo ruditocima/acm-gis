@@ -130,7 +130,7 @@
 
     <!-- Sidebar / Main Menu -->
     <div class="glass-panel w-80 h-screen flex flex-col shadow-2xl absolute left-0 top-0 transition-transform duration-300">
-        <!-- Header[cite: 1] -->
+        <!-- Header -->
         <div class="p-6 border-b border-gray-700/50 flex items-center justify-between">
             <div>
                 <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-cyan-400 tracking-wide">
@@ -140,10 +140,10 @@
             </div>
         </div>
 
-        <!-- Scrollable Content[cite: 1] -->
+        <!-- Scrollable Content -->
         <div class="p-6 flex-1 overflow-y-auto space-y-6">
             
-            <!-- Layer Control (Map vs Earth)[cite: 1] -->
+            <!-- Layer Control (Map vs Earth) -->
             <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Base Layer</h2>
                 <div class="flex bg-gray-900 rounded-lg p-1">
@@ -156,7 +156,7 @@
                 </div>
             </div>
 
-            <!-- Upload Section[cite: 1] -->
+            <!-- Upload Section -->
             <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Import Data</h2>
                 <div class="file-upload-wrapper">
@@ -171,17 +171,17 @@
                 </div>
             </div>
 
-            <!-- Fetch OSM Data & Earth Alignment Calibration[cite: 1] -->
+            <!-- Fetch OSM Data & Earth Alignment Calibration -->
             <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Environment Data</h2>
                 
-                <!-- Input Pengaturan Lebar Jalan OSM[cite: 1] -->
+                <!-- Input Pengaturan Lebar Jalan OSM -->
                 <div class="mb-3">
                     <label for="roadWidthInput" class="text-xs font-medium text-gray-300 block mb-1">Lebar Jalan OSM (Meter)</label>
                     <input type="number" id="roadWidthInput" value="6" min="1" max="50" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
                 </div>
 
-                <!-- Kalibrasi Offset Posisi OSM untuk Tampilan Earth[cite: 1] -->
+                <!-- Kalibrasi Offset Posisi OSM untuk Tampilan Earth -->
                 <div class="mb-3 grid grid-cols-2 gap-2">
                     <div>
                         <label for="offsetLatInput" class="text-xs font-medium text-gray-300 block mb-1">Offset Lat (m)</label>
@@ -193,54 +193,44 @@
                     </div>
                 </div>
                 <p class="text-[10px] text-gray-400 mb-3 leading-relaxed">
-                    Atur offset meter jika posisi OSM belum pas dengan citra Earth.[cite: 1]
+                    Atur offset meter jika posisi OSM belum pas dengan citra Earth.
                 </p>
 
                 <button id="btn-fetch-osm" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium text-sm transition-colors shadow-lg shadow-blue-900/20 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed" disabled>
                     <i class="fa-solid fa-city mr-2"></i> Refresh Buildings & Roads
                 </button>
                 <p class="text-[11px] text-gray-400 mt-2 leading-relaxed">
-                    Automatically loads real OSM data (buildings & roads) inside your uploaded boundary.[cite: 1]
+                    Automatically loads real OSM data (buildings & roads) inside your uploaded boundary.
                 </p>
             </div>
 
-            <!-- Editing Tools & Added Undo/Cancel Buttons -->
+            <!-- Drawing Controls Note -->
             <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
                 <h2 class="text-sm font-semibold mb-1 text-gray-300 uppercase tracking-wider">Editing Tools</h2>
-                <p class="text-xs text-gray-400 mb-3">Use the toolbar on the map to draw, edit, or measure polygons and lines in real-world dimensions.</p>
-                
-                <!-- Tombol Tambahan: Undo & Cancel -->
-                <div class="grid grid-cols-2 gap-2">
-                    <button id="btn-undo-edit" class="py-2 px-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center shadow">
-                        <i class="fa-solid fa-rotate-left mr-1.5 text-amber-400"></i> Undo
-                    </button>
-                    <button id="btn-cancel-edit" class="py-2 px-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center shadow">
-                        <i class="fa-solid fa-ban mr-1.5 text-rose-400"></i> Cancel
-                    </button>
-                </div>
+                <p class="text-xs text-gray-400">Use the toolbar on the map to draw, edit, or measure polygons and lines in real-world dimensions.</p>
             </div>
             
         </div>
 
-        <!-- Footer Actions[cite: 1] -->
+        <!-- Footer Actions -->
         <div class="p-6 border-t border-gray-700/50 flex flex-col gap-3 bg-gray-800/30">
-            <!-- Save State (Supabase prep)[cite: 1] -->
+            <!-- Save State (Supabase prep) -->
             <button id="btn-save" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center">
                 <i class="fa-solid fa-floppy-disk mr-2"></i> Save State (Supabase)
             </button>
-            <!-- Export DXF[cite: 1] -->
+            <!-- Export DXF -->
             <button id="btn-export" class="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg font-bold text-sm transition-all shadow-lg shadow-emerald-900/40 flex items-center justify-center">
                 <i class="fa-solid fa-file-export mr-2"></i> Export to DXF
             </button>
         </div>
     </div>
 
-    <!-- Map Container[cite: 1] -->
+    <!-- Map Container -->
     <div id="map"></div>
 
     <!-- Application Logic -->
     <script>
-        // --- Custom Solid Light Blue Dot Symbol with White Outline[cite: 1] ---
+        // --- Custom Solid Light Blue Dot Symbol with White Outline ---
         const blueDotIcon = L.divIcon({
             className: 'custom-blue-dot-symbol',
             html: '<div style="background-color: #38bdf8; width: 10px; height: 10px; border: 2px solid #ffffff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></div>',
@@ -248,7 +238,7 @@
             iconAnchor: [5, 5]
         });
 
-        // --- 0. Built-in Fall-back Converter[cite: 1] ---
+        // --- 0. Built-in Fall-back Converter ---
         function customOSMToGeoJSON(data) {
             const nodes = {};
             const features = [];
@@ -295,7 +285,7 @@
             return { type: "FeatureCollection", features: features };
         }
 
-        // --- Helper: Apply Meter Offset to Feature[cite: 1] ---
+        // --- Helper: Apply Meter Offset to Feature ---
         function applyOffset(feature, dLatMeters, dLonMeters) {
             if (dLatMeters === 0 && dLonMeters === 0) return feature;
             const cloned = JSON.parse(JSON.stringify(feature));
@@ -328,7 +318,7 @@
             return cloned;
         }
 
-        // --- 1. Map Initialization[cite: 1] ---
+        // --- 1. Map Initialization ---
         const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 22,
             maxNativeZoom: 19,
@@ -356,7 +346,7 @@
 
         let currentBbox = null;
 
-        // --- 2. Leaflet Geoman[cite: 1] ---
+        // --- 2. Leaflet Geoman ---
         map.pm.addControls({
             position: 'topright',
             drawCircle: false,
@@ -371,6 +361,85 @@
             cutPolygon: true,
             removalMode: true,
         });
+
+        // --- Tambahan: Floating Undo & Cancel Control Panel for Drawing/Editing ---
+        let currentWorkingLayer = null;
+        const undoCancelControl = L.control({ position: 'topright' });
+        undoCancelControl.onAdd = function (map) {
+            const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+            div.style.backgroundColor = 'rgba(23, 25, 35, 0.9)';
+            div.style.backdropFilter = 'blur(8px)';
+            div.style.border = '1px solid rgba(255, 255, 255, 0.15)';
+            div.style.borderRadius = '8px';
+            div.style.padding = '4px';
+            div.style.display = 'flex';
+            div.style.gap = '4px';
+            div.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
+            div.id = 'dynamic-undo-cancel-panel';
+            div.className = 'hidden'; // Default tersembunyi
+
+            div.innerHTML = `
+                <button id="custom-undo-btn" title="Undo Last Vertex" class="px-2.5 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded text-xs font-medium flex items-center gap-1 transition-colors">
+                    <i class="fa-solid fa-rotate-left"></i> Undo
+                </button>
+                <button id="custom-cancel-btn" title="Cancel Operation" class="px-2.5 py-1.5 bg-red-600/80 hover:bg-red-500 text-white rounded text-xs font-medium flex items-center gap-1 transition-colors">
+                    <i class="fa-solid fa-ban"></i> Cancel
+                </button>
+            `;
+            return div;
+        };
+        undoCancelControl.addTo(map);
+
+        const panelEl = document.getElementById('dynamic-undo-cancel-panel');
+        
+        function showUndoCancelToolbar(layer) {
+            currentWorkingLayer = layer;
+            if (panelEl) panelEl.classList.remove('hidden');
+        }
+
+        function hideUndoCancelToolbar() {
+            currentWorkingLayer = null;
+            if (panelEl) panelEl.classList.add('hidden');
+        }
+
+        // Event listener untuk Tombol Undo Kustom
+        document.getElementById('custom-undo-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (currentWorkingLayer && currentWorkingLayer.pm) {
+                try {
+                    currentWorkingLayer.pm.removeLatLng();
+                } catch (err) {
+                    console.warn("Undo vertex not supported for this shape.", err);
+                }
+            }
+        });
+
+        // Event listener untuk Tombol Cancel Kustom
+        document.getElementById('custom-cancel-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            map.pm.disableDraw();
+            map.pm.disableGlobalEditMode();
+            map.pm.disableGlobalDragMode();
+            map.pm.disableGlobalRemovalMode();
+            hideUndoCancelToolbar();
+            Swal.fire({
+                toast: true, position: 'top-end', icon: 'info',
+                title: 'Operation cancelled', showConfirmButton: false, timer: 1500
+            });
+        });
+
+        map.on('pm:drawstart', (e) => {
+            showUndoCancelToolbar(e.workingLayer);
+        });
+
+        map.on('pm:editstart', (e) => {
+            showUndoCancelToolbar(e.layer);
+        });
+
+        map.on('pm:drawend pm:create pm:editend', () => {
+            hideUndoCancelToolbar();
+        });
+        // --- Akhir Fitur Undo & Cancel ---
         
         map.on('pm:create', (e) => {
             if (e.shape === 'Marker') {
@@ -381,7 +450,8 @@
             bindNamePopup(e.layer);
         });
 
-        // --- Proteksi Interaksi Layer[cite: 1] ---
+        // --- Proteksi Interaksi Layer (Sesuai Permintaan) ---
+        // 1. Mencegah vertex editing pada OSM Buildings (hanya boleh drag)
         map.on('pm:edit', (e) => {
             if (e.layer && e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.building) {
                 e.layer.pm.disableEdit();
@@ -392,6 +462,7 @@
             }
         });
 
+        // 2. Mencegah penghapusan (removal) pada OSM Buildings
         map.on('pm:remove', (e) => {
             if (e.layer && e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.building) {
                 osmGroup.addLayer(e.layer);
@@ -402,33 +473,7 @@
             }
         });
 
-        // --- Logika Tombol Undo & Cancel (Baru Ditambahkan) ---
-        document.getElementById('btn-undo-edit').addEventListener('click', () => {
-            if (typeof map.pm.undo === 'function') {
-                map.pm.undo();
-                Swal.fire({
-                    toast: true, position: 'top-end', icon: 'success',
-                    title: 'Undo last action/vertex', showConfirmButton: false, timer: 1500
-                });
-            } else {
-                Swal.fire({
-                    toast: true, position: 'top-end', icon: 'info',
-                    title: 'No active undo action available', showConfirmButton: false, timer: 1500
-                });
-            }
-        });
-
-        document.getElementById('btn-cancel-edit').addEventListener('click', () => {
-            map.pm.disableGlobalDrawMode();
-            map.pm.disableGlobalEditMode();
-            map.pm.disableGlobalRemovalMode();
-            Swal.fire({
-                toast: true, position: 'top-end', icon: 'info',
-                title: 'Editing/Drawing cancelled', showConfirmButton: false, timer: 1500
-            });
-        });
-
-        // --- 3. UI Interactions[cite: 1] ---
+        // --- 3. UI Interactions ---
         const btnMap = document.getElementById('btn-map');
         const btnEarth = document.getElementById('btn-earth');
 
@@ -446,7 +491,7 @@
             btnMap.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
         });
 
-        // --- 4. Popup Binding[cite: 1] ---
+        // --- 4. Popup Binding ---
         function bindNamePopup(layer) {
             layer.on('click', function(e) {
                 let props = layer.feature?.properties || {};
@@ -460,7 +505,7 @@
             });
         }
 
-        // --- 5. File Upload (KML / KMZ)[cite: 1] ---
+        // --- 5. File Upload (KML / KMZ) ---
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -542,7 +587,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data with Earth Alignment Offset[cite: 1] ---
+        // --- 6. Fetch OSM Data with Earth Alignment Offset ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -735,7 +780,7 @@
             if (currentBbox) fetchOSMData(currentBbox);
         });
 
-        // --- 7. Save State[cite: 1] ---
+        // --- 7. Save State ---
         document.getElementById('btn-save').addEventListener('click', () => {
             const allFeatures = [];
             [kmlGroup, osmGroup, drawGroup].forEach(group => {
@@ -756,7 +801,7 @@
             });
         });
 
-        // --- 8. Export to DXF[cite: 1] ---
+        // --- 8. Export to DXF ---
         function lonLatToMeters(lon, lat) {
             const x = lon * 20037508.34 / 180;
             let y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);
@@ -817,7 +862,6 @@
 
                 function addLWPolyline(coords, isClosed) {
                     let chunk = `  0\r\nLWPOLYLINE\r\n`;
-                    chunk = chunk.replace(/\n/g, "\r\n");
                     chunk += `  8\r\n${layerName}\r\n`;
                     chunk += ` 90\r\n${coords.length}\r\n`;
                     chunk += ` 70\r\n${isClosed ? 1 : 0}\r\n`;

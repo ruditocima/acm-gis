@@ -494,7 +494,7 @@
             });
         }
 
-        // --- 5. File Upload (KML / KMZ) ---
+        // --- 5. File Upload (KML / KMZ) ---[cite: 1]
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -588,7 +588,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (Dilengkapi Auto-Splitting Kuadran untuk Mencegah Error 413) ---
+        // --- 6. Fetch OSM Data ---[cite: 1]
         async function fetchOSMWithAutoSplit(s, w, n, e, endpoint, depth = 0) {
             const query = `[out:json][timeout:40];
             (
@@ -610,7 +610,6 @@
                 const data = await response.json();
                 return data.elements || [];
             } else if (response.status === 413 && depth < 2) {
-                // Jika terkena Payload Too Large (413), otomatis pecah area jadi 4 sub-kuadran
                 const midLat = (s + n) / 2;
                 const midLon = (w + e) / 2;
                 
@@ -672,7 +671,6 @@
             }
 
             if (success) {
-                // Hapus duplikasi elemen dari hasil pemecahan kuadran
                 const seen = new Set();
                 const uniqueElements = rawElements.filter(el => {
                     const key = el.type + '_' + el.id;
@@ -785,7 +783,6 @@
             if (currentBbox) fetchOSMData(currentBbox);
         });
 
-        // --- Helper untuk meratakan dan mengekstrak fitur dari grup peta ---
         function extractFeaturesTo(group, sourceGroupName, targetArray) {
             group.eachLayer(layer => {
                 if (typeof layer.toGeoJSON === 'function') {
@@ -811,7 +808,7 @@
             });
         }
 
-        // --- 7. Save Project File (Download as JSON with Custom Name) ---
+        // --- 7. Save Project File ---[cite: 1]
         document.getElementById('btn-save').addEventListener('click', async () => {
             const allFeatures = [];
             extractFeaturesTo(kmlGroup, 'kml', allFeatures);
@@ -855,7 +852,7 @@
             }
         });
 
-        // --- 8. Load Project File (Upload JSON) ---
+        // --- 8. Load Project File (Updated with Auto-Center/Zoom) ---[cite: 1]
         document.getElementById('loadProjectInput').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -868,6 +865,12 @@
                     kmlGroup.clearLayers();
                     osmGroup.clearLayers();
                     drawGroup.clearLayers();
+
+                    // FITUR BARU: Hitung Bounds secara instan dan pusatkan di layar
+                    const tempGeoLayer = L.geoJSON(geojson);
+                    if (tempGeoLayer.getBounds().isValid()) {
+                        map.fitBounds(tempGeoLayer.getBounds(), { padding: [50, 50] });
+                    }
 
                     L.geoJSON(geojson, {
                         style: function(feature) {
@@ -904,7 +907,7 @@
                     Swal.fire({
                         icon: 'success',
                         title: 'Proyek Berhasil Dimuat!',
-                        text: `File "${file.name}" berhasil dibuka kembali di peta.`,
+                        text: `File "${file.name}" berhasil dibuka dan ditampilkan di tengah layar.`,
                         confirmButtonColor: '#10b981'
                     });
 
@@ -916,7 +919,7 @@
             e.target.value = '';
         });
 
-        // --- 9. Export to DXF ---
+        // --- 9. Export to DXF ---[cite: 1]
         function lonLatToMeters(lon, lat) {
             const x = lon * 20037508.34 / 180;
             let y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);

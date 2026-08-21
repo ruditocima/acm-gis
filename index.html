@@ -208,17 +208,13 @@
 
     <!-- Application Logic -->
     <script>
-        // --- 1. Map Initialization (OSM as Default) ---
-
-        // DITAMBAHKAN maxNativeZoom: 19 agar OSM tidak error saat dizoom maksimal
+        // --- 1. Map Initialization (OSM & Google Satellite) ---
         const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 22,
             maxNativeZoom: 19,
             attribution: '© OpenStreetMap contributors'
         });
 
-        // DIGANTI: Menggunakan Google Maps Satellite yang lebih tajam
-        // DITAMBAHKAN: maxNativeZoom: 20 (Menghentikan request tile error dan otomatis memperbesar tile terakhir)
         const earthLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
             maxZoom: 22,
             maxNativeZoom: 20, 
@@ -373,103 +369,128 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (With Robust HTTP Status & Timeout Handling) ---
+        // --- 6. Fetch OSM Data (High-Performance Query + Fast Failover) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
-
-            const btn = document.getElementById('btn-fetch-osm');
-            const originalHTML = btn.innerHTML;
-            btn.innerHTML = 'Fetching Data... <div class="loader"></div>';
-            btn.disabled = true;
 
             const s = bbox.getSouth();
             const w = bbox.getWest();
             const n = bbox.getNorth();
             const e_coord = bbox.getEast();
 
-            const query = `
-                [out:json][timeout:25];
-                (
-                  way["building"](${s},${w},${n},${e_coord});
-                  way["highway"](${s},${w},${n},${e_coord});
-                );
-                out body;
-                >;
-                out skel qt;
-            `;
+            // Proteksi Area: Cegah panggilah jika area KML/KMZ terlalu besar (> 0.25 derajat)
+            const latSpan = Math.abs(n - s);
+            const lonSpan = Math.abs(e_coord - w);
+            if (latSpan > 0.35 || lonSpan > 0.35) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Area Terlalu Luas',
+                    text: 'Cakupan boundary KML/KMZ Anda sangat besar. Pengambilan otomatis bangunan & jalan dibatalkan untuk mencegah timeout server Overpass API.',
+                    confirmButtonColor: '#10b981'
+                });
+                return;
+            }
 
-            // List of reliable Overpass API instances
+            const btn = document.getElementById('btn-fetch-osm');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = 'Fetching Data... <div class="loader"></div>';
+            btn.disabled = true;
+
+            // Optimasi Utama: Menggunakan "out geom;" (Beban server jauh lebih ringan & super cepat)
+            const query = `[out:json][timeout:30];
+(
+  way["building"](${s},${w},${n},${e_coord});
+  way["highway"](${s},${w},${n},${e_coord});
+);
+out geom;`;
+
+            // Daftar server mirror Overpass API yang aktif & cepat
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
-                'https://lz4.overpass-api.de/api/interpreter',
-                'https://overpass.kumi.systems/api/interpreter'
+                'https://overpass.kumi.systems/api/interpreter',
+                'https://overpass.nchc.org.tw/api/interpreter',
+                'https://overpass.private.coffee/api/interpreter'
             ];
 
             let success = false;
-            let lastErrorMsg = '';
 
             for (const endpoint of endpoints) {
                 try {
+                    // AbortController untuk membatasi waktu tunggu per-server maksimal 12 detik
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
                     const response = await fetch(endpoint, {
                         method: 'POST',
-                        body: query
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: 'data=' + encodeURIComponent(query),
+                        signal: controller.signal
                     });
-                    
-                    // Explicitly check HTTP response status (handles 504 Gateway Timeout cleanly)
+
+                    clearTimeout(timeoutId);
+
                     if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
+                        throw new Error(`HTTP ${response.status}`);
                     }
-                    
+
                     const responseText = await response.text();
 
-                    // Check if response is valid JSON and not an error page (HTML)
                     if (responseText.trim().startsWith('{')) {
                         const data = JSON.parse(responseText);
                         const geojson = osmtogeojson(data);
-                        
-                        osmGroup.clearLayers();
-                        
-                        L.geoJSON(geojson, {
-                            style: function(feature) {
-                                if (feature.properties.building) {
-                                    return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
-                                }
-                                if (feature.properties.highway) {
-                                    return { color: '#9ca3af', weight: 3, opacity: 0.8 };
-                                }
-                                return { color: '#ffffff', weight: 1 };
-                            },
-                            onEachFeature: function(feature, layer) {
-                                if (!feature.properties.name) {
-                                    if(feature.properties.building) feature.properties.name = "Building";
-                                    else if(feature.properties.highway) feature.properties.name = "Road";
-                                }
-                                bindNamePopup(layer);
-                            }
-                        }).addTo(osmGroup);
 
-                        Swal.fire({
-                            toast: true, position: 'top-end', icon: 'success',
-                            title: 'Data loaded successfully!', showConfirmButton: false, timer: 2000
-                        });
+                        osmGroup.clearLayers();
+
+                        if (geojson && geojson.features && geojson.features.length > 0) {
+                            L.geoJSON(geojson, {
+                                style: function(feature) {
+                                    if (feature.properties.building) {
+                                        return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
+                                    }
+                                    if (feature.properties.highway) {
+                                        return { color: '#9ca3af', weight: 3, opacity: 0.8 };
+                                    }
+                                    return { color: '#ffffff', weight: 1 };
+                                },
+                                onEachFeature: function(feature, layer) {
+                                    if (!feature.properties.name) {
+                                        if (feature.properties.building) feature.properties.name = "Building";
+                                        else if (feature.properties.highway) feature.properties.name = "Road";
+                                    }
+                                    bindNamePopup(layer);
+                                }
+                            }).addTo(osmGroup);
+
+                            Swal.fire({
+                                toast: true, position: 'top-end', icon: 'success',
+                                title: `Data OSM (${geojson.features.length} objek) dimuat!`, showConfirmButton: false, timer: 2000
+                            });
+                        } else {
+                            Swal.fire({
+                                toast: true, position: 'top-end', icon: 'info',
+                                title: 'Tidak ada bangunan/jalan OSM di area ini.', showConfirmButton: false, timer: 2500
+                            });
+                        }
 
                         success = true;
-                        break; // Stop trying other servers
+                        break; // Berhasil, keluar dari loop endpoint
                     } else {
-                        throw new Error("Invalid response format");
+                        throw new Error("Respon bukan JSON valid");
                     }
                 } catch (err) {
-                    console.warn(`Attempt with ${endpoint} failed (${err.message}). Trying next...`);
-                    lastErrorMsg = err.message;
+                    console.warn(`Gagal terhubung ke ${endpoint} (${err.message}). Mencoba server berikutnya...`);
                 }
             }
 
             if (!success) {
-                let userFriendlyMsg = 'All Overpass API servers are currently busy or timed out.';
-                if (lastErrorMsg.includes('504') || lastErrorMsg.includes('HTTP')) {
-                    userFriendlyMsg = 'Terjadi Timeout (504 Gateway Timeout). Area wilayah/boundary KML/KMZ yang Anda unggah terlalu luas untuk server publik Overpass API. Silakan gunakan file KML dengan area yang lebih kecil (fokus pada tapak bangunan/lokasi spesifik).';
-                }
-                Swal.fire('Gagal Memuat OSM', userFriendlyMsg, 'error');
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Gagal Memuat OSM',
+                    text: 'Server Overpass API sedang padat/busy saat ini. Silakan klik tombol "Refresh Buildings & Roads" beberapa saat lagi.',
+                    confirmButtonColor: '#10b981'
+                });
             }
 
             btn.innerHTML = originalHTML;

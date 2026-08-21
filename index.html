@@ -210,16 +210,21 @@
 
         <!-- Footer Actions -->
         <div class="p-6 border-t border-gray-700/50 flex flex-col gap-3 bg-gray-800/30">
-            <!-- Save State (Supabase prep) -->
+            <!-- Save Project File (Download JSON) -->
             <button id="btn-save" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center">
-                <i class="fa-solid fa-floppy-disk mr-2"></i> Save State (Supabase)
+                <i class="fa-solid fa-floppy-disk mr-2"></i> Save Project File
             </button>
-            <!-- Load Saved State (Added Feature) -->
-            <button id="btn-load" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center">
-                <i class="fa-solid fa-folder-open mr-2"></i> Load Saved State
-            </button>
+            
+            <!-- Load Project File (Upload JSON) -->
+            <div class="file-upload-wrapper w-full">
+                <button class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center">
+                    <i class="fa-solid fa-folder-open mr-2"></i> Load Project File
+                </button>
+                <input type="file" id="loadProjectInput" accept=".json,.geojson" />
+            </div>
+
             <!-- Export DXF -->
-            <button id="btn-export" class="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg font-bold text-sm transition-all shadow-lg shadow-emerald-900/40 flex items-center justify-center">
+            <button id="btn-export" class="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-bold text-sm transition-all shadow-lg shadow-emerald-900/40 flex items-center justify-center">
                 <i class="fa-solid fa-file-export mr-2"></i> Export to DXF
             </button>
         </div>
@@ -429,7 +434,7 @@
             const pastedGeo = JSON.parse(JSON.stringify(clipboardGeoJSON));
             
             function shiftCoords(coords, geomType) {
-                const offsetStep = 0.0001;
+                const offsetStep = 0.0001; 
                 if (geomType === 'Point') {
                     return [coords[0] + offsetStep, coords[1] + offsetStep];
                 } else if (geomType === 'LineString' || geomType === 'MultiPoint') {
@@ -544,14 +549,14 @@
                     const geomType = feature.geometry ? feature.geometry.type : '';
                     if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
                         return {
-                            color: '#10b981',
+                            color: '#10b981', 
                             weight: 2,
                             fillColor: '#10b981',
                             fillOpacity: 0.15
                         };
                     } else if (geomType === 'LineString' || geomType === 'MultiLineString') {
                         return {
-                            color: '#ef4444',
+                            color: '#ef4444', 
                             weight: 3
                         };
                     }
@@ -770,76 +775,115 @@
             if (currentBbox) fetchOSMData(currentBbox);
         });
 
-        // --- 7. Save State ---
-        document.getElementById('btn-save').addEventListener('click', () => {
+        // --- 7. Save Project File (Download as JSON with Custom Name) ---
+        document.getElementById('btn-save').addEventListener('click', async () => {
             const allFeatures = [];
             [kmlGroup, osmGroup, drawGroup].forEach(group => {
                 group.eachLayer(layer => {
                     if (layer.toGeoJSON) {
-                        allFeatures.push(layer.toGeoJSON());
+                        let geo = layer.toGeoJSON();
+                        if(group === kmlGroup) geo.properties.sourceGroup = "kml";
+                        else if(group === osmGroup) geo.properties.sourceGroup = "osm";
+                        else geo.properties.sourceGroup = "draw";
+                        allFeatures.push(geo);
                     }
                 });
             });
 
-            const featureCollection = { type: "FeatureCollection", features: allFeatures };
-            localStorage.setItem('geoconvert_draft_state', JSON.stringify(featureCollection));
-
-            Swal.fire({
-                icon: 'success', title: 'State Saved!',
-                text: 'Your current edits and layers have been saved locally.',
-                confirmButtonColor: '#10b981'
-            });
-        });
-
-        // --- 7b. Load State (Added Feature) ---
-        document.getElementById('btn-load').addEventListener('click', () => {
-            const savedData = localStorage.getItem('geoconvert_draft_state');
-            
-            if (!savedData) {
-                Swal.fire({
-                    icon: 'info',
-                    title: 'No Saved Data',
-                    text: 'Tidak ada data tersimpan di browser Anda.',
-                    confirmButtonColor: '#10b981'
-                });
+            if (allFeatures.length === 0) {
+                Swal.fire('Warning', 'Tidak ada data atau objek di peta untuk disimpan.', 'warning');
                 return;
             }
 
-            try {
-                const featureCollection = JSON.parse(savedData);
-
-                // Bersihkan layer yang ada di peta agar tidak terjadi duplikasi ganda
-                kmlGroup.clearLayers();
-                osmGroup.clearLayers();
-                drawGroup.clearLayers();
-
-                // Muat kembali data GeoJSON ke dalam drawGroup peta
-                L.geoJSON(featureCollection, {
-                    style: {
-                        color: '#3b82f6',
-                        weight: 1.5,
-                        fillOpacity: 0.3
-                    },
-                    pointToLayer: function(feature, latlng) {
-                        return L.marker(latlng, { icon: blueDotIcon });
-                    },
-                    onEachFeature: function(feature, layer) {
-                        bindNamePopup(layer);
+            const { value: fileName } = await Swal.fire({
+                title: 'Simpan Proyek Peta',
+                input: 'text',
+                inputLabel: 'Masukkan nama file proyek:',
+                inputValue: 'proyek_geoconvert_ku',
+                showCancelButton: true,
+                confirmButtonColor: '#10b981',
+                inputValidator: (value) => {
+                    if (!value) {
+                        return 'Nama file tidak boleh kosong!';
                     }
-                }).addTo(drawGroup);
+                }
+            });
+
+            if (fileName) {
+                const featureCollection = { type: "FeatureCollection", features: allFeatures };
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(featureCollection));
+                
+                const a = document.createElement('a');
+                a.href = dataStr;
+                a.download = `${fileName.trim()}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
 
                 Swal.fire({
-                    icon: 'success',
-                    title: 'State Loaded!',
-                    text: 'Data sesi terakhir berhasil dimuat ke peta.',
-                    confirmButtonColor: '#10b981'
+                    toast: true, position: 'top-end', icon: 'success',
+                    title: 'Proyek berhasil disimpan sebagai file!', showConfirmButton: false, timer: 2000
                 });
-            } catch (e) {
-                Swal.fire('Error', 'Gagal memuat data: ' + e.message, 'error');
             }
         });
 
-        // --- 8. Export to DXF ---
+        // --- 8. Load Project File (Upload JSON) ---
+        document.getElementById('loadProjectInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const geojson = JSON.parse(event.target.result);
+                    
+                    kmlGroup.clearLayers();
+                    osmGroup.clearLayers();
+                    drawGroup.clearLayers();
+
+                    L.geoJSON(geojson, {
+                        style: function(feature) {
+                            const props = feature.properties || {};
+                            if (props.sourceGroup === 'kml') {
+                                return { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.15 };
+                            } else if (props.sourceGroup === 'osm') {
+                                if (props.building) return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
+                                return { color: '#3b82f6', weight: 1.5, fillColor: '#3b82f6', fillOpacity: 0.3 };
+                            }
+                            return { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 };
+                        },
+                        pointToLayer: function(feature, latlng) {
+                            return L.marker(latlng, { icon: blueDotIcon });
+                        },
+                        onEachFeature: function(feature, layer) {
+                            const props = feature.properties || {};
+                            if (props.sourceGroup === 'kml') {
+                                kmlGroup.addLayer(layer);
+                            } else if (props.sourceGroup === 'osm') {
+                                osmGroup.addLayer(layer);
+                            } else {
+                                drawGroup.addLayer(layer);
+                            }
+                            bindNamePopup(layer);
+                        }
+                    });
+
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Proyek Berhasil Dimuat!',
+                        text: `File "${file.name}" berhasil dibuka kembali di peta.`,
+                        confirmButtonColor: '#10b981'
+                    });
+
+                } catch (err) {
+                    Swal.fire('Error', 'Gagal membaca file proyek: Format file tidak valid.', 'error');
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        });
+
+        // --- 9. Export to DXF ---
         function lonLatToMeters(lon, lat) {
             const x = lon * 20037508.34 / 180;
             let y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);
@@ -891,10 +935,6 @@
             let dxf = `  0\nSECTION\n  2\nHEADER\n  9\n$ACADVER\n  1\nAC1015\n  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n`;
             dxf = dxf.replace(/\n/g, "\r\n");
 
-            featureCollection.features.features.forEach((feature) => { // Perbaikan kecil aman
-                // ... (fungsi standar DXF Anda yang tetap dipertahankan)
-            });
-
             featureCollection.features.forEach((feature) => {
                 let gem = feature.geometry;
                 if (!gem) return;
@@ -918,7 +958,7 @@
 
                 if (gem.type === "Polygon") {
                     gem.coordinates.forEach(ring => addLWPolyline(ring, true));
-                } else if (gem.type === "LineString") {
+                } else if (gem.type === "LineString" || gem.type === "LineString") {
                     addLWPolyline(gem.coordinates, false);
                 } else if (gem.type === "MultiPolygon") {
                     gem.coordinates.forEach(poly => poly.forEach(ring => addLWPolyline(ring, true)));

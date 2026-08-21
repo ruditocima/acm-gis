@@ -181,7 +181,7 @@
                     <input type="number" id="roadWidthInput" value="6" min="1" max="50" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
                 </div>
 
-                <!-- NEW: Kalibrasi Offset Posisi OSM untuk Tampilan Earth -->
+                <!-- Kalibrasi Offset Posisi OSM untuk Tampilan Earth -->
                 <div class="mb-3 grid grid-cols-2 gap-2">
                     <div>
                         <label for="offsetLatInput" class="text-xs font-medium text-gray-300 block mb-1">Offset Lat (m)</label>
@@ -214,7 +214,7 @@
 
         <!-- Footer Actions -->
         <div class="p-6 border-t border-gray-700/50 flex flex-col gap-3 bg-gray-800/30">
-            <!-- Save State (Supabase prep) -->
+            <!-- Save State -->
             <button id="btn-save" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center">
                 <i class="fa-solid fa-floppy-disk mr-2"></i> Save State (Supabase)
             </button>
@@ -355,9 +355,32 @@
         });
         
         map.on('pm:create', (e) => {
-            e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Drawn Object' } };
-            drawGroup.addLayer(e.layer);
-            bindNamePopup(e.layer);
+            if (e.shape === 'Marker') {
+                const latlng = e.layer.getLatLng();
+                map.removeLayer(e.layer);
+                const circleMarker = L.circleMarker(latlng, {
+                    radius: 5,
+                    fillColor: '#10b981',
+                    color: '#ffffff',
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.9
+                });
+                circleMarker.feature = {
+                    type: 'Feature',
+                    geometry: {
+                        type: 'Point',
+                        coordinates: [latlng.lng, latlng.lat]
+                    },
+                    properties: { name: 'User Drawn Point' }
+                };
+                drawGroup.addLayer(circleMarker);
+                bindNamePopup(circleMarker);
+            } else {
+                e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Drawn Object' } };
+                drawGroup.addLayer(e.layer);
+                bindNamePopup(e.layer);
+            }
         });
 
         // --- 3. UI Interactions ---
@@ -442,6 +465,16 @@
             }
 
             const layer = L.geoJSON(geojson, {
+                pointToLayer: function (feature, latlng) {
+                    return L.circleMarker(latlng, {
+                        radius: 5,
+                        fillColor: '#ef4444',
+                        color: '#ffffff',
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.9
+                    });
+                },
                 style: {
                     color: '#ef4444',
                     weight: 3,
@@ -563,7 +596,6 @@
             if (success && fetchedGeoJSON) {
                 osmGroup.clearLayers();
                 
-                // Ambil nilai lebar jalan dan offset kalibrasi user
                 const roadWidthInput = document.getElementById('roadWidthInput');
                 const userRoadWidth = roadWidthInput ? parseFloat(roadWidthInput.value) || 6 : 6;
                 const bufferRadius = userRoadWidth / 2;
@@ -589,7 +621,6 @@
                                     if (buffered.type === 'FeatureCollection') {
                                         buffered.features.forEach(bf => {
                                             bf.properties = { ...f.properties };
-                                            // Terapkan offset kalibrasi earth
                                             const adjusted = applyOffset(bf, userOffsetLat, userOffsetLon);
                                             processedFeatures.push(adjusted);
                                         });
@@ -605,7 +636,6 @@
                         }
                     }
 
-                    // Terapkan offset kalibrasi earth pada bangunan/fitur lainnya
                     const adjusted = applyOffset(targetFeature, userOffsetLat, userOffsetLon);
                     processedFeatures.push(adjusted);
                 });
@@ -755,10 +785,28 @@
                     dxf += chunk;
                 }
 
-                (gem.type === "Polygon") && gem.coordinates.forEach(ring => addLWPolyline(ring, true));
-                (gem.type === "LineString") && addLWPolyline(gem.coordinates, false);
-                (gem.type === "MultiPolygon") && gem.coordinates.forEach(polygon => polygon.forEach(ring => addLWPolyline(ring, true)));
-                (gem.type === "MultiLineString") && gem.coordinates.forEach(line => addLWPolyline(line, false));
+                function addPointEntity(coord) {
+                    let [x, y] = lonLatToMeters(coord[0], coord[1]);
+                    let chunk = `  0\r\nPOINT\r\n`;
+                    chunk += `  8\r\n${layerName}\r\n`;
+                    chunk += ` 10\r\n${x.toFixed(4)}\r\n`;
+                    chunk += ` 20\r\n${y.toFixed(4)}\r\n`;
+                    dxf += chunk;
+                }
+
+                if (gem.type === "Polygon") {
+                    gem.coordinates.forEach(ring => addLWPolyline(ring, true));
+                } else if (gem.type === "LineString") {
+                    addLWPolyline(gem.coordinates, false);
+                } else if (gem.type === "MultiPolygon") {
+                    gem.coordinates.forEach(polygon => polygon.forEach(ring => addLWPolyline(ring, true)));
+                } else if (gem.type === "MultiLineString") {
+                    gem.coordinates.forEach(line => addLWPolyline(line, false));
+                } else if (gem.type === "Point") {
+                    addPointEntity(gem.coordinates);
+                } else if (gem.type === "MultiPoint") {
+                    gem.coordinates.forEach(c => addPointEntity(c));
+                }
             });
 
             dxf += `  0\r\nENDSEC\r\n  0\r\nEOF\r\n`;

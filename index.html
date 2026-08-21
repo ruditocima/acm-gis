@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GeoConvert Pro | KML to DXF</title>
+    <title>GeoConvert Pro | KML to DXF (Optimized)</title>
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -172,7 +172,6 @@
             <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Environment Data</h2>
                 
-                <!-- Input Pengaturan Lebar Jalan OSM -->
                 <div class="mb-3">
                     <label for="roadWidthInput" class="text-xs font-medium text-gray-300 block mb-1">Lebar Jalan OSM (Meter)</label>
                     <input type="number" id="roadWidthInput" value="6" min="1" max="50" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
@@ -191,7 +190,6 @@
                 <h2 class="text-sm font-semibold mb-1 text-gray-300 uppercase tracking-wider">Editing Tools</h2>
                 <p class="text-xs text-gray-400 mb-3">Use the toolbar on the map to draw, edit, or measure polygons and lines in real-world dimensions.</p>
                 
-                <!-- Copy & Paste Feature Buttons -->
                 <div class="grid grid-cols-2 gap-2 mt-2">
                     <button id="btn-copy" class="py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
                         <i class="fa-solid fa-copy mr-1"></i> Copy Selected
@@ -206,12 +204,10 @@
 
         <!-- Footer Actions -->
         <div class="p-6 border-t border-gray-700/50 flex flex-col gap-3 bg-gray-800/30">
-            <!-- Save Project File (Download JSON) -->
             <button id="btn-save" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center">
                 <i class="fa-solid fa-floppy-disk mr-2"></i> Save Project File
             </button>
             
-            <!-- Load Project File (Upload JSON) -->
             <div class="file-upload-wrapper w-full">
                 <button class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center">
                     <i class="fa-solid fa-folder-open mr-2"></i> Load Project File
@@ -219,7 +215,6 @@
                 <input type="file" id="loadProjectInput" accept=".json,.geojson" />
             </div>
 
-            <!-- Export DXF -->
             <button id="btn-export" class="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-bold text-sm transition-all shadow-lg shadow-emerald-900/40 flex items-center justify-center">
                 <i class="fa-solid fa-file-export mr-2"></i> Export to DXF
             </button>
@@ -231,7 +226,6 @@
 
     <!-- Application Logic -->
     <script>
-        // --- Custom Solid Light Blue Dot Symbol with White Outline ---
         const blueDotIcon = L.divIcon({
             className: 'custom-blue-dot-symbol',
             html: '<div style="background-color: #38bdf8; width: 10px; height: 10px; border: 2px solid #ffffff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></div>',
@@ -239,7 +233,6 @@
             iconAnchor: [5, 5]
         });
 
-        // --- 0. Built-in Reliable OSM to GeoJSON Converter ---
         function customOSMToGeoJSON(data) {
             const nodes = {};
             const features = [];
@@ -286,7 +279,7 @@
             return { type: "FeatureCollection", features: features };
         }
 
-        // --- 1. Map Initialization ---
+        // --- 1. Map Initialization with Canvas Renderer for Maximum Speed ---
         const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 22,
             maxNativeZoom: 19,
@@ -303,7 +296,8 @@
             center: [-0.7893, 113.9213],
             zoom: 5,
             layers: [osmLayer],
-            zoomControl: false 
+            zoomControl: false,
+            renderer: L.canvas() // Menggunakan Canvas Renderer agar performa drawing sangat ringan
         });
 
         L.control.zoom({ position: 'topright' }).addTo(map);
@@ -317,7 +311,7 @@
         let lastSelectedLayer = null;
         let uploadedKmlFeatures = []; 
 
-        // --- 2. Leaflet Geoman ---
+        // --- 2. Leaflet Geoman Optimized ---
         map.pm.addControls({
             position: 'topright',
             drawCircle: false,
@@ -333,38 +327,19 @@
             removalMode: true,
         });
 
+        // Nonaktifkan snapping global ke objek berat demi kecepatan render maksimal saat draw
+        map.pm.setGlobalOptions({
+            snappable: false,
+            snapDistance: 0
+        });
+
         map.pm.setPathOptions({
             color: '#3b82f6',
             weight: 1.5,
             fillOpacity: 0.3
         });
-        
-        map.on('pm:drawstart', (e) => {
-            kmlGroup.eachLayer(layer => {
-                if (layer.setStyle) layer.setStyle({ interactive: false });
-            });
-            osmGroup.eachLayer(layer => {
-                if (layer.setStyle) layer.setStyle({ interactive: false });
-            });
-        });
-
-        map.on('pm:drawend', (e) => {
-            kmlGroup.eachLayer(layer => {
-                if (layer.setStyle) layer.setStyle({ interactive: true });
-            });
-            osmGroup.eachLayer(layer => {
-                if (layer.setStyle) layer.setStyle({ interactive: true });
-            });
-        });
 
         map.on('pm:create', (e) => {
-            kmlGroup.eachLayer(layer => {
-                if (layer.setStyle) layer.setStyle({ interactive: true });
-            });
-            osmGroup.eachLayer(layer => {
-                if (layer.setStyle) layer.setStyle({ interactive: true });
-            });
-
             if (e.shape === 'Marker') {
                 e.layer.setIcon(blueDotIcon);
             } else if (e.layer.setStyle) {
@@ -476,6 +451,7 @@
             }
 
             const newLayer = L.geoJSON(pastedGeo, {
+                renderer: L.canvas(),
                 style: {
                     color: '#3b82f6',
                     weight: 1.5,
@@ -567,6 +543,7 @@
             uploadedKmlFeatures = geojson.features;
 
             const layer = L.geoJSON(geojson, {
+                renderer: L.canvas(),
                 style: function(feature) {
                     const geomType = feature.geometry ? feature.geometry.type : '';
                     if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
@@ -674,14 +651,10 @@
                                     break;
                                 }
                             } else {
-                                // Tangkap status error 429, 504, 502, 503
-                                console.warn(`Server status ${response.status} on ${targetUrl}, retrying...`);
                                 await new Promise(resolve => setTimeout(resolve, 3000));
                                 retries--;
                             }
                         } catch (error) {
-                            // Tangkap network error/timeout (ERR_CONNECTION_TIMED_OUT)
-                            console.warn(`Network timeout/error on ${targetUrl}, retrying...`, error);
                             await new Promise(resolve => setTimeout(resolve, 3000));
                             retries--;
                         }
@@ -691,7 +664,6 @@
 
                 if (boxSuccess) successCount++;
 
-                // Jeda aman antar kuadran untuk menjaga stabilitas koneksi
                 if (i < subBoxes.length - 1) {
                     await new Promise(resolve => setTimeout(resolve, 3000));
                 }
@@ -738,9 +710,7 @@
                                     }
                                 }
                             }
-                        } catch (err) {
-                            console.warn("Gagal memproses buffer lebar jalan:", err);
-                        }
+                        } catch (err) {}
                     }
 
                     processedFeatures.push(targetFeature);
@@ -767,6 +737,7 @@
 
                 if (filteredFeatures.length > 0) {
                     L.geoJSON({ type: "FeatureCollection", features: filteredFeatures }, {
+                        renderer: L.canvas(),
                         style: function(feature) {
                             if (feature.properties.building) {
                                 return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
@@ -907,6 +878,7 @@
                     }
 
                     L.geoJSON(geojson, {
+                        renderer: L.canvas(),
                         style: function(feature) {
                             const props = feature.properties || {};
                             const geomType = feature.geometry ? feature.geometry.type : '';
@@ -1027,6 +999,8 @@
         function generateDXF(featureCollection) {
             let dxf = `  0\nSECTION\n  2\nHEADER\n  9\n$ACADVER\n  1\nAC1015\n  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n`;
             dxf = dxf.replace(/\n/g, "\r\n");
+
+            featureCollection.features.files?.forEach?.(() => {}); // safety helper
 
             featureCollection.features.forEach((feature) => {
                 let gem = feature.geometry;

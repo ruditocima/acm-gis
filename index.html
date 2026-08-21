@@ -181,7 +181,7 @@
                     <i class="fa-solid fa-city mr-2"></i> Refresh Buildings & Roads
                 </button>
                 <p class="text-[11px] text-gray-400 mt-2 leading-relaxed">
-                    Automatically loads real OSM data (buildings & roads) inside your uploaded boundary.
+                    Click to load real OSM data (buildings & roads) inside your uploaded boundary safely.
                 </p>
             </div>
 
@@ -279,7 +279,7 @@
             return { type: "FeatureCollection", features: features };
         }
 
-        // --- 1. Map Initialization with Canvas Renderer for Maximum Speed ---
+        // --- 1. Map Initialization with Canvas Renderer ---
         const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 22,
             maxNativeZoom: 19,
@@ -297,7 +297,7 @@
             zoom: 5,
             layers: [osmLayer],
             zoomControl: false,
-            renderer: L.canvas() // Menggunakan Canvas Renderer agar performa drawing sangat ringan
+            renderer: L.canvas()
         });
 
         L.control.zoom({ position: 'topright' }).addTo(map);
@@ -327,7 +327,6 @@
             removalMode: true,
         });
 
-        // Nonaktifkan snapping global ke objek berat demi kecepatan render maksimal saat draw
         map.pm.setGlobalOptions({
             snappable: false,
             snapDistance: 0
@@ -576,16 +575,11 @@
             currentBbox = layer.getBounds();
             document.getElementById('btn-fetch-osm').disabled = false;
             
+            // Auto-fetch dihilangkan untuk mencegah error 504 otomatis, pengguna menekan tombol manual.
             Swal.fire({
                 toast: true, position: 'top-end', icon: 'success',
-                title: 'KML loaded! Fetching OSM data...', showConfirmButton: false, timer: 1500
+                title: 'KML Loaded! Click "Refresh Buildings & Roads" to fetch OSM data.', showConfirmButton: false, timer: 3000
             });
-
-            setTimeout(() => {
-                if (currentBbox) {
-                    fetchOSMData(currentBbox);
-                }
-            }, 300);
         }
 
         // --- 6. Fetch OSM Data with Robust Timeout & Retry Handler ---
@@ -623,7 +617,7 @@
 
             for (let i = 0; i < subBoxes.length; i++) {
                 let box = subBoxes[i];
-                const query = `[out:json][timeout:30];
+                const query = `[out:json][timeout:25];
                 (
                   way["building"](${box.s},${box.w},${box.n},${box.e});
                   way["highway"](${box.s},${box.w},${box.n},${box.e});
@@ -634,7 +628,7 @@
 
                 let boxSuccess = false;
                 for (let targetUrl of endpoints) {
-                    let retries = 3;
+                    let retries = 2;
                     while (retries > 0 && !boxSuccess) {
                         try {
                             const response = await fetch(targetUrl, {
@@ -651,11 +645,11 @@
                                     break;
                                 }
                             } else {
-                                await new Promise(resolve => setTimeout(resolve, 3000));
+                                await new Promise(resolve => setTimeout(resolve, 2000));
                                 retries--;
                             }
                         } catch (error) {
-                            await new Promise(resolve => setTimeout(resolve, 3000));
+                            await new Promise(resolve => setTimeout(resolve, 2000));
                             retries--;
                         }
                     }
@@ -665,7 +659,7 @@
                 if (boxSuccess) successCount++;
 
                 if (i < subBoxes.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    await new Promise(resolve => setTimeout(resolve, 1500));
                 }
             }
 
@@ -999,8 +993,6 @@
         function generateDXF(featureCollection) {
             let dxf = `  0\nSECTION\n  2\nHEADER\n  9\n$ACADVER\n  1\nAC1015\n  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n`;
             dxf = dxf.replace(/\n/g, "\r\n");
-
-            featureCollection.features.files?.forEach?.(() => {}); // safety helper
 
             featureCollection.features.forEach((feature) => {
                 let gem = feature.geometry;

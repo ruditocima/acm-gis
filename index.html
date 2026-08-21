@@ -339,7 +339,7 @@
             fillOpacity: 0.3
         });
         
-        // --- Solusi Kunci: Nonaktifkan Interaksi Layer Latar (KML/OSM) saat Mode Gambar Aktif ---
+        // --- Nonaktifkan Interaksi Layer Latar (KML/OSM) saat Mode Gambar Aktif ---
         map.on('pm:drawstart', (e) => {
             kmlGroup.eachLayer(layer => {
                 if (layer.setStyle) layer.setStyle({ interactive: false });
@@ -359,7 +359,6 @@
         });
 
         map.on('pm:create', (e) => {
-            // Kembalikan interaktivitas layer latar setelah selesai membuat objek
             kmlGroup.eachLayer(layer => {
                 if (layer.setStyle) layer.setStyle({ interactive: true });
             });
@@ -613,7 +612,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (Single Unified Request with Server Fallback) ---
+        // --- 6. Fetch OSM Data with Grid Chunking (Anti 504 Timeout) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -624,7 +623,7 @@
 
             const btn = document.getElementById('btn-fetch-osm');
             const originalHTML = btn.innerHTML;
-            btn.innerHTML = 'Fetching OSM... <div class="loader"></div>';
+            btn.innerHTML = 'Fetching OSM (Grid Chunking)... <div class="loader"></div>';
             btn.disabled = true;
 
             const endpoints = [
@@ -634,40 +633,55 @@
                 'https://overpass.kumi.systems/api/interpreter'
             ];
 
+            // Pecah boundary menjadi 4 kuadran (Grid 2x2) untuk menghindari 504 Gateway Timeout
+            const midLat = (s + n) / 2;
+            const midLon = (w + e_coord) / 2;
+
+            const subBoxes = [
+                { s: s, w: w, n: midLat, e: midLon },
+                { s: s, w: midLon, n: midLat, e: e_coord },
+                { s: midLat, w: w, n: n, e: midLon },
+                { s: midLat, w: midLon, n: n, e: e_coord }
+            ];
+
             let allElements = [];
-            let success = false;
+            let successCount = 0;
 
-            const query = `[out:json][timeout:30];
-            (
-              way["building"](${s},${w},${n},${e_coord});
-              way["highway"](${s},${w},${n},${e_coord});
-            );
-            out body;
-            >;
-            out skel qt;`;
+            for (let box of subBoxes) {
+                const query = `[out:json][timeout:25];
+                (
+                  way["building"](${box.s},${box.w},${box.n},${box.e});
+                  way["highway"](${box.s},${box.w},${box.n},${box.e});
+                );
+                out body;
+                >;
+                out skel qt;`;
 
-            for (let targetUrl of endpoints) {
-                try {
-                    const response = await fetch(targetUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: "data=" + encodeURIComponent(query)
-                    });
+                let boxSuccess = false;
+                for (let targetUrl of endpoints) {
+                    try {
+                        const response = await fetch(targetUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: "data=" + encodeURIComponent(query)
+                        });
 
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.elements) {
-                            allElements = data.elements;
-                            success = true;
-                            break;
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.elements) {
+                                allElements = allElements.concat(data.elements);
+                                boxSuccess = true;
+                                break;
+                            }
                         }
+                    } catch (error) {
+                        console.warn(`Mirror failed (${targetUrl}) for sub-box:`, error);
                     }
-                } catch (error) {
-                    console.warn(`Mirror failed (${targetUrl}):`, error);
                 }
+                if (boxSuccess) successCount++;
             }
 
-            if (success) {
+            if (successCount > 0) {
                 const seen = new Set();
                 const uniqueElements = allElements.filter(el => {
                     const key = el.type + '_' + el.id;
@@ -774,16 +788,9 @@
                 Swal.fire({
                     icon: 'error',
                     title: 'Gagal Memuat Data OSM',
-                    html: 'Server Overpass sedang sibuk atau area terlalu padat (Error 429/504).<br><br>Silakan coba beberapa saat lagi.',
-                    showCancelButton: true,
-                    confirmButtonText: 'Coba Lagi',
-                    cancelButtonText: 'Abaikan',
-                    confirmButtonColor: '#10b981',
-                    cancelButtonColor: '#6b7280'
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        fetchOSMData(bbox);
-                    }
+                    html: 'Server Overpass mengalami Gateway Timeout (504). Area boundary Anda mungkin terlalu luas.<br><br>Silakan coba perkecil area KML Anda.',
+                    confirmButtonText: 'OK',
+                    confirmButtonColor: '#10b981'
                 });
             }
 

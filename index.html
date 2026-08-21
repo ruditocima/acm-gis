@@ -544,7 +544,6 @@
                 return;
             }
 
-            // Simpan fitur KML ke variabel global untuk filter spasial OSM
             uploadedKmlFeatures = geojson.features;
 
             const layer = L.geoJSON(geojson, {
@@ -592,7 +591,7 @@
             }, 300);
         }
 
-        // --- 6. Fetch OSM Data (Smart 2x2 Grid Chunking to prevent HTTP 504 Timeout) ---
+        // --- 6. Fetch OSM Data (Sequential 2x2 Grid with Anti-Throttle Delay) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -606,7 +605,6 @@
             btn.innerHTML = 'Fetching OSM... <div class="loader"></div>';
             btn.disabled = true;
 
-            // Bagi bbox menjadi 2x2 grid agar tidak terkena HTTP 504 Timeout di server publik Overpass
             const midLat = (s + n) / 2;
             const midLon = (w + e_coord) / 2;
             const subBoxes = [
@@ -632,8 +630,15 @@
                     let tempElements = [];
                     let gridSuccess = true;
 
-                    for (const box of subBoxes) {
-                        const query = `[out:json][timeout:30];
+                    for (let i = 0; i < subBoxes.length; i++) {
+                        const box = subBoxes[i];
+                        
+                        // Jeda waktu (1.5 detik) antar permintaan grid untuk mencegah HTTP 504 / Rate Limit
+                        if (i > 0) {
+                            await new Promise(resolve => setTimeout(resolve, 1500));
+                        }
+
+                        const query = `[out:json][timeout:25];
                         (
                           way["building"](${box[0]},${box[1]},${box[2]},${box[3]});
                           way["highway"](${box[0]},${box[1]},${box[2]},${box[3]});
@@ -721,7 +726,6 @@
                     processedFeatures.push(targetFeature);
                 });
 
-                // Filter agar hanya objek yang beririsan/di dalam boundary KML yang dimuat secara presisi
                 const filteredFeatures = processedFeatures.filter(f => {
                     if (!f.properties || (!f.properties.building && !f.properties.highway)) return false;
 
@@ -734,9 +738,7 @@
                                     intersects = true;
                                     break;
                                 }
-                            } catch (err) {
-                                // Abaikan jika geometri kompleks gagal diuji
-                            }
+                            } catch (err) {}
                         }
                         return intersects;
                     }
@@ -872,7 +874,7 @@
             }
         });
 
-        // --- 8. Load Project File (With Geometry Color Logic & Auto-Center) ---
+        // --- 8. Load Project File ---
         document.getElementById('loadProjectInput').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;

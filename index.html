@@ -161,6 +161,25 @@
                 </div>
             </div>
 
+            <!-- Layer Manager / Tree Visibility Control -->
+            <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
+                <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Layer Manager</h2>
+                <div class="space-y-2">
+                    <label class="flex items-center space-x-3 cursor-pointer text-sm text-gray-300 hover:text-white transition-colors">
+                        <input type="checkbox" id="chk-kml" checked class="form-checkbox h-4 w-4 text-emerald-500 rounded border-gray-600 bg-gray-900 focus:ring-0 accent-emerald-500">
+                        <span><i class="fa-solid fa-file-code text-emerald-400 mr-2"></i> Layer KML / KMZ</span>
+                    </label>
+                    <label class="flex items-center space-x-3 cursor-pointer text-sm text-gray-300 hover:text-white transition-colors">
+                        <input type="checkbox" id="chk-osm" checked class="form-checkbox h-4 w-4 text-cyan-500 rounded border-gray-600 bg-gray-900 focus:ring-0 accent-cyan-500">
+                        <span><i class="fa-solid fa-city text-cyan-400 mr-2"></i> Layer Data OSM</span>
+                    </label>
+                    <label class="flex items-center space-x-3 cursor-pointer text-sm text-gray-300 hover:text-white transition-colors">
+                        <input type="checkbox" id="chk-draw" checked class="form-checkbox h-4 w-4 text-blue-500 rounded border-gray-600 bg-gray-900 focus:ring-0 accent-blue-500">
+                        <span><i class="fa-solid fa-pen-ruler text-blue-400 mr-2"></i> Layer User Draw</span>
+                    </label>
+                </div>
+            </div>
+
             <!-- Upload Section -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Import Data</h2>
@@ -396,7 +415,6 @@
             if (!layer) return;
             if (layer.setStyle && layer._originalStyle) {
                 layer.setStyle(layer._originalStyle);
-                delete layer._originalStyle;
             }
         }
 
@@ -573,7 +591,7 @@
             }
         });
 
-        // --- 3. UI Layer Switcher ---
+        // --- 3. UI Layer Switcher & Layer Manager ---
         const btnMap = document.getElementById('btn-map');
         const btnEarth = document.getElementById('btn-earth');
 
@@ -589,6 +607,22 @@
             map.addLayer(earthLayer);
             btnEarth.className = "flex-1 py-2 text-sm rounded-md bg-emerald-500 bg-opacity-20 text-emerald-400 font-medium transition-all";
             btnMap.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
+        });
+
+        // Layer Manager Event Listeners
+        document.getElementById('chk-kml').addEventListener('change', (e) => {
+            if (e.target.checked) map.addLayer(kmlGroup);
+            else map.removeLayer(kmlGroup);
+        });
+
+        document.getElementById('chk-osm').addEventListener('change', (e) => {
+            if (e.target.checked) map.addLayer(osmGroup);
+            else map.removeLayer(osmGroup);
+        });
+
+        document.getElementById('chk-draw').addEventListener('change', (e) => {
+            if (e.target.checked) map.addLayer(drawGroup);
+            else map.removeLayer(drawGroup);
         });
 
         // --- Copy & Paste Handlers ---
@@ -702,6 +736,94 @@
             }
         });
 
+        // --- Editor Atribut & Styling Modal Handler ---
+        function openAttributeEditor(layer) {
+            const props = layer.feature?.properties || {};
+            const currentName = props.name || props.Name || props.NAME || props.type || props.building || props.highway || 'Object';
+            const currentDesc = props.description || props.Description || '';
+            
+            const origStyle = layer._originalStyle || layer.options || {};
+            const currentColor = origStyle.color || '#3b82f6';
+            const currentFillColor = origStyle.fillColor || currentColor;
+            const currentWeight = origStyle.weight || 2;
+
+            Swal.fire({
+                title: 'Edit Data & Style Objek',
+                html: `
+                    <div class="text-left space-y-3 text-sm">
+                        <div>
+                            <label class="block text-xs font-semibold mb-1 text-gray-300">Nama Objek</label>
+                            <input id="swal-name" class="swal2-input !mt-0 !w-full !m-0 !bg-gray-800 !text-white !border-gray-600 focus:!border-emerald-500" value="${currentName}">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold mb-1 text-gray-300">Deskripsi</label>
+                            <textarea id="swal-desc" class="swal2-textarea !mt-0 !w-full !m-0 !bg-gray-800 !text-white !border-gray-600 focus:!border-emerald-500" rows="2">${currentDesc}</textarea>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 pt-2">
+                            <div>
+                                <label class="block text-xs font-semibold mb-1 text-gray-300">Garis</label>
+                                <input type="color" id="swal-color" class="w-full h-9 bg-gray-800 rounded cursor-pointer border border-gray-600 p-0.5" value="${currentColor}">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold mb-1 text-gray-300">Isi (Fill)</label>
+                                <input type="color" id="swal-fillcolor" class="w-full h-9 bg-gray-800 rounded cursor-pointer border border-gray-600 p-0.5" value="${currentFillColor}">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold mb-1 text-gray-300">Tebal (px)</label>
+                                <input type="number" id="swal-weight" min="1" max="20" class="w-full h-9 bg-gray-800 rounded px-2 text-white border border-gray-600 text-sm" value="${currentWeight}">
+                            </div>
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Simpan',
+                cancelButtonText: 'Batal',
+                confirmButtonColor: '#10b981',
+                cancelButtonColor: '#6b7280',
+                background: '#1f2937',
+                color: '#f3f4f6',
+                preConfirm: () => {
+                    return {
+                        name: document.getElementById('swal-name').value,
+                        desc: document.getElementById('swal-desc').value,
+                        color: document.getElementById('swal-color').value,
+                        fillColor: document.getElementById('swal-fillcolor').value,
+                        weight: parseFloat(document.getElementById('swal-weight').value) || 2
+                    };
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const data = result.value;
+                    layer.feature = layer.feature || { type: 'Feature', properties: {} };
+                    layer.feature.properties = layer.feature.properties || {};
+                    
+                    layer.feature.properties.name = data.name;
+                    layer.feature.properties.description = data.desc;
+
+                    const newStyle = {
+                        color: data.color,
+                        fillColor: data.fillColor,
+                        weight: data.weight,
+                        fillOpacity: layer.options.fillOpacity || 0.3
+                    };
+
+                    if (layer.setStyle) {
+                        layer.setStyle(newStyle);
+                    }
+                    
+                    layer._originalStyle = newStyle;
+
+                    bindNamePopup(layer);
+                    layer.openPopup();
+
+                    Swal.fire({
+                        toast: true, position: 'top-end', icon: 'success',
+                        title: 'Atribut & Style diperbarui!', showConfirmButton: false, timer: 2000
+                    });
+                }
+            });
+        }
+
         // --- 4. Interaksi Feature & Popup Binding ---
         function bindNamePopup(layer) {
             const isKmlLayer = layer.options && layer.options.pmIgnore === true;
@@ -710,8 +832,41 @@
                 layer.options.pmIgnore = false;
             }
 
+            // Konstruksi Popup DOM Node secara dinamis
+            const props = layer.feature?.properties || {};
+            let name = props.name || props.Name || props.NAME || props.type || props.building || props.highway || 'Object';
+            let desc = props.description || props.Description || '';
+            
+            const popupContainer = document.createElement('div');
+            popupContainer.className = 'p-1';
+
+            const nameEl = document.createElement('b');
+            nameEl.innerText = name;
+            popupContainer.appendChild(nameEl);
+
+            if (desc) {
+                const descEl = document.createElement('div');
+                descEl.className = 'text-xs mt-1 opacity-80 mb-2';
+                descEl.innerText = desc;
+                popupContainer.appendChild(descEl);
+            } else {
+                const spacer = document.createElement('div');
+                spacer.className = 'mb-2';
+                popupContainer.appendChild(spacer);
+            }
+
+            const editBtn = document.createElement('button');
+            editBtn.className = 'w-full mt-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow';
+            editBtn.innerHTML = '<i class="fa-solid fa-pen-to-square"></i> Edit Data';
+            editBtn.onclick = (e) => {
+                e.stopPropagation();
+                openAttributeEditor(layer);
+            };
+            popupContainer.appendChild(editBtn);
+
+            layer.bindPopup(popupContainer);
+
             layer.on('click', function(e) {
-                const props = layer.feature?.properties || {};
                 const isOsmBuilding = !!props.building;
                 const isOsmRoad = !!props.highway;
 
@@ -800,14 +955,7 @@
                     return; 
                 }
 
-                // --- MODE POPUP NORMAL ---
-                let name = props.name || props.Name || props.NAME || props.type || props.building || props.highway || 'Object';
-                let desc = props.description || props.Description || '';
-                
-                let content = `<b>${name}</b>`;
-                if(desc) content += `<div class="text-xs mt-1 opacity-80">${desc}</div>`;
-                
-                layer.bindPopup(content).openPopup(e.latlng);
+                layer.openPopup(e.latlng);
             });
 
             if (layer.pm && !isKmlLayer) {

@@ -196,7 +196,7 @@
             <!-- Editing Tools -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-1 text-gray-300 uppercase tracking-wider">Editing Tools</h2>
-                <p class="text-xs text-gray-400 mb-3">Gunakan toolbar kanan atas untuk menggambar atau memindahkan objek.</p>
+                <p class="text-xs text-gray-400 mb-3">Gunakan toolbar kanan atas untuk menggambar, mengedit titik, atau memindahkan objek.</p>
                 
                 <div class="grid grid-cols-2 gap-2 mt-2">
                     <button id="btn-copy" class="py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
@@ -311,24 +311,6 @@
         let clipboardGeoJSON = null;
         let lastSelectedLayer = null;
         let uploadedKmlFeatures = []; 
-        let activeEditLayer = null;
-
-        function clearAllEdits() {
-            if (activeEditLayer) {
-                if (activeEditLayer.pm && activeEditLayer.pm.enabled()) {
-                    activeEditLayer.pm.disable();
-                }
-                activeEditLayer = null;
-            }
-
-            [osmGroup, kmlGroup, drawGroup].forEach(group => {
-                group.eachLayer(l => {
-                    if (l.pm && l.pm.enabled()) {
-                        l.pm.disable();
-                    }
-                });
-            });
-        }
 
         // --- 2. Leaflet Geoman Controls ---
         map.pm.addControls({
@@ -357,13 +339,8 @@
             fillOpacity: 0.3
         });
 
-        map.on('pm:globaleditmodetoggled', (e) => {
-            clearAllEdits();
-        });
-
         // Event listener saat mode Drag dinyalakan/dimatikan secara global
         map.on('pm:globaldragmodetoggled', (e) => {
-            clearAllEdits();
             const isDragActive = e.enabled;
             const mapContainer = map.getContainer();
 
@@ -372,10 +349,6 @@
             } else {
                 mapContainer.classList.remove('leaflet-drag-active');
             }
-        });
-
-        map.on('click', () => {
-            clearAllEdits();
         });
 
         map.on('pm:create', (e) => {
@@ -500,26 +473,11 @@
             if (L.PM) L.PM.reInitLayer(layer);
 
             layer.on('click', function(e) {
-                if (map.pm.globalDragModeEnabled()) {
-                    if (e.originalEvent) L.DomEvent.stopPropagation(e);
-                    return;
-                }
-
                 lastSelectedLayer = layer;
 
-                if (map.pm.globalEditEnabled()) {
-                    clearAllEdits();
-
-                    if (layer.pm) {
-                        layer.pm.enable({
-                            allowEditing: true,
-                            allowDragging: true,
-                            snappable: false
-                        });
-                        activeEditLayer = layer;
-                    }
-                    if (e.originalEvent) L.DomEvent.stopPropagation(e);
-                    return; 
+                // Abaikan popup jika sedang dalam mode drag atau edit global Geoman
+                if (map.pm.globalDragModeEnabled() || map.pm.globalEditEnabled()) {
+                    return;
                 }
 
                 let props = layer.feature?.properties || {};

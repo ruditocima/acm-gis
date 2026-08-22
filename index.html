@@ -457,6 +457,12 @@
             fillOpacity: 0.3
         });
 
+        map.on('pm:drawstart', (e) => {
+            isRotateModeActive = false;
+            updateRotateButtonUI();
+            clearAllEdits();
+        });
+
         map.on('pm:globaleditmodetoggled', (e) => {
             isRotateModeActive = false;
             updateRotateButtonUI();
@@ -704,6 +710,11 @@
             }
 
             layer.on('click', function(e) {
+                // Jangan menginterupsi ketika pengguna sedang aktif dalam mode menggambar (Draw Mode)
+                if (map.pm && map.pm.globalDrawModeEnabled()) {
+                    return;
+                }
+
                 const isRoad = layer.feature && layer.feature.properties && layer.feature.properties.highway;
                 const isBuilding = layer.feature && layer.feature.properties && layer.feature.properties.building;
 
@@ -714,7 +725,7 @@
                     if (isKmlLayer) {
                         Swal.fire({
                             toast: true, position: 'top-end', icon: 'warning',
-                            title: 'Layer KML terkunci dan tidak dapat diputar!', showConfirmButton: false, timer: 2000
+                            title: 'Layar KML terkunci dan tidak dapat diputar!', showConfirmButton: false, timer: 2000
                         });
                         return;
                     }

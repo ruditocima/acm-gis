@@ -22,6 +22,9 @@
     <!-- toGeoJSON (for KML to GeoJSON) -->
     <script src="https://unpkg.com/@tmcw/togeojson@4.2.0/dist/togeojson.umd.js"></script>
 
+    <!-- tokml (for GeoJSON to KML export) -->
+    <script src="https://unpkg.com/tokml@0.4.1/tokml.js"></script>
+
     <!-- Turf.js (for spatial processing, buffer & area calculation) -->
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
@@ -244,6 +247,10 @@
                 <input type="file" id="loadProjectInput" accept=".json,.geojson" />
             </div>
 
+            <button id="btn-export-kml" class="w-full py-3 bg-teal-600 hover:bg-teal-500 text-white font-bold text-sm rounded-lg transition-all shadow-lg flex items-center justify-center">
+                <i class="fa-solid fa-file-code mr-2"></i> Export to KML
+            </button>
+
             <button id="btn-export" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-lg transition-all shadow-lg flex items-center justify-center">
                 <i class="fa-solid fa-file-export mr-2"></i> Export to DXF
             </button>
@@ -420,7 +427,6 @@
 
         // --- Pembersih Edit State & Rotate State ---
         function clearAllEdits() {
-            // Matikan mode global Geoman jika sedang aktif
             if (map.pm.globalEditEnabled && map.pm.globalEditEnabled()) {
                 map.pm.disableGlobalEditMode();
             }
@@ -436,7 +442,6 @@
                 activeEditLayer = null;
             }
 
-            // Bersihkan secara menyeluruh ke seluruh layer di peta
             map.eachLayer(l => {
                 if (l.pm) {
                     if (typeof l.pm.disable === 'function') l.pm.disable();
@@ -481,7 +486,6 @@
             fillOpacity: 0.3
         });
 
-        // Intercept jika mode edit global diaktifkan agar titik edit tidak muncul sekaligus di semua objek
         map.on('pm:globaleditmodetoggled', (e) => {
             if (e.enabled) {
                 map.pm.disableGlobalEditMode();
@@ -609,7 +613,6 @@
             btnMap.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
         });
 
-        // Layer Manager Event Listeners
         document.getElementById('chk-kml').addEventListener('change', (e) => {
             if (e.target.checked) map.addLayer(kmlGroup);
             else map.removeLayer(kmlGroup);
@@ -832,7 +835,6 @@
                 layer.options.pmIgnore = false;
             }
 
-            // Konstruksi Popup DOM Node secara dinamis
             const props = layer.feature?.properties || {};
             let name = props.name || props.Name || props.NAME || props.type || props.building || props.highway || 'Object';
             let desc = props.description || props.Description || '';
@@ -870,7 +872,6 @@
                 const isOsmBuilding = !!props.building;
                 const isOsmRoad = !!props.highway;
 
-                // --- MODE ROTATE LAYER ---
                 if (isRotateModeActive) {
                     if (e.originalEvent) L.DomEvent.stopPropagation(e);
                     
@@ -890,7 +891,6 @@
                         return;
                     }
 
-                    // Tampilkan titik rotasi HANYA pada layer yang diklik/dipilih
                     clearAllEdits();
                     setSelectedLayer(layer);
                     
@@ -907,13 +907,11 @@
 
                 setSelectedLayer(layer);
 
-                // --- MODE DRAG LAYER ---
                 if (map.pm.globalDragModeEnabled()) {
                     if (e.originalEvent) L.DomEvent.stopPropagation(e);
                     return;
                 }
 
-                // --- PROTEKSI REMOVAL (HAPUS) ---
                 if (map.pm.globalRemovalEnabled && map.pm.globalRemovalEnabled()) {
                     if (isOsmBuilding || isOsmRoad) {
                         if (e.originalEvent) L.DomEvent.stopPropagation(e);
@@ -926,7 +924,6 @@
                     }
                 }
 
-                // --- MODE EDIT LAYER (DILUAR ROTATE) ---
                 if (map.pm.globalEditEnabled()) {
                     if (e.originalEvent) L.DomEvent.stopPropagation(e);
 
@@ -1437,7 +1434,70 @@
             e.target.value = '';
         });
 
-        // --- 9. Export to DXF ---
+        // --- 9. Export to KML (menggunakan tokml) ---
+        document.getElementById('btn-export-kml').addEventListener('click', () => {
+            const allFeatures = [];
+            
+            [kmlGroup, osmGroup, drawGroup].forEach(group => {
+                processAllSubLayers(group, layer => {
+                    if (typeof layer.toGeoJSON === 'function') {
+                        let geo = layer.toGeoJSON();
+                        
+                        const processFeature = (f) => {
+                            f.properties = f.properties || {};
+                            if (layer.feature && layer.feature.properties) {
+                                f.properties = { ...layer.feature.properties, ...f.properties };
+                            }
+                            allFeatures.push(f);
+                        };
+
+                        if (geo.type === 'FeatureCollection' && geo.features) {
+                            geo.features.forEach(processFeature);
+                        } else if (geo.type === 'Feature') {
+                            processFeature(geo);
+                        } else if (geo.type && geo.coordinates) {
+                            processFeature({ type: "Feature", geometry: geo, properties: {} });
+                        }
+                    }
+                });
+            });
+
+            if (allFeatures.length === 0) {
+                Swal.fire('Warning', 'Peta masih kosong. Tidak ada objek untuk di-export ke KML.', 'warning');
+                return;
+            }
+
+            const featureCollection = { type: "FeatureCollection", features: allFeatures };
+            
+            try {
+                // Konversi GeoJSON ke KML String menggunakan tokml
+                const kmlContent = tokml(featureCollection, {
+                    name: 'name',
+                    description: 'description',
+                    documentName: 'GeoConvert_Export',
+                    documentDescription: 'Exported from GeoConvert Web GIS'
+                });
+
+                const blob = new Blob([kmlContent], { type: 'application/vnd.google-earth.kml+xml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'GeoConvert_Export.kml';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                Swal.fire({
+                    toast: true, position: 'top-end', icon: 'success',
+                    title: 'KML Berhasil Di-export!', showConfirmButton: false, timer: 2500
+                });
+            } catch (err) {
+                Swal.fire('Error', 'Gagal memproses ekspor KML: ' + err.message, 'error');
+            }
+        });
+
+        // --- 10. Export to DXF ---
         function lonLatToMeters(lon, lat) {
             lat = Math.max(-85.05112878, Math.min(85.05112878, lat));
             const x = lon * 20037508.34 / 180;

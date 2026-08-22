@@ -121,6 +121,14 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        /* CSS Pointer/Cursor overrides for Drag Mode */
+        .leaflet-interactive.leaflet-pm-draggable {
+            cursor: grab !important;
+        }
+        .leaflet-interactive.leaflet-pm-dragging {
+            cursor: grabbing !important;
+        }
     </style>
 </head>
 <body class="flex flex-row bg-gray-900 text-gray-200">
@@ -305,7 +313,7 @@
         let uploadedKmlFeatures = []; 
         let activeEditLayer = null;
 
-        // --- Fungsi Pembersih State Edit & Drag Terpusat ---
+        // --- Fungsi Pembersih State Terpusat ---
         function clearAllEdits() {
             if (activeEditLayer) {
                 if (activeEditLayer.pm && activeEditLayer.pm.enabled()) {
@@ -356,19 +364,36 @@
             clearAllEdits();
         });
 
-        // Event Listener Global Drag Mode
+        // Event Listener Global Drag Mode (Pemeliharaan Otomatis Mode Drag & Cursor)
         map.on('pm:globaldragmodetoggled', (e) => {
             clearAllEdits();
-            if (e.enabled) {
-                osmGroup.eachLayer(layer => {
-                    if (layer.options && layer.options.building && layer.options.allowDragging !== false) {
-                        if (layer.pm) layer.pm.enableLayerDrag();
+            const isDragActive = e.enabled;
+
+            [osmGroup, drawGroup, kmlGroup].forEach(group => {
+                group.eachLayer(layer => {
+                    const isOsmBuilding = layer.options && layer.options.building;
+                    const isUserDrawn = (group === drawGroup);
+
+                    if (isOsmBuilding || isUserDrawn) {
+                        if (isDragActive) {
+                            layer.options.pmIgnore = false;
+                            if (layer.pm) {
+                                layer.pm.enableLayerDrag();
+                            }
+                        } else {
+                            if (layer.pm) {
+                                layer.pm.disableLayerDrag();
+                            }
+                            if (isOsmBuilding) {
+                                layer.options.pmIgnore = true;
+                            }
+                        }
                     }
                 });
-            } else {
-                osmGroup.eachLayer(layer => {
-                    if (layer.pm) layer.pm.disableLayerDrag();
-                });
+            });
+
+            if (!isDragActive) {
+                map.getContainer().style.cursor = '';
             }
         });
 
@@ -490,8 +515,33 @@
             });
         });
 
-        // --- 4. Popup & Edit/Drag Binding ---
+        // --- 4. Popup & Interaksi Hover/Drag Binding ---
         function bindNamePopup(layer) {
+            // Kontrol Perubahan Pointer/Kursor Responsif Saat Drag Mode Active
+            layer.on('mouseover', function () {
+                if (map.pm.globalDragModeEnabled() && (layer.options.building || layer.options.allowDragging !== false)) {
+                    map.getContainer().style.cursor = 'grab';
+                }
+            });
+
+            layer.on('mouseout', function () {
+                if (map.pm.globalDragModeEnabled()) {
+                    map.getContainer().style.cursor = '';
+                }
+            });
+
+            layer.on('mousedown', function () {
+                if (map.pm.globalDragModeEnabled() && (layer.options.building || layer.options.allowDragging !== false)) {
+                    map.getContainer().style.cursor = 'grabbing';
+                }
+            });
+
+            layer.on('mouseup', function () {
+                if (map.pm.globalDragModeEnabled()) {
+                    map.getContainer().style.cursor = 'grab';
+                }
+            });
+
             layer.on('click', function(e) {
                 lastSelectedLayer = layer;
 
@@ -774,8 +824,8 @@
                                 layer.options.building = true;
                                 layer.options.allowEditing = true;
                                 layer.options.allowDragging = true;
-                                layer.options.allowRemoval = false; // Hak Akses: Dilarang Hapus
-                                layer.options.allowCutting = false; // Hak Akses: Dilarang Potong
+                                layer.options.allowRemoval = false;
+                                layer.options.allowCutting = false;
                                 layer.options.pmIgnore = true;
                             }
 

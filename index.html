@@ -310,6 +310,40 @@
         let uploadedKmlFeatures = []; 
         let activeEditLayer = null;
 
+        // --- Helper Seleksi & Highlight Objek ---
+        function setSelectedLayer(layer) {
+            if (lastSelectedLayer && lastSelectedLayer !== layer) {
+                unhighlightLayer(lastSelectedLayer);
+            }
+            lastSelectedLayer = layer;
+            if (layer) {
+                highlightLayer(layer);
+            }
+        }
+
+        function highlightLayer(layer) {
+            if (!layer) return;
+            if (layer.setStyle) {
+                if (!layer._originalStyle) {
+                    layer._originalStyle = {
+                        color: layer.options.color || '#3b82f6',
+                        weight: layer.options.weight || 1.5,
+                        fillColor: layer.options.fillColor,
+                        fillOpacity: layer.options.fillOpacity
+                    };
+                }
+                layer.setStyle({ color: '#f59e0b', weight: 3.5 }); // Highlight Kuning/Emas
+            }
+        }
+
+        function unhighlightLayer(layer) {
+            if (!layer) return;
+            if (layer.setStyle && layer._originalStyle) {
+                layer.setStyle(layer._originalStyle);
+                delete layer._originalStyle;
+            }
+        }
+
         // --- Pembersih Edit State ---
         function clearAllEdits() {
             if (activeEditLayer) {
@@ -399,11 +433,7 @@
             e.layer.options.pmIgnore = false;
             drawGroup.addLayer(e.layer);
             bindNamePopup(e.layer);
-            lastSelectedLayer = e.layer;
-        });
-
-        drawGroup.on('click', (e) => {
-            lastSelectedLayer = e.layer;
+            setSelectedLayer(e.layer);
         });
 
         // --- 3. UI Layer Switcher ---
@@ -429,7 +459,7 @@
             if (!lastSelectedLayer) {
                 let layers = drawGroup.getLayers();
                 if (layers.length > 0) {
-                    lastSelectedLayer = layers[layers.length - 1];
+                    setSelectedLayer(layers[layers.length - 1]);
                 }
             }
             
@@ -495,7 +525,7 @@
 
             newLayer.eachLayer(lyr => {
                 drawGroup.addLayer(lyr);
-                lastSelectedLayer = lyr;
+                setSelectedLayer(lyr);
             });
 
             Swal.fire({
@@ -527,12 +557,13 @@
             layer.options.pmIgnore = false;
 
             layer.on('click', function(e) {
+                // Selalu perbarui objek aktif terlebih dahulu
+                setSelectedLayer(layer);
+
                 if (map.pm.globalDragModeEnabled()) {
                     if (e.originalEvent) L.DomEvent.stopPropagation(e);
                     return;
                 }
-
-                lastSelectedLayer = layer;
 
                 if (map.pm.globalEditEnabled()) {
                     clearAllEdits();
@@ -558,6 +589,12 @@
                 
                 layer.bindPopup(content).openPopup(e.latlng);
             });
+
+            if (layer.pm) {
+                layer.on('pm:dragstart pm:edit', () => {
+                    setSelectedLayer(layer);
+                });
+            }
         }
 
         // --- 5. File Upload (KML / KMZ) ---
@@ -788,7 +825,7 @@
                                 return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
                             }
                             if (feature.properties.highway) {
-                                return { color: '#06b6d4', weight: 1.5, fillColor: '#06b6d4', fillOpacity: 0.3 }; // Cyan
+                                return { color: '#06b6d4', weight: 1.5, fillColor: '#06b6d4', fillOpacity: 0.3 };
                             }
                             return { color: '#ffffff', weight: 1 };
                         },
@@ -1071,15 +1108,13 @@
 
             let entitiesDxf = [];
 
-            // Ukuran diperkecil 50%: Lingkaran (CIRCLE) & Teks Label (TEXT)
             function addPointSymbol(coord, layerName, featureProps) {
                 if (!coord || coord.length < 2) return;
                 let [x, y] = lonLatToMeters(coord[0], coord[1]);
                 updateExtents(x, y);
 
-                const radius = 1.5; // Radius diperkecil 50% menjadi 1.5 meter
+                const radius = 1.5;
 
-                // 1. Entitas Lingkaran (CIRCLE)
                 entitiesDxf.push("  0", "CIRCLE");
                 entitiesDxf.push("  8", layerName);
                 entitiesDxf.push(" 10", x.toFixed(4));
@@ -1087,7 +1122,6 @@
                 entitiesDxf.push(" 30", "0.0");
                 entitiesDxf.push(" 40", radius.toFixed(4));
 
-                // 2. Entitas Teks Label (TEXT)
                 let labelText = "Point";
                 if (featureProps) {
                     labelText = featureProps.name || featureProps.Name || featureProps.title || featureProps.id || "Point";
@@ -1096,21 +1130,19 @@
 
                 entitiesDxf.push("  0", "TEXT");
                 entitiesDxf.push("  8", layerName);
-                entitiesDxf.push(" 10", (x + radius * 1.3).toFixed(4)); // Offset teks di samping lingkaran
+                entitiesDxf.push(" 10", (x + radius * 1.3).toFixed(4));
                 entitiesDxf.push(" 20", y.toFixed(4));
                 entitiesDxf.push(" 30", "0.0");
-                entitiesDxf.push(" 40", "1.25"); // Tinggi Teks diperkecil 50% (1.25 meter)
+                entitiesDxf.push(" 40", "1.25");
                 entitiesDxf.push("  1", labelText);
             }
 
-            // Menggambar Garis/Polyline
             function addPolyline(coords, isClosed, layerName) {
                 if (!coords || coords.length < 2) return;
 
                 entitiesDxf.push("  0", "POLYLINE");
                 entitiesDxf.push("  8", layerName);
                 
-                // Jika garis terbuka (non-polygon), layer OSM_Roads diset Cyan (4), garis lainnya diset Merah (1)
                 if (!isClosed) {
                     const colorCode = (layerName === "OSM_Roads") ? "4" : "1";
                     entitiesDxf.push(" 62", colorCode); 
@@ -1175,7 +1207,6 @@
 
             let headerDxf = [];
 
-            // 1. HEADER SECTION
             headerDxf.push("  0", "SECTION");
             headerDxf.push("  2", "HEADER");
             headerDxf.push("  9", "$ACADVER");
@@ -1190,19 +1221,17 @@
             headerDxf.push(" 30", "0.0");
             headerDxf.push("  0", "ENDSEC");
 
-            // 2. TABLES SECTION
             headerDxf.push("  0", "SECTION");
             headerDxf.push("  2", "TABLES");
             headerDxf.push("  0", "TABLE");
             headerDxf.push("  2", "LAYER");
             headerDxf.push(" 70", layerNames.size.toString());
 
-            // Pemetaan Warna Layer: OSM_Roads = 4 (Cyan), Line/Garis = 1 (Merah)
             const layerColors = {
-                "KML_Boundary": 3,  // Hijau
-                "OSM_Buildings": 2, // Kuning
-                "OSM_Roads": 4,     // Cyan
-                "User_Drawn": 1     // Merah
+                "KML_Boundary": 3,
+                "OSM_Buildings": 2,
+                "OSM_Roads": 4,
+                "User_Drawn": 1
             };
 
             layerNames.forEach(name => {
@@ -1217,7 +1246,6 @@
             headerDxf.push("  0", "ENDTAB");
             headerDxf.push("  0", "ENDSEC");
 
-            // 3. ENTITIES SECTION
             headerDxf.push("  0", "SECTION");
             headerDxf.push("  2", "ENTITIES");
 

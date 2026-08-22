@@ -305,6 +305,29 @@
         let uploadedKmlFeatures = []; 
         let activeEditLayer = null; // Menyimpan layer yang sedang aktif di-edit
 
+        // --- Fungsi Pembersih Titik Edit ---
+        function clearAllBuildingEdits() {
+            if (activeEditLayer) {
+                if (activeEditLayer.pm && activeEditLayer.pm.enabled()) {
+                    activeEditLayer.pm.disable();
+                }
+                if (activeEditLayer.options && activeEditLayer.options.building) {
+                    activeEditLayer.options.pmIgnore = true;
+                }
+                activeEditLayer = null;
+            }
+
+            // Memastikan seluruh layer OSM Bangunan dinonaktifkan titik editnya
+            osmGroup.eachLayer(l => {
+                if (l.options && l.options.building) {
+                    if (l.pm && l.pm.enabled()) {
+                        l.pm.disable();
+                    }
+                    l.options.pmIgnore = true;
+                }
+            });
+        }
+
         // --- 2. Leaflet Geoman Controls ---
         map.pm.addControls({
             position: 'topright',
@@ -335,10 +358,7 @@
         // Event listener saat mode edit dinonaktifkan
         map.on('pm:globaleditmodetoggled', (e) => {
             if (!e.enabled) {
-                if (activeEditLayer && activeEditLayer.pm) {
-                    activeEditLayer.pm.disable();
-                    activeEditLayer = null;
-                }
+                clearAllBuildingEdits();
             }
         });
 
@@ -362,10 +382,7 @@
         // Reset highlight vertex jika mengklik area kosong peta
         map.on('click', (e) => {
             if (map.pm.globalEditEnabled()) {
-                if (activeEditLayer && activeEditLayer.pm) {
-                    activeEditLayer.pm.disable();
-                    activeEditLayer = null;
-                }
+                clearAllBuildingEdits();
             }
         });
 
@@ -489,14 +506,10 @@
 
                 // Jika Mode Edit (Pencil) sedang aktif pada peta:
                 if (map.pm.globalEditEnabled()) {
-                    // Nonaktifkan titik edit pada layer yang sebelumnya dipilih
-                    if (activeEditLayer && activeEditLayer !== layer) {
-                        if (activeEditLayer.pm) {
-                            activeEditLayer.pm.disable();
-                        }
-                    }
+                    // 1. Bersihkan titik edit dari bangunan lain yang sedang aktif
+                    clearAllBuildingEdits();
 
-                    // Aktifkan titik edit HANYA pada objek yang diklik ini
+                    // 2. Aktifkan titik edit HANYA pada objek/bangunan yang baru diklik ini
                     if (layer.options.allowEditing !== false && layer.pm) {
                         layer.options.pmIgnore = false;
                         layer.pm.enable({

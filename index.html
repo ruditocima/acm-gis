@@ -504,6 +504,24 @@
             });
         });
 
+        // --- Keyboard Shortcut Listener (Ctrl+C & Ctrl+V) ---
+        document.addEventListener('keydown', (e) => {
+            const activeElement = document.activeElement;
+            if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+                return;
+            }
+
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+                e.preventDefault();
+                document.getElementById('btn-copy').click();
+            }
+
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+                e.preventDefault();
+                document.getElementById('btn-paste').click();
+            }
+        });
+
         // --- 4. Interaksi Feature & Popup Binding ---
         function bindNamePopup(layer) {
             layer.options.pmIgnore = false;

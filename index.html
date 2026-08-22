@@ -968,8 +968,9 @@
             e.target.value = '';
         });
 
-        // --- 9. Export to DXF (FIXED) ---
+        // --- 9. Export to DXF (FIXED UNIVERSAL ENGINE) ---
         function lonLatToMeters(lon, lat) {
+            lat = Math.max(-85.05112878, Math.min(85.05112878, lat));
             const x = lon * 20037508.34 / 180;
             let y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);
             y = y * 20037508.34 / 180;
@@ -1002,6 +1003,8 @@
                             geo.features.forEach(processFeature);
                         } else if (geo.type === 'Feature') {
                             processFeature(geo);
+                        } else if (geo.type && geo.coordinates) {
+                            processFeature({ type: "Feature", geometry: geo, properties: {} });
                         }
                     }
                 });
@@ -1031,10 +1034,19 @@
             });
         });
 
-        // --- Perbaikan Utama Generator DXF Standar AutoCAD ---
+        // --- Generator DXF Standar Universal AC1009 dengan Auto-Fit Extents ---
         function generateDXF(featureCollection) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+            function updateExtents(x, y) {
+                if (isNaN(x) || isNaN(y)) return;
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            }
+
             const layerNames = new Set(["0", "KML_Boundary", "OSM_Buildings", "OSM_Roads", "User_Drawn"]);
-            
             featureCollection.features.forEach(f => {
                 if (f.properties && f.properties.layer) {
                     let name = f.properties.layer.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -1042,16 +1054,101 @@
                 }
             });
 
-            let dxf = [];
+            let entitiesDxf = [];
 
-            // 1. HEADER SECTION
-            dxf.push("  0", "SECTION", "  2", "HEADER");
-            dxf.push("  9", "$ACADVER", "  1", "AC1015"); // Format AutoCAD 2000 Standard
-            dxf.push("  0", "ENDSEC");
+            function addPoint(coord, layerName) {
+                if (!coord || coord.length < 2) return;
+                let [x, y] = lonLatToMeters(coord[0], coord[1]);
+                updateExtents(x, y);
 
-            // 2. TABLES SECTION (Mendefinisikan Layer & Warna)
-            dxf.push("  0", "SECTION", "  2", "TABLES");
-            dxf.push("  0", "TABLE", "  2", "LAYER", " 70", layerNames.size.toString());
+                entitiesDxf.push("  0", "POINT");
+                entitiesDxf.push("  8", layerName);
+                entitiesDxf.push(" 10", x.toFixed(4));
+                entitiesDxf.push(" 20", y.toFixed(4));
+                entitiesDxf.push(" 30", "0.0");
+            }
+
+            function addPolyline(coords, isClosed, layerName) {
+                if (!coords || coords.length < 2) return;
+
+                entitiesDxf.push("  0", "POLYLINE");
+                entitiesDxf.push("  8", layerName);
+                entitiesDxf.push(" 66", "1"); // Flag entitas VERTEX menyusul
+                entitiesDxf.push(" 70", isClosed ? "1" : "0");
+                entitiesDxf.push(" 10", "0.0");
+                entitiesDxf.push(" 20", "0.0");
+                entitiesDxf.push(" 30", "0.0");
+
+                coords.forEach(c => {
+                    if (!c || c.length < 2) return;
+                    let [x, y] = lonLatToMeters(c[0], c[1]);
+                    updateExtents(x, y);
+
+                    entitiesDxf.push("  0", "VERTEX");
+                    entitiesDxf.push("  8", layerName);
+                    entitiesDxf.push(" 10", x.toFixed(4));
+                    entitiesDxf.push(" 20", y.toFixed(4));
+                    entitiesDxf.push(" 30", "0.0");
+                });
+
+                entitiesDxf.push("  0", "SEQEND");
+                entitiesDxf.push("  8", layerName);
+            }
+
+            function processGeometry(gem, layerName) {
+                if (!gem) return;
+
+                if (gem.type === "Point") {
+                    addPoint(gem.coordinates, layerName);
+                } else if (gem.type === "MultiPoint") {
+                    gem.coordinates.forEach(pt => addPoint(pt, layerName));
+                } else if (gem.type === "LineString") {
+                    addPolyline(gem.coordinates, false, layerName);
+                } else if (gem.type === "MultiLineString") {
+                    gem.coordinates.forEach(line => addPolyline(line, false, layerName));
+                } else if (gem.type === "Polygon") {
+                    gem.coordinates.forEach(ring => addPolyline(ring, true, layerName));
+                } else if (gem.type === "MultiPolygon") {
+                    gem.coordinates.forEach(poly => poly.forEach(ring => addPolyline(ring, true, layerName)));
+                } else if (gem.type === "GeometryCollection") {
+                    gem.geometries.forEach(g => processGeometry(g, layerName));
+                }
+            }
+
+            featureCollection.features.forEach((feature) => {
+                let gem = feature.geometry;
+                let layerName = (feature.properties && feature.properties.layer) ? feature.properties.layer : "0";
+                layerName = layerName.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+                processGeometry(gem, layerName);
+            });
+
+            if (minX === Infinity) {
+                minX = 0; minY = 0; maxX = 100; maxY = 100;
+            }
+
+            let headerDxf = [];
+
+            // 1. HEADER SECTION (Mengunci Bounding Box Otomatis)
+            headerDxf.push("  0", "SECTION");
+            headerDxf.push("  2", "HEADER");
+            headerDxf.push("  9", "$ACADVER");
+            headerDxf.push("  1", "AC1009");
+            headerDxf.push("  9", "$EXTMIN");
+            headerDxf.push(" 10", minX.toFixed(4));
+            headerDxf.push(" 20", minY.toFixed(4));
+            headerDxf.push(" 30", "0.0");
+            headerDxf.push("  9", "$EXTMAX");
+            headerDxf.push(" 10", maxX.toFixed(4));
+            headerDxf.push(" 20", maxY.toFixed(4));
+            headerDxf.push(" 30", "0.0");
+            headerDxf.push("  0", "ENDSEC");
+
+            // 2. TABLES SECTION
+            headerDxf.push("  0", "SECTION");
+            headerDxf.push("  2", "TABLES");
+            headerDxf.push("  0", "TABLE");
+            headerDxf.push("  2", "LAYER");
+            headerDxf.push(" 70", layerNames.size.toString());
 
             const layerColors = {
                 "KML_Boundary": 3,  // Hijau
@@ -1061,76 +1158,26 @@
             };
 
             layerNames.forEach(name => {
-                const color = layerColors[name] || 7; // Default Putih/Hitam
-                dxf.push("  0", "LAYER");
-                dxf.push("100", "AcDbSymbolTableRecord");
-                dxf.push("100", "AcDbLayerTableRecord");
-                dxf.push("  2", name);
-                dxf.push(" 70", "0");
-                dxf.push(" 62", color.toString());
-                dxf.push("  6", "CONTINUOUS");
+                const color = layerColors[name] || 7;
+                headerDxf.push("  0", "LAYER");
+                headerDxf.push("  2", name);
+                headerDxf.push(" 70", "0");
+                headerDxf.push(" 62", color.toString());
+                headerDxf.push("  6", "CONTINUOUS");
             });
 
-            dxf.push("  0", "ENDTAB");
-            dxf.push("  0", "ENDSEC");
+            headerDxf.push("  0", "ENDTAB");
+            headerDxf.push("  0", "ENDSEC");
 
             // 3. ENTITIES SECTION
-            dxf.push("  0", "SECTION", "  2", "ENTITIES");
+            headerDxf.push("  0", "SECTION");
+            headerDxf.push("  2", "ENTITIES");
 
-            featureCollection.features.forEach((feature) => {
-                let gem = feature.geometry;
-                if (!gem) return;
+            let fullDxf = headerDxf.concat(entitiesDxf);
+            fullDxf.push("  0", "ENDSEC");
+            fullDxf.push("  0", "EOF");
 
-                let layerName = feature.properties.layer || "0";
-                layerName = layerName.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
-
-                function addLWPolyline(coords, isClosed) {
-                    if (!coords || coords.length === 0) return;
-
-                    dxf.push("  0", "LWPOLYLINE");
-                    dxf.push("100", "AcDbEntity");
-                    dxf.push("  8", layerName);
-                    dxf.push("100", "AcDbPolyline");
-                    dxf.push(" 90", coords.length.toString());
-                    dxf.push(" 70", isClosed ? "1" : "0");
-
-                    coords.forEach(c => {
-                        let [x, y] = lonLatToMeters(c[0], c[1]);
-                        dxf.push(" 10", x.toFixed(4));
-                        dxf.push(" 20", y.toFixed(4));
-                    });
-                }
-
-                function addPoint(coord) {
-                    let [x, y] = lonLatToMeters(coord[0], coord[1]);
-                    dxf.push("  0", "POINT");
-                    dxf.push("100", "AcDbEntity");
-                    dxf.push("  8", layerName);
-                    dxf.push("100", "AcDbPoint");
-                    dxf.push(" 10", x.toFixed(4));
-                    dxf.push(" 20", y.toFixed(4));
-                    dxf.push(" 30", "0.0");
-                }
-
-                if (gem.type === "Point") {
-                    addPoint(gem.coordinates);
-                } else if (gem.type === "MultiPoint") {
-                    gem.coordinates.forEach(pt => addPoint(pt));
-                } else if (gem.type === "Polygon") {
-                    gem.coordinates.forEach(ring => addLWPolyline(ring, true));
-                } else if (gem.type === "LineString") {
-                    addLWPolyline(gem.coordinates, false);
-                } else if (gem.type === "MultiPolygon") {
-                    gem.coordinates.forEach(poly => poly.forEach(ring => addLWPolyline(ring, true)));
-                } else if (gem.type === "MultiLineString") {
-                    gem.coordinates.forEach(line => addLWPolyline(line, false));
-                }
-            });
-
-            dxf.push("  0", "ENDSEC");
-            dxf.push("  0", "EOF");
-
-            return dxf.join("\r\n") + "\r\n";
+            return fullDxf.join("\r\n") + "\r\n";
         }
     </script>
 </body>

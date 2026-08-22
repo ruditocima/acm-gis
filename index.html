@@ -303,6 +303,7 @@
         let clipboardGeoJSON = null;
         let lastSelectedLayer = null;
         let uploadedKmlFeatures = []; 
+        let activeEditLayer = null; // Menyimpan layer yang sedang aktif di-edit
 
         // --- 2. Leaflet Geoman Controls ---
         map.pm.addControls({
@@ -329,6 +330,43 @@
             color: '#3b82f6',
             weight: 1.5,
             fillOpacity: 0.3
+        });
+
+        // Event listener saat mode edit dinonaktifkan
+        map.on('pm:globaleditmodetoggled', (e) => {
+            if (!e.enabled) {
+                if (activeEditLayer && activeEditLayer.pm) {
+                    activeEditLayer.pm.disable();
+                    activeEditLayer = null;
+                }
+            }
+        });
+
+        // Event listener saat mode drag aktif (memungkinkan drag pada OSM Bangunan)
+        map.on('pm:globaldragmodetoggled', (e) => {
+            if (e.enabled) {
+                osmGroup.eachLayer(layer => {
+                    if (layer.options && layer.options.building && layer.options.allowDragging !== false) {
+                        if (layer.pm) layer.pm.enableLayerDrag();
+                    }
+                });
+            } else {
+                osmGroup.eachLayer(layer => {
+                    if (layer.options && layer.options.building) {
+                        if (layer.pm) layer.pm.disableLayerDrag();
+                    }
+                });
+            }
+        });
+
+        // Reset highlight vertex jika mengklik area kosong peta
+        map.on('click', (e) => {
+            if (map.pm.globalEditEnabled()) {
+                if (activeEditLayer && activeEditLayer.pm) {
+                    activeEditLayer.pm.disable();
+                    activeEditLayer = null;
+                }
+            }
         });
 
         map.on('pm:create', (e) => {
@@ -444,10 +482,35 @@
             });
         });
 
-        // --- 4. Popup Binding ---
+        // --- 4. Popup & Edit Binding ---
         function bindNamePopup(layer) {
             layer.on('click', function(e) {
                 lastSelectedLayer = layer;
+
+                // Jika Mode Edit (Pencil) sedang aktif pada peta:
+                if (map.pm.globalEditEnabled()) {
+                    // Nonaktifkan titik edit pada layer yang sebelumnya dipilih
+                    if (activeEditLayer && activeEditLayer !== layer) {
+                        if (activeEditLayer.pm) {
+                            activeEditLayer.pm.disable();
+                        }
+                    }
+
+                    // Aktifkan titik edit HANYA pada objek yang diklik ini
+                    if (layer.options.allowEditing !== false && layer.pm) {
+                        layer.options.pmIgnore = false;
+                        layer.pm.enable({
+                            allowEditing: true,
+                            allowDragging: layer.options.allowDragging !== false,
+                            allowRemoval: layer.options.allowRemoval === true,
+                            allowCutting: layer.options.allowCutting === true,
+                            snappable: false
+                        });
+                        activeEditLayer = layer;
+                    }
+                    return; // Jangan buka popup info saat memilih objek untuk di-edit
+                }
+
                 let props = layer.feature?.properties || {};
                 let name = props.name || props.Name || props.NAME || props.type || props.building || props.highway || 'Object';
                 let desc = props.description || props.Description || '';
@@ -542,7 +605,7 @@
             });
         }
 
-        // --- 6. Fetch OSM Data (With Dynamic Confirmation & Higher Timeout) ---
+        // --- 6. Fetch OSM Data ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -554,7 +617,6 @@
             const bboxPolygon = turf.bboxPolygon([w, s, e, n]);
             const areaInSqKm = turf.area(bboxPolygon) / 1000000;
 
-            // Jika luas area melebihi 50 km², tampilkan konfirmasi opsional
             if (areaInSqKm > 50) {
                 const result = await Swal.fire({
                     icon: 'warning',
@@ -581,7 +643,6 @@
                 'https://overpass.private.coffee/api/interpreter'
             ];
 
-            // Timeout ditingkatkan ke 60 detik untuk mengakomodasi luas area hingga 50 km²
             const query = `[out:json][timeout:60];
             (
               way["building"](${s},${w},${n},${e});
@@ -598,7 +659,6 @@
 
                 try {
                     const controller = new AbortController();
-                    // Batas pembatalan koneksi lokal ditingkatkan ke 30 detik
                     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
                     const response = await fetch(targetUrl, {
@@ -700,13 +760,14 @@
                                 else if (feature.properties.highway) feature.properties.name = "Road";
                             }
 
-                            // Pengaturan hak akses khusus OSM Bangunan
+                            // Pengaturan hak akses & proteksi OSM Bangunan
                             if (feature.properties.building) {
+                                layer.options.building = true;
                                 layer.options.allowEditing = true;
                                 layer.options.allowDragging = true;
-                                layer.options.allowRemoval = false;
-                                layer.options.allowCutting = false;
-                                layer.options.pmIgnore = false;
+                                layer.options.allowRemoval = false; // Dilarang Hapus
+                                layer.options.allowCutting = false; // Dilarang Potong
+                                layer.options.pmIgnore = true;      // Sembunyikan titik vertex default agar browser tetap ringan
                             }
 
                             if (feature.properties.highway) {
@@ -866,11 +927,12 @@
 
                             // Pengaturan hak akses khusus OSM Bangunan saat dimuat dari file proyek
                             if (props.building || (props.sourceGroup === 'osm' && props.building)) {
+                                layer.options.building = true;
                                 layer.options.allowEditing = true;
                                 layer.options.allowDragging = true;
                                 layer.options.allowRemoval = false;
                                 layer.options.allowCutting = false;
-                                layer.options.pmIgnore = false;
+                                layer.options.pmIgnore = true;
                             }
 
                             if (props.highway) {

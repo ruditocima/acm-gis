@@ -461,6 +461,21 @@
             isRotateModeActive = false;
             updateRotateButtonUI();
             clearAllEdits();
+
+            if (e.enabled) {
+                // Matikan vertek otomatis di seluruh layer agar browser tidak berat
+                [osmGroup, drawGroup, kmlGroup].forEach(group => {
+                    processAllSubLayers(group, l => {
+                        if (l.pm && typeof l.pm.disable === 'function') {
+                            l.pm.disable();
+                        }
+                    });
+                });
+                Swal.fire({
+                    toast: true, position: 'top-end', icon: 'info',
+                    title: 'Mode Edit Aktif: Klik pada objek untuk menampilkan verteknya', showConfirmButton: false, timer: 2500
+                });
+            }
         });
 
         map.on('pm:globaldragmodetoggled', (e) => {
@@ -476,11 +491,10 @@
                 mapContainer.classList.remove('leaflet-drag-active');
             }
 
-            // HANYA MENGIZINKAN DRAG UNTUK OSM DAN OBJEK GAMBAR (kmlGroup DILINDUNGI)
+            // Izinkan Drag untuk OSM Bangunan, OSM Jalan, dan User Drawn
             [osmGroup, drawGroup].forEach(group => {
                 processAllSubLayers(group, layer => {
                     if (layer.pm) {
-                        layer.options.pmIgnore = false;
                         if (isDragActive) {
                             layer.pm.enableLayerDrag();
                         } else {
@@ -504,17 +518,30 @@
             e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Drawn Object' } };
             
             e.layer.options.pmIgnore = false;
+            e.layer.options.allowEditing = true;
+            e.layer.options.allowDragging = true;
+            e.layer.options.allowRemoval = true;
+            e.layer.options.allowRotation = true;
+
             drawGroup.addLayer(e.layer);
             bindNamePopup(e.layer);
             setSelectedLayer(e.layer);
 
-            // Simpan aksi penggambaran ke riwayat undo
             pushUndoAction({ type: 'add', group: drawGroup, layer: e.layer });
         });
 
         map.on('pm:remove', (e) => {
             if (e.layer) {
-                // Simpan aksi penghapusan ke riwayat undo
+                const props = e.layer.feature?.properties || {};
+                // Mencegah penghapusan layer OSM Bangunan dan OSM Jalan
+                if (props.building || props.highway || props.sourceGroup === 'osm' || e.layer.options.allowRemoval === false) {
+                    osmGroup.addLayer(e.layer);
+                    Swal.fire({
+                        toast: true, position: 'top-end', icon: 'warning',
+                        title: 'Data OSM tidak diizinkan untuk dihapus!', showConfirmButton: false, timer: 2000
+                    });
+                    return;
+                }
                 pushUndoAction({ type: 'remove', group: drawGroup, layer: e.layer });
             }
         });
@@ -530,7 +557,7 @@
             if (isRotateModeActive) {
                 Swal.fire({
                     toast: true, position: 'top-end', icon: 'info',
-                    title: 'Mode Rotasi Aktif: Klik pada objek untuk memutarnya', showConfirmButton: false, timer: 2500
+                    title: 'Mode Rotasi Aktif: Klik pada OSM Bangunan untuk memutarnya', showConfirmButton: false, timer: 2500
                 });
             }
         });
@@ -622,6 +649,10 @@
                 },
                 onEachFeature: function(feature, layer) {
                     layer.options.pmIgnore = false;
+                    layer.options.allowEditing = true;
+                    layer.options.allowDragging = true;
+                    layer.options.allowRemoval = true;
+                    layer.options.allowRotation = true;
                     bindNamePopup(layer);
                 }
             });
@@ -632,7 +663,6 @@
                 if (map.pm.globalDragModeEnabled() && lyr.pm) {
                     lyr.pm.enableLayerDrag();
                 }
-                // Simpan aksi penempelan ke riwayat undo
                 pushUndoAction({ type: 'add', group: drawGroup, layer: lyr });
             });
 
@@ -667,7 +697,6 @@
 
         // --- 4. Interaksi Feature & Popup Binding ---
         function bindNamePopup(layer) {
-            // PERIKSA PAKAH LAYER ADALAH BOUNDARY/KML (LOCKED)
             const isKmlLayer = layer.options && layer.options.pmIgnore === true;
 
             if (!isKmlLayer) {
@@ -675,9 +704,13 @@
             }
 
             layer.on('click', function(e) {
-                // Alur Mode Rotate Layers
+                const isRoad = layer.feature && layer.feature.properties && layer.feature.properties.highway;
+                const isBuilding = layer.feature && layer.feature.properties && layer.feature.properties.building;
+
+                // Mode Rotate Layers (Langkah-langkah rotasi OSM Bangunan spesifik)
                 if (isRotateModeActive) {
                     if (e.originalEvent) L.DomEvent.stopPropagation(e);
+                    
                     if (isKmlLayer) {
                         Swal.fire({
                             toast: true, position: 'top-end', icon: 'warning',
@@ -685,9 +718,20 @@
                         });
                         return;
                     }
+
+                    if (isRoad) {
+                        Swal.fire({
+                            toast: true, position: 'top-end', icon: 'warning',
+                            title: 'OSM Jalan hanya diperbolehkan Drag, tidak bisa di-rotate!', showConfirmButton: false, timer: 2000
+                        });
+                        return;
+                    }
+
+                    // Bersihkan vertek dari layer lain agar server/browser tidak berat
                     clearAllEdits();
                     setSelectedLayer(layer);
-                    if (layer.pm) {
+
+                    if (layer.pm && layer.options.allowRotation !== false) {
                         if (typeof layer.pm.enableRotate === 'function') {
                             layer.pm.enableRotate();
                         } else if (typeof layer.pm.enable === 'function') {
@@ -706,15 +750,24 @@
                 }
 
                 if (map.pm.globalEditEnabled()) {
-                    // CEGAH SAMA SEKALI EDIT APABILA LAYER ADALAH BOUNDARY KML
                     if (isKmlLayer) {
+                        if (e.originalEvent) L.DomEvent.stopPropagation(e);
+                        return;
+                    }
+
+                    // Penguncian OSM Jalan dari mode Edit Vertek
+                    if (isRoad) {
+                        Swal.fire({
+                            toast: true, position: 'top-end', icon: 'warning',
+                            title: 'OSM Jalan hanya diperbolehkan Drag Layer!', showConfirmButton: false, timer: 2000
+                        });
                         if (e.originalEvent) L.DomEvent.stopPropagation(e);
                         return;
                     }
 
                     if (activeEditLayer !== layer) {
                         clearAllEdits();
-                        if (layer.pm) {
+                        if (layer.pm && layer.options.allowEditing !== false) {
                             layer.pm.enable({
                                 allowEditing: true,
                                 allowDragging: true,
@@ -810,7 +863,6 @@
                     return L.marker(latlng, { icon: blueDotIcon });
                 },
                 onEachFeature: function(feature, layer) {
-                    // KUNCI LAYER BOUNDARY KML DARI EDITING GEOMAN
                     layer.options.pmIgnore = true;
                     if (L.PM) L.PM.reInitLayer(layer);
                     bindNamePopup(layer);
@@ -984,8 +1036,23 @@
                                 else if (feature.properties.highway) feature.properties.name = "Road";
                             }
 
-                            // DATA OSM BANGUNAN DAN JALAN BISA DIEDIT FULL
                             layer.options.pmIgnore = false;
+
+                            // PENETAPAN ATURAN HAK AKSES EDITING
+                            if (feature.properties.building) {
+                                // OSM Bangunan: Edit & Drag Diizinkan, Hapus Tidak Diizinkan
+                                layer.options.allowEditing = true;
+                                layer.options.allowDragging = true;
+                                layer.options.allowRemoval = false;
+                                layer.options.allowRotation = true;
+                            } else if (feature.properties.highway) {
+                                // OSM Jalan: HANYA Drag Diizinkan, Edit & Hapus & Rotasi Dibatasi
+                                layer.options.allowEditing = false;
+                                layer.options.allowDragging = true;
+                                layer.options.allowRemoval = false;
+                                layer.options.allowRotation = false;
+                            }
+
                             bindNamePopup(layer);
                         }
                     }).addTo(osmGroup);
@@ -1049,7 +1116,7 @@
             });
         }
 
-        // --- 7. Save Project File (Dialog Penyimpanan Folder & File System Access) ---
+        // --- 7. Save Project File ---
         document.getElementById('btn-save').addEventListener('click', async () => {
             const allFeatures = [];
             extractFeaturesTo(kmlGroup, 'kml', allFeatures);
@@ -1064,7 +1131,6 @@
             const featureCollection = { type: "FeatureCollection", features: allFeatures };
             const jsonContent = JSON.stringify(featureCollection, null, 2);
 
-            // Alur Penyimpanan Native (Pilih Folder, Isi Nama File, lalu Simpan)
             if ('showSaveFilePicker' in window) {
                 try {
                     const handle = await window.showSaveFilePicker({
@@ -1088,7 +1154,6 @@
                     }
                 }
             } else {
-                // Fallback untuk browser yang belum mendukung File System Access API
                 const { value: fileName } = await Swal.fire({
                     title: 'Simpan Proyek Peta',
                     input: 'text',
@@ -1171,15 +1236,29 @@
                             const props = feature.properties || {};
 
                             if (props.sourceGroup === 'kml') {
-                                // PASTIKAN LAYER KML TETAP TERKUNCI DARI EDIT SAAT DIMUAT DARI PROYEK
                                 layer.options.pmIgnore = true;
                                 if (L.PM) L.PM.reInitLayer(layer);
                                 kmlGroup.addLayer(layer);
                             } else if (props.sourceGroup === 'osm') {
                                 layer.options.pmIgnore = false;
+                                if (props.building) {
+                                    layer.options.allowEditing = true;
+                                    layer.options.allowDragging = true;
+                                    layer.options.allowRemoval = false;
+                                    layer.options.allowRotation = true;
+                                } else if (props.highway) {
+                                    layer.options.allowEditing = false;
+                                    layer.options.allowDragging = true;
+                                    layer.options.allowRemoval = false;
+                                    layer.options.allowRotation = false;
+                                }
                                 osmGroup.addLayer(layer);
                             } else {
                                 layer.options.pmIgnore = false;
+                                layer.options.allowEditing = true;
+                                layer.options.allowDragging = true;
+                                layer.options.allowRemoval = true;
+                                layer.options.allowRotation = true;
                                 drawGroup.addLayer(layer);
                             }
                             bindNamePopup(layer);

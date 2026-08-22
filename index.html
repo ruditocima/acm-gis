@@ -290,6 +290,44 @@
             }
         }
 
+        // --- Undo / History Stack Engine ---
+        const undoStack = [];
+
+        function pushUndoAction(action) {
+            undoStack.push(action);
+        }
+
+        function performUndo() {
+            if (undoStack.length === 0) {
+                Swal.fire({
+                    toast: true, position: 'top-end', icon: 'info',
+                    title: 'Tidak ada riwayat aksi untuk di-undo!', showConfirmButton: false, timer: 2000
+                });
+                return;
+            }
+
+            const lastAction = undoStack.pop();
+            
+            if (lastAction.type === 'add') {
+                if (lastAction.group && lastAction.layer) {
+                    lastAction.group.removeLayer(lastAction.layer);
+                } else if (lastAction.layer) {
+                    map.removeLayer(lastAction.layer);
+                }
+            } else if (lastAction.type === 'remove') {
+                if (lastAction.group && lastAction.layer) {
+                    lastAction.group.addLayer(lastAction.layer);
+                } else if (lastAction.layer) {
+                    map.addLayer(lastAction.layer);
+                }
+            }
+
+            Swal.fire({
+                toast: true, position: 'top-end', icon: 'success',
+                title: 'Aksi sebelumnya dibatalkan (Undo)!', showConfirmButton: false, timer: 1500
+            });
+        }
+
         // --- 1. Map Initialization ---
         const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 22,
@@ -447,6 +485,16 @@
             drawGroup.addLayer(e.layer);
             bindNamePopup(e.layer);
             setSelectedLayer(e.layer);
+
+            // Simpan aksi penggambaran ke riwayat undo
+            pushUndoAction({ type: 'add', group: drawGroup, layer: e.layer });
+        });
+
+        map.on('pm:remove', (e) => {
+            if (e.layer) {
+                // Simpan aksi penghapusan ke riwayat undo
+                pushUndoAction({ type: 'remove', group: drawGroup, layer: e.layer });
+            }
         });
 
         // --- 3. UI Layer Switcher ---
@@ -546,6 +594,8 @@
                 if (map.pm.globalDragModeEnabled() && lyr.pm) {
                     lyr.pm.enableLayerDrag();
                 }
+                // Simpan aksi penempelan ke riwayat undo
+                pushUndoAction({ type: 'add', group: drawGroup, layer: lyr });
             });
 
             Swal.fire({
@@ -554,7 +604,7 @@
             });
         });
 
-        // --- Keyboard Shortcut Listener (Ctrl+C & Ctrl+V) ---
+        // --- Keyboard Shortcut Listener (Ctrl+C, Ctrl+V & Ctrl+Z) ---
         document.addEventListener('keydown', (e) => {
             const activeElement = document.activeElement;
             if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
@@ -569,6 +619,11 @@
             if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
                 e.preventDefault();
                 document.getElementById('btn-paste').click();
+            }
+
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+                e.preventDefault();
+                performUndo();
             }
         });
 

@@ -193,7 +193,7 @@
             <!-- Drawing Controls Note -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-1 text-gray-300 uppercase tracking-wider">Editing Tools</h2>
-                <p class="text-xs text-gray-400 mb-3">Gunakan toolbar di kanan atas peta untuk menggambar atau mengedit polygon/garis.</p>
+                <p class="text-xs text-gray-400 mb-3">Gunakan toolbar di kanan atas peta untuk menggambar, memutar, atau mengedit polygon/garis.</p>
                 
                 <div class="grid grid-cols-2 gap-2 mt-2">
                     <button id="btn-copy" class="py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
@@ -395,19 +395,25 @@
             }
         }
 
-        // --- Pembersih Edit State ---
+        // --- Pembersih Edit & Rotate State ---
         function clearAllEdits() {
             if (activeEditLayer) {
-                if (activeEditLayer.pm && activeEditLayer.pm.enabled()) {
-                    activeEditLayer.pm.disable();
+                if (activeEditLayer.pm) {
+                    if (activeEditLayer.pm.enabled()) activeEditLayer.pm.disable();
+                    if (activeEditLayer.pm.rotateEnabled && activeEditLayer.pm.rotateEnabled()) {
+                        activeEditLayer.pm.disableRotate();
+                    }
                 }
                 activeEditLayer = null;
             }
 
             [osmGroup, kmlGroup, drawGroup].forEach(group => {
                 processAllSubLayers(group, l => {
-                    if (l.pm && l.pm.enabled()) {
-                        l.pm.disable();
+                    if (l.pm) {
+                        if (l.pm.enabled()) l.pm.disable();
+                        if (l.pm.rotateEnabled && l.pm.rotateEnabled()) {
+                            l.pm.disableRotate();
+                        }
                     }
                 });
             });
@@ -425,6 +431,7 @@
             drawRectangle: true,
             editMode: true,
             dragMode: true,
+            rotateMode: true, // Menampilkan tombol Rotate Mode
             cutPolygon: true,
             removalMode: true,
         });
@@ -442,6 +449,18 @@
 
         map.on('pm:globaleditmodetoggled', (e) => {
             clearAllEdits();
+        });
+
+        map.on('pm:globalrotatemodetoggled', (e) => {
+            clearAllEdits();
+            // Matikan rotasi otomatis seluruh layer agar penguji harus memilih/mengklik objek spesifik
+            [osmGroup, kmlGroup, drawGroup].forEach(group => {
+                processAllSubLayers(group, layer => {
+                    if (layer.pm && layer.pm.rotateEnabled && layer.pm.rotateEnabled()) {
+                        layer.pm.disableRotate();
+                    }
+                });
+            });
         });
 
         map.on('pm:globaldragmodetoggled', (e) => {
@@ -630,7 +649,7 @@
 
         // --- 4. Interaksi Feature & Popup Binding ---
         function bindNamePopup(layer) {
-            // PERIKSA PAKAH LAYER ADALAH BOUNDARY/KML (LOCKED)
+            // PERIKSA APAKAH LAYER ADALAH BOUNDARY/KML (LOCKED)
             const isKmlLayer = layer.options && layer.options.pmIgnore === true;
 
             if (!isKmlLayer) {
@@ -645,6 +664,25 @@
                     return;
                 }
 
+                // MODE ROTATE: Aktifkan rotasi HANYA pada objek ini (tanpa vertex edit)
+                if (map.pm.globalRotateModeEnabled && map.pm.globalRotateModeEnabled()) {
+                    if (isKmlLayer) {
+                        if (e.originalEvent) L.DomEvent.stopPropagation(e);
+                        return;
+                    }
+
+                    if (activeEditLayer !== layer) {
+                        clearAllEdits();
+                        if (layer.pm) {
+                            layer.pm.enableRotate();
+                            activeEditLayer = layer;
+                        }
+                    }
+                    if (e.originalEvent) L.DomEvent.stopPropagation(e);
+                    return;
+                }
+
+                // MODE EDIT VERTEX
                 if (map.pm.globalEditEnabled()) {
                     // CEGAH SAMA SEKALI EDIT APABILA LAYER ADALAH BOUNDARY KML
                     if (isKmlLayer) {
@@ -678,7 +716,7 @@
             });
 
             if (layer.pm && !isKmlLayer) {
-                layer.on('pm:dragstart pm:edit', () => {
+                layer.on('pm:dragstart pm:edit pm:rotate', () => {
                     setSelectedLayer(layer);
                 });
             }

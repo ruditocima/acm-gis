@@ -408,11 +408,6 @@
                 group.eachLayer(layer => {
                     if (layer.pm) {
                         layer.options.pmIgnore = false;
-                        if (isDragActive) {
-                            layer.pm.enableLayerDrag();
-                        } else {
-                            layer.pm.disableLayerDrag();
-                        }
                     }
                 });
             });
@@ -842,7 +837,7 @@
 
                     if (map.pm.globalDragModeEnabled()) {
                         osmGroup.eachLayer(layer => {
-                            if (layer.pm) layer.pm.enableLayerDrag();
+                            if (layer.pm) layer.options.pmIgnore = false;
                         });
                     }
 

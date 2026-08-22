@@ -288,10 +288,9 @@
         // Helper untuk memproses seluruh sub-layer secara rekursif dan efisien
         function processAllSubLayers(group, callback) {
             if (!group) return;
+            callback(group);
             if (group.eachLayer) {
                 group.eachLayer(child => processAllSubLayers(child, callback));
-            } else {
-                callback(group);
             }
         }
 
@@ -403,6 +402,14 @@
 
         // --- Pembersih Edit State & Rotate State ---
         function clearAllEdits() {
+            // Matikan mode global Geoman jika sedang aktif
+            if (map.pm.globalEditEnabled && map.pm.globalEditEnabled()) {
+                map.pm.disableGlobalEditMode();
+            }
+            if (map.pm.globalRotateEnabled && map.pm.globalRotateEnabled()) {
+                map.pm.disableGlobalRotateMode();
+            }
+
             if (activeEditLayer) {
                 if (activeEditLayer.pm) {
                     if (typeof activeEditLayer.pm.disable === 'function') activeEditLayer.pm.disable();
@@ -411,13 +418,12 @@
                 activeEditLayer = null;
             }
 
-            [osmGroup, kmlGroup, drawGroup].forEach(group => {
-                processAllSubLayers(group, l => {
-                    if (l.pm) {
-                        if (typeof l.pm.disable === 'function') l.pm.disable();
-                        if (typeof l.pm.disableRotate === 'function') l.pm.disableRotate();
-                    }
-                });
+            // Bersihkan secara menyeluruh ke seluruh layer di peta
+            map.eachLayer(l => {
+                if (l.pm) {
+                    if (typeof l.pm.disable === 'function') l.pm.disable();
+                    if (typeof l.pm.disableRotate === 'function') l.pm.disableRotate();
+                }
             });
         }
 
@@ -457,16 +463,29 @@
             fillOpacity: 0.3
         });
 
-        // Event listener saat mode edit diaktifkan global: langsung bersihkan vertek agar tidak berat
+        // Intercept jika mode edit global diaktifkan agar titik edit tidak muncul sekaligus di semua objek
         map.on('pm:globaleditmodetoggled', (e) => {
-            isRotateModeActive = false;
-            updateRotateButtonUI();
-            clearAllEdits();
-
             if (e.enabled) {
+                map.pm.disableGlobalEditMode();
+                isRotateModeActive = false;
+                updateRotateButtonUI();
+                clearAllEdits();
                 Swal.fire({
                     toast: true, position: 'top-end', icon: 'info',
                     title: 'Mode Edit Aktif: Klik pada objek yang ingin diedit verteknya', showConfirmButton: false, timer: 2500
+                });
+            }
+        });
+
+        map.on('pm:globalrotatemodetoggled', (e) => {
+            if (e.enabled) {
+                map.pm.disableGlobalRotateMode();
+                isRotateModeActive = true;
+                updateRotateButtonUI();
+                clearAllEdits();
+                Swal.fire({
+                    toast: true, position: 'top-end', icon: 'info',
+                    title: 'Mode Rotasi Aktif: Klik pada objek untuk memutarnya', showConfirmButton: false, timer: 2500
                 });
             }
         });
@@ -484,7 +503,6 @@
                 mapContainer.classList.remove('leaflet-drag-active');
             }
 
-            // MENGIZINKAN DRAG UNTUK OSM BANGUNAN, OSM JALAN, DAN USER DRAWN
             [osmGroup, drawGroup].forEach(group => {
                 processAllSubLayers(group, layer => {
                     if (layer.pm) {
@@ -523,7 +541,6 @@
             const layer = e.layer;
             const props = layer?.feature?.properties || {};
 
-            // Proteksi Tambahan: Jika OSM Bangunan atau Jalan terhapus, kembalikan secara otomatis
             if (props.building || props.highway) {
                 osmGroup.addLayer(layer);
                 Swal.fire({
@@ -544,6 +561,7 @@
             isRotateModeActive = !isRotateModeActive;
             if (map.pm.globalEditEnabled()) map.pm.disableGlobalEditMode();
             if (map.pm.globalDragModeEnabled()) map.pm.disableGlobalDragMode();
+            
             clearAllEdits();
             updateRotateButtonUI();
 
@@ -661,7 +679,7 @@
             });
         });
 
-        // --- Keyboard Shortcut Listener (Ctrl+C, Ctrl+V & Ctrl+Z) ---
+        // --- Keyboard Shortcut Listener ---
         document.addEventListener('keydown', (e) => {
             const activeElement = document.activeElement;
             if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
@@ -697,7 +715,7 @@
                 const isOsmBuilding = !!props.building;
                 const isOsmRoad = !!props.highway;
 
-                // --- 4. LANGAH ROTATE LAYER ---
+                // --- MODE ROTATE LAYER ---
                 if (isRotateModeActive) {
                     if (e.originalEvent) L.DomEvent.stopPropagation(e);
                     
@@ -709,7 +727,6 @@
                         return;
                     }
 
-                    // Proteksi OSM Jalan (Hanya Boleh Drag Layer)
                     if (isOsmRoad) {
                         Swal.fire({
                             toast: true, position: 'top-end', icon: 'warning',
@@ -718,9 +735,10 @@
                         return;
                     }
 
-                    // Tampilkan vertek rotate HANYA pada layer yang dipilih saja
+                    // Tampilkan titik rotasi HANYA pada layer yang diklik/dipilih
                     clearAllEdits();
                     setSelectedLayer(layer);
+                    
                     if (layer.pm) {
                         if (typeof layer.pm.enableRotate === 'function') {
                             layer.pm.enableRotate();
@@ -740,7 +758,7 @@
                     return;
                 }
 
-                // --- PROTEKSI REMOVAL (HAPUS) UNTUK OSM BANGUNAN & OSM JALAN ---
+                // --- PROTEKSI REMOVAL (HAPUS) ---
                 if (map.pm.globalRemovalEnabled && map.pm.globalRemovalEnabled()) {
                     if (isOsmBuilding || isOsmRoad) {
                         if (e.originalEvent) L.DomEvent.stopPropagation(e);
@@ -753,15 +771,12 @@
                     }
                 }
 
-                // --- 1. LANGKAH EDIT LAYER ---
+                // --- MODE EDIT LAYER (DILUAR ROTATE) ---
                 if (map.pm.globalEditEnabled()) {
                     if (e.originalEvent) L.DomEvent.stopPropagation(e);
 
-                    if (isKmlLayer) {
-                        return;
-                    }
+                    if (isKmlLayer) return;
 
-                    // Proteksi OSM Jalan (Hanya Boleh Drag Layer)
                     if (isOsmRoad) {
                         Swal.fire({
                             toast: true, position: 'top-end', icon: 'warning',
@@ -770,7 +785,6 @@
                         return;
                     }
 
-                    // Tampilkan titik vertek OSM bangunan/objek yang dipilih SAJA (agar server/browser tidak berat)
                     if (activeEditLayer !== layer) {
                         clearAllEdits();
                         if (layer.pm) {
@@ -1042,17 +1056,16 @@
                                 else if (feature.properties.highway) feature.properties.name = "Road";
                             }
 
-                            // KONFIGURASI BATASAN AKSES DENGAN DETAIL
                             if (feature.properties.building) {
                                 layer.options.pmIgnore = false;
                                 layer.options.allowEditing = true;
                                 layer.options.allowDragging = true;
-                                layer.options.allowRemoval = false; // Dilarang hapus
+                                layer.options.allowRemoval = false;
                             } else if (feature.properties.highway) {
                                 layer.options.pmIgnore = false;
-                                layer.options.allowEditing = false; // Dilarang edit vertek
-                                layer.options.allowDragging = true;  // HANYA Drag Layer
-                                layer.options.allowRemoval = false; // Dilarang hapus
+                                layer.options.allowEditing = false;
+                                layer.options.allowDragging = true;
+                                layer.options.allowRemoval = false;
                             }
 
                             bindNamePopup(layer);

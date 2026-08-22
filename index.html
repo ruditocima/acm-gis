@@ -455,7 +455,8 @@
                 mapContainer.classList.remove('leaflet-drag-active');
             }
 
-            [osmGroup, drawGroup, kmlGroup].forEach(group => {
+            // HANYA MENGIZINKAN DRAG UNTUK OSM DAN OBJEK GAMBAR (kmlGroup DILINDUNGI)
+            [osmGroup, drawGroup].forEach(group => {
                 processAllSubLayers(group, layer => {
                     if (layer.pm) {
                         layer.options.pmIgnore = false;
@@ -629,7 +630,12 @@
 
         // --- 4. Interaksi Feature & Popup Binding ---
         function bindNamePopup(layer) {
-            layer.options.pmIgnore = false;
+            // PERIKSA PAKAH LAYER ADALAH BOUNDARY/KML (LOCKED)
+            const isKmlLayer = layer.options && layer.options.pmIgnore === true;
+
+            if (!isKmlLayer) {
+                layer.options.pmIgnore = false;
+            }
 
             layer.on('click', function(e) {
                 setSelectedLayer(layer);
@@ -640,6 +646,12 @@
                 }
 
                 if (map.pm.globalEditEnabled()) {
+                    // CEGAH SAMA SEKALI EDIT APABILA LAYER ADALAH BOUNDARY KML
+                    if (isKmlLayer) {
+                        if (e.originalEvent) L.DomEvent.stopPropagation(e);
+                        return;
+                    }
+
                     if (activeEditLayer !== layer) {
                         clearAllEdits();
                         if (layer.pm) {
@@ -665,7 +677,7 @@
                 layer.bindPopup(content).openPopup(e.latlng);
             });
 
-            if (layer.pm) {
+            if (layer.pm && !isKmlLayer) {
                 layer.on('pm:dragstart pm:edit', () => {
                     setSelectedLayer(layer);
                 });
@@ -738,7 +750,9 @@
                     return L.marker(latlng, { icon: blueDotIcon });
                 },
                 onEachFeature: function(feature, layer) {
-                    layer.options.pmIgnore = false;
+                    // KUNCI LAYER BOUNDARY KML DARI EDITING GEOMAN
+                    layer.options.pmIgnore = true;
+                    if (L.PM) L.PM.reInitLayer(layer);
                     bindNamePopup(layer);
                 }
             });
@@ -910,6 +924,7 @@
                                 else if (feature.properties.highway) feature.properties.name = "Road";
                             }
 
+                            // DATA OSM BANGUNAN DAN JALAN BISA DIEDIT FULL
                             layer.options.pmIgnore = false;
                             bindNamePopup(layer);
                         }
@@ -1067,13 +1082,17 @@
                         },
                         onEachFeature: function(feature, layer) {
                             const props = feature.properties || {};
-                            layer.options.pmIgnore = false;
 
                             if (props.sourceGroup === 'kml') {
+                                // PASTIKAN LAYER KML TETAP TERKUNCI DARI EDIT SAAT DIMUAT DARI PROYEK
+                                layer.options.pmIgnore = true;
+                                if (L.PM) L.PM.reInitLayer(layer);
                                 kmlGroup.addLayer(layer);
                             } else if (props.sourceGroup === 'osm') {
+                                layer.options.pmIgnore = false;
                                 osmGroup.addLayer(layer);
                             } else {
+                                layer.options.pmIgnore = false;
                                 drawGroup.addLayer(layer);
                             }
                             bindNamePopup(layer);

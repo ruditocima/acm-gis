@@ -122,11 +122,11 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* CSS Pointer/Cursor overrides for Drag Mode */
-        .leaflet-interactive.leaflet-pm-draggable {
+        /* Styling kursor khusus mode Drag */
+        .leaflet-drag-active .leaflet-interactive {
             cursor: grab !important;
         }
-        .leaflet-interactive.leaflet-pm-dragging {
+        .leaflet-drag-active .leaflet-interactive:active {
             cursor: grabbing !important;
         }
     </style>
@@ -313,7 +313,7 @@
         let uploadedKmlFeatures = []; 
         let activeEditLayer = null;
 
-        // --- Fungsi Pembersih State Terpusat ---
+        // --- Pembersih Edit State ---
         function clearAllEdits() {
             if (activeEditLayer) {
                 if (activeEditLayer.pm && activeEditLayer.pm.enabled()) {
@@ -324,9 +324,8 @@
 
             [osmGroup, kmlGroup, drawGroup].forEach(group => {
                 group.eachLayer(l => {
-                    if (l.pm) {
-                        if (l.pm.enabled()) l.pm.disable();
-                        if (l.pm.dragging && l.pm.dragging()) l.pm.disableLayerDrag();
+                    if (l.pm && l.pm.enabled()) {
+                        l.pm.disable();
                     }
                 });
             });
@@ -359,42 +358,36 @@
             fillOpacity: 0.3
         });
 
-        // Event Listener Global Edit Mode
+        // Event listener saat Global Edit dinyalakan/dimatikan
         map.on('pm:globaleditmodetoggled', (e) => {
             clearAllEdits();
         });
 
-        // Event Listener Global Drag Mode (Pemeliharaan Otomatis Mode Drag & Cursor)
+        // Event listener penanganan khusus Global Drag Mode
         map.on('pm:globaldragmodetoggled', (e) => {
             clearAllEdits();
             const isDragActive = e.enabled;
+            const mapContainer = map.getContainer();
 
+            if (isDragActive) {
+                mapContainer.classList.add('leaflet-drag-active');
+            } else {
+                mapContainer.classList.remove('leaflet-drag-active');
+            }
+
+            // Memastikan seluruh layer siap dan responsif untuk di-drag
             [osmGroup, drawGroup, kmlGroup].forEach(group => {
                 group.eachLayer(layer => {
-                    const isOsmBuilding = layer.options && layer.options.building;
-                    const isUserDrawn = (group === drawGroup);
-
-                    if (isOsmBuilding || isUserDrawn) {
+                    if (layer.pm) {
+                        layer.options.pmIgnore = false;
                         if (isDragActive) {
-                            layer.options.pmIgnore = false;
-                            if (layer.pm) {
-                                layer.pm.enableLayerDrag();
-                            }
+                            layer.pm.enableLayerDrag();
                         } else {
-                            if (layer.pm) {
-                                layer.pm.disableLayerDrag();
-                            }
-                            if (isOsmBuilding) {
-                                layer.options.pmIgnore = true;
-                            }
+                            layer.pm.disableLayerDrag();
                         }
                     }
                 });
             });
-
-            if (!isDragActive) {
-                map.getContainer().style.cursor = '';
-            }
         });
 
         // Reset highlight jika mengklik area peta kosong
@@ -409,6 +402,8 @@
                 e.layer.setStyle({ weight: 1.5 });
             }
             e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Drawn Object' } };
+            
+            e.layer.options.pmIgnore = false;
             drawGroup.addLayer(e.layer);
             bindNamePopup(e.layer);
             lastSelectedLayer = e.layer;
@@ -500,6 +495,7 @@
                     return L.marker(latlng, { icon: blueDotIcon });
                 },
                 onEachFeature: function(feature, layer) {
+                    layer.options.pmIgnore = false;
                     bindNamePopup(layer);
                 }
             });
@@ -515,59 +511,34 @@
             });
         });
 
-        // --- 4. Popup & Interaksi Hover/Drag Binding ---
+        // --- 4. Interaksi Feature & Popup Binding ---
         function bindNamePopup(layer) {
-            // Kontrol Perubahan Pointer/Kursor Responsif Saat Drag Mode Active
-            layer.on('mouseover', function () {
-                if (map.pm.globalDragModeEnabled() && (layer.options.building || layer.options.allowDragging !== false)) {
-                    map.getContainer().style.cursor = 'grab';
-                }
-            });
-
-            layer.on('mouseout', function () {
-                if (map.pm.globalDragModeEnabled()) {
-                    map.getContainer().style.cursor = '';
-                }
-            });
-
-            layer.on('mousedown', function () {
-                if (map.pm.globalDragModeEnabled() && (layer.options.building || layer.options.allowDragging !== false)) {
-                    map.getContainer().style.cursor = 'grabbing';
-                }
-            });
-
-            layer.on('mouseup', function () {
-                if (map.pm.globalDragModeEnabled()) {
-                    map.getContainer().style.cursor = 'grab';
-                }
-            });
+            // Memastikan Geoman tidak mengabaikan layer ini
+            layer.options.pmIgnore = false;
 
             layer.on('click', function(e) {
+                // Jika sedang dalam Mode Drag, hentikan popup dan izinkan dragging penuh
+                if (map.pm.globalDragModeEnabled()) {
+                    if (e.originalEvent) L.DomEvent.stopPropagation(e);
+                    return;
+                }
+
                 lastSelectedLayer = layer;
 
                 // Jika Mode Edit (Pensil) aktif pada peta:
                 if (map.pm.globalEditEnabled()) {
                     clearAllEdits();
 
-                    if (layer.options.allowEditing !== false && layer.pm) {
-                        layer.options.pmIgnore = false;
+                    if (layer.pm) {
                         layer.pm.enable({
                             allowEditing: true,
-                            allowDragging: layer.options.allowDragging !== false,
-                            allowRemoval: layer.options.allowRemoval === true,
-                            allowCutting: layer.options.allowCutting === true,
+                            allowDragging: true,
                             snappable: false
                         });
                         activeEditLayer = layer;
                     }
                     if (e.originalEvent) L.DomEvent.stopPropagation(e);
                     return; 
-                }
-
-                // Jika Mode Drag (Tangan) aktif pada peta:
-                if (map.pm.globalDragModeEnabled()) {
-                    if (e.originalEvent) L.DomEvent.stopPropagation(e);
-                    return;
                 }
 
                 let props = layer.feature?.properties || {};
@@ -647,7 +618,7 @@
                     return L.marker(latlng, { icon: blueDotIcon });
                 },
                 onEachFeature: function(feature, layer) {
-                    layer.options.pmIgnore = true;
+                    layer.options.pmIgnore = false;
                     bindNamePopup(layer);
                 }
             });
@@ -680,7 +651,7 @@
                 const result = await Swal.fire({
                     icon: 'warning',
                     title: 'Area Sangat Luas',
-                    html: `Luas area KML Anda adalah <b>${areaInSqKm.toFixed(2)} km²</b>.<br><br>Memuat area di atas 50 km² mungkin memerlukan waktu lebih lama atau berisiko timeout pada server publik. Lanjutkan?`,
+                    html: `Luas area KML Anda adalah <b>${areaInSqKm.toFixed(2)} km²</b>.<br><br>Memuat area di atas 50 km² mungkin memerlukan waktu lebih lama. Lanjutkan?`,
                     showCancelButton: true,
                     confirmButtonText: 'Lanjutkan',
                     cancelButtonText: 'Batal',
@@ -819,23 +790,18 @@
                                 else if (feature.properties.highway) feature.properties.name = "Road";
                             }
 
-                            // Pengaturan hak akses khusus OSM Bangunan
-                            if (feature.properties.building) {
-                                layer.options.building = true;
-                                layer.options.allowEditing = true;
-                                layer.options.allowDragging = true;
-                                layer.options.allowRemoval = false;
-                                layer.options.allowCutting = false;
-                                layer.options.pmIgnore = true;
-                            }
-
-                            if (feature.properties.highway) {
-                                layer.options.pmIgnore = true;
-                            }
-
+                            // Objek dapat langsung di-drag saat Drag Mode aktif
+                            layer.options.pmIgnore = false;
                             bindNamePopup(layer);
                         }
                     }).addTo(osmGroup);
+
+                    // Jika saat data OSM selesai dimuat mode drag sudah aktif, langsung aktifkan drag-nya
+                    if (map.pm.globalDragModeEnabled()) {
+                        osmGroup.eachLayer(layer => {
+                            if (layer.pm) layer.pm.enableLayerDrag();
+                        });
+                    }
 
                     Swal.fire({
                         toast: true, position: 'top-end', icon: 'success',
@@ -851,7 +817,7 @@
                 Swal.fire({
                     icon: 'error',
                     title: 'Gagal Memuat Data OSM',
-                    html: 'Seluruh server OSM publik sedang sibuk atau diblokir oleh ekstensi browser.<br><br><b>Tips:</b> Matikan ekstensi AdBlock/uBlock pada halaman ini dan coba lagi.',
+                    html: 'Seluruh server OSM publik sedang sibuk. Silakan coba beberapa saat lagi.',
                     confirmButtonText: 'OK',
                     confirmButtonColor: '#10b981'
                 });
@@ -983,19 +949,7 @@
                         },
                         onEachFeature: function(feature, layer) {
                             const props = feature.properties || {};
-
-                            if (props.building || (props.sourceGroup === 'osm' && props.building)) {
-                                layer.options.building = true;
-                                layer.options.allowEditing = true;
-                                layer.options.allowDragging = true;
-                                layer.options.allowRemoval = false;
-                                layer.options.allowCutting = false;
-                                layer.options.pmIgnore = true;
-                            }
-
-                            if (props.highway) {
-                                layer.options.pmIgnore = true;
-                            }
+                            layer.options.pmIgnore = false;
 
                             if (props.sourceGroup === 'kml') {
                                 kmlGroup.addLayer(layer);

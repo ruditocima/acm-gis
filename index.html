@@ -700,6 +700,15 @@
                                 else if (feature.properties.highway) feature.properties.name = "Road";
                             }
 
+                            // Pengaturan hak akses khusus OSM Bangunan
+                            if (feature.properties.building) {
+                                layer.options.allowEditing = true;
+                                layer.options.allowDragging = true;
+                                layer.options.allowRemoval = false;
+                                layer.options.allowCutting = false;
+                                layer.options.pmIgnore = false;
+                            }
+
                             if (feature.properties.highway) {
                                 layer.options.pmIgnore = true;
                             }
@@ -854,6 +863,20 @@
                         },
                         onEachFeature: function(feature, layer) {
                             const props = feature.properties || {};
+
+                            // Pengaturan hak akses khusus OSM Bangunan saat dimuat dari file proyek
+                            if (props.building || (props.sourceGroup === 'osm' && props.building)) {
+                                layer.options.allowEditing = true;
+                                layer.options.allowDragging = true;
+                                layer.options.allowRemoval = false;
+                                layer.options.allowCutting = false;
+                                layer.options.pmIgnore = false;
+                            }
+
+                            if (props.highway) {
+                                layer.options.pmIgnore = true;
+                            }
+
                             if (props.sourceGroup === 'kml') {
                                 kmlGroup.addLayer(layer);
                             } else if (props.sourceGroup === 'osm') {

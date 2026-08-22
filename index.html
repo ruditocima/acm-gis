@@ -542,7 +542,7 @@
             });
         }
 
-        // --- 6. Fetch OSM Data (With Live Mirror Status Display) ---
+        // --- 6. Fetch OSM Data (With Dynamic Confirmation & Higher Timeout) ---
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
@@ -554,15 +554,20 @@
             const bboxPolygon = turf.bboxPolygon([w, s, e, n]);
             const areaInSqKm = turf.area(bboxPolygon) / 1000000;
 
-            if (areaInSqKm > 15) {
-                Swal.fire({
+            // Jika luas area melebihi 50 km², tampilkan konfirmasi opsional
+            if (areaInSqKm > 50) {
+                const result = await Swal.fire({
                     icon: 'warning',
-                    title: 'Area Terlalu Luas',
-                    html: `Luas area KML Anda adalah <b>${areaInSqKm.toFixed(2)} km²</b>.<br><br>Harap gunakan file KML dengan area di bawah <b>15 km²</b> untuk menghindari pembatasan timeout server publik.`,
-                    confirmButtonText: 'Paham',
-                    confirmButtonColor: '#10b981'
+                    title: 'Area Sangat Luas',
+                    html: `Luas area KML Anda adalah <b>${areaInSqKm.toFixed(2)} km²</b>.<br><br>Memuat area di atas 50 km² mungkin memerlukan waktu lebih lama atau berisiko timeout pada server publik. Lanjutkan?`,
+                    showCancelButton: true,
+                    confirmButtonText: 'Lanjutkan',
+                    cancelButtonText: 'Batal',
+                    confirmButtonColor: '#10b981',
+                    cancelButtonColor: '#ef4444'
                 });
-                return;
+                
+                if (!result.isConfirmed) return;
             }
 
             const btn = document.getElementById('btn-fetch-osm');
@@ -576,7 +581,8 @@
                 'https://overpass.private.coffee/api/interpreter'
             ];
 
-            const query = `[out:json][timeout:30];
+            // Timeout ditingkatkan ke 60 detik untuk mengakomodasi luas area hingga 50 km²
+            const query = `[out:json][timeout:60];
             (
               way["building"](${s},${w},${n},${e});
               way["highway"](${s},${w},${n},${e});
@@ -592,7 +598,8 @@
 
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 15000);
+                    // Batas pembatalan koneksi lokal ditingkatkan ke 30 detik
+                    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
                     const response = await fetch(targetUrl, {
                         method: 'POST',

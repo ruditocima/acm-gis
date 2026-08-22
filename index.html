@@ -303,28 +303,24 @@
         let clipboardGeoJSON = null;
         let lastSelectedLayer = null;
         let uploadedKmlFeatures = []; 
-        let activeEditLayer = null; // Menyimpan layer yang sedang aktif di-edit
+        let activeEditLayer = null;
 
-        // --- Fungsi Pembersih Titik Edit ---
-        function clearAllBuildingEdits() {
+        // --- Fungsi Pembersih State Edit & Drag Terpusat ---
+        function clearAllEdits() {
             if (activeEditLayer) {
                 if (activeEditLayer.pm && activeEditLayer.pm.enabled()) {
                     activeEditLayer.pm.disable();
                 }
-                if (activeEditLayer.options && activeEditLayer.options.building) {
-                    activeEditLayer.options.pmIgnore = true;
-                }
                 activeEditLayer = null;
             }
 
-            // Memastikan seluruh layer OSM Bangunan dinonaktifkan titik editnya
-            osmGroup.eachLayer(l => {
-                if (l.options && l.options.building) {
-                    if (l.pm && l.pm.enabled()) {
-                        l.pm.disable();
+            [osmGroup, kmlGroup, drawGroup].forEach(group => {
+                group.eachLayer(l => {
+                    if (l.pm) {
+                        if (l.pm.enabled()) l.pm.disable();
+                        if (l.pm.dragging && l.pm.dragging()) l.pm.disableLayerDrag();
                     }
-                    l.options.pmIgnore = true;
-                }
+                });
             });
         }
 
@@ -355,15 +351,14 @@
             fillOpacity: 0.3
         });
 
-        // Event listener saat mode edit dinonaktifkan
+        // Event Listener Global Edit Mode
         map.on('pm:globaleditmodetoggled', (e) => {
-            if (!e.enabled) {
-                clearAllBuildingEdits();
-            }
+            clearAllEdits();
         });
 
-        // Event listener saat mode drag aktif (memungkinkan drag pada OSM Bangunan)
+        // Event Listener Global Drag Mode
         map.on('pm:globaldragmodetoggled', (e) => {
+            clearAllEdits();
             if (e.enabled) {
                 osmGroup.eachLayer(layer => {
                     if (layer.options && layer.options.building && layer.options.allowDragging !== false) {
@@ -372,18 +367,14 @@
                 });
             } else {
                 osmGroup.eachLayer(layer => {
-                    if (layer.options && layer.options.building) {
-                        if (layer.pm) layer.pm.disableLayerDrag();
-                    }
+                    if (layer.pm) layer.pm.disableLayerDrag();
                 });
             }
         });
 
-        // Reset highlight vertex jika mengklik area kosong peta
-        map.on('click', (e) => {
-            if (map.pm.globalEditEnabled()) {
-                clearAllBuildingEdits();
-            }
+        // Reset highlight jika mengklik area peta kosong
+        map.on('click', () => {
+            clearAllEdits();
         });
 
         map.on('pm:create', (e) => {
@@ -499,17 +490,15 @@
             });
         });
 
-        // --- 4. Popup & Edit Binding ---
+        // --- 4. Popup & Edit/Drag Binding ---
         function bindNamePopup(layer) {
             layer.on('click', function(e) {
                 lastSelectedLayer = layer;
 
-                // Jika Mode Edit (Pencil) sedang aktif pada peta:
+                // Jika Mode Edit (Pensil) aktif pada peta:
                 if (map.pm.globalEditEnabled()) {
-                    // 1. Bersihkan titik edit dari bangunan lain yang sedang aktif
-                    clearAllBuildingEdits();
+                    clearAllEdits();
 
-                    // 2. Aktifkan titik edit HANYA pada objek/bangunan yang baru diklik ini
                     if (layer.options.allowEditing !== false && layer.pm) {
                         layer.options.pmIgnore = false;
                         layer.pm.enable({
@@ -521,7 +510,14 @@
                         });
                         activeEditLayer = layer;
                     }
-                    return; // Jangan buka popup info saat memilih objek untuk di-edit
+                    if (e.originalEvent) L.DomEvent.stopPropagation(e);
+                    return; 
+                }
+
+                // Jika Mode Drag (Tangan) aktif pada peta:
+                if (map.pm.globalDragModeEnabled()) {
+                    if (e.originalEvent) L.DomEvent.stopPropagation(e);
+                    return;
                 }
 
                 let props = layer.feature?.properties || {};
@@ -773,14 +769,14 @@
                                 else if (feature.properties.highway) feature.properties.name = "Road";
                             }
 
-                            // Pengaturan hak akses & proteksi OSM Bangunan
+                            // Pengaturan hak akses khusus OSM Bangunan
                             if (feature.properties.building) {
                                 layer.options.building = true;
                                 layer.options.allowEditing = true;
                                 layer.options.allowDragging = true;
-                                layer.options.allowRemoval = false; // Dilarang Hapus
-                                layer.options.allowCutting = false; // Dilarang Potong
-                                layer.options.pmIgnore = true;      // Sembunyikan titik vertex default agar browser tetap ringan
+                                layer.options.allowRemoval = false; // Hak Akses: Dilarang Hapus
+                                layer.options.allowCutting = false; // Hak Akses: Dilarang Potong
+                                layer.options.pmIgnore = true;
                             }
 
                             if (feature.properties.highway) {
@@ -938,7 +934,6 @@
                         onEachFeature: function(feature, layer) {
                             const props = feature.properties || {};
 
-                            // Pengaturan hak akses khusus OSM Bangunan saat dimuat dari file proyek
                             if (props.building || (props.sourceGroup === 'osm' && props.building)) {
                                 layer.options.building = true;
                                 layer.options.allowEditing = true;

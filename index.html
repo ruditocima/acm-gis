@@ -193,8 +193,13 @@
             <!-- Drawing Controls Note -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-1 text-gray-300 uppercase tracking-wider">Editing Tools</h2>
-                <p class="text-xs text-gray-400 mb-3">Gunakan toolbar di kanan atas peta untuk menggambar, memutar, atau mengedit polygon/garis.</p>
+                <p class="text-xs text-gray-400 mb-3">Gunakan toolbar di kanan atas peta untuk menggambar atau mengedit polygon/garis.</p>
                 
+                <!-- Tombol Rotate Layers -->
+                <button id="btn-rotate" class="w-full mb-2 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
+                    <i class="fa-solid fa-rotate mr-1.5"></i> Rotate Layers
+                </button>
+
                 <div class="grid grid-cols-2 gap-2 mt-2">
                     <button id="btn-copy" class="py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
                         <i class="fa-solid fa-copy mr-1"></i> Copy Selected
@@ -360,6 +365,7 @@
         let lastSelectedLayer = null;
         let uploadedKmlFeatures = []; 
         let activeEditLayer = null;
+        let isRotateModeActive = false;
 
         // --- Helper Seleksi & Highlight Objek ---
         function setSelectedLayer(layer) {
@@ -395,14 +401,12 @@
             }
         }
 
-        // --- Pembersih Edit & Rotate State ---
+        // --- Pembersih Edit State & Rotate State ---
         function clearAllEdits() {
             if (activeEditLayer) {
                 if (activeEditLayer.pm) {
-                    if (activeEditLayer.pm.enabled()) activeEditLayer.pm.disable();
-                    if (activeEditLayer.pm.rotateEnabled && activeEditLayer.pm.rotateEnabled()) {
-                        activeEditLayer.pm.disableRotate();
-                    }
+                    if (typeof activeEditLayer.pm.disable === 'function') activeEditLayer.pm.disable();
+                    if (typeof activeEditLayer.pm.disableRotate === 'function') activeEditLayer.pm.disableRotate();
                 }
                 activeEditLayer = null;
             }
@@ -410,13 +414,20 @@
             [osmGroup, kmlGroup, drawGroup].forEach(group => {
                 processAllSubLayers(group, l => {
                     if (l.pm) {
-                        if (l.pm.enabled()) l.pm.disable();
-                        if (l.pm.rotateEnabled && l.pm.rotateEnabled()) {
-                            l.pm.disableRotate();
-                        }
+                        if (typeof l.pm.disable === 'function') l.pm.disable();
+                        if (typeof l.pm.disableRotate === 'function') l.pm.disableRotate();
                     }
                 });
             });
+        }
+
+        function updateRotateButtonUI() {
+            const btnRotate = document.getElementById('btn-rotate');
+            if (isRotateModeActive) {
+                btnRotate.className = "w-full mb-2 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-xs transition-colors flex items-center justify-center shadow-md";
+            } else {
+                btnRotate.className = "w-full mb-2 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center";
+            }
         }
 
         // --- 2. Leaflet Geoman Controls ---
@@ -431,7 +442,6 @@
             drawRectangle: true,
             editMode: true,
             dragMode: true,
-            rotateMode: true, // Menampilkan tombol Rotate Mode
             cutPolygon: true,
             removalMode: true,
         });
@@ -448,22 +458,14 @@
         });
 
         map.on('pm:globaleditmodetoggled', (e) => {
+            isRotateModeActive = false;
+            updateRotateButtonUI();
             clearAllEdits();
-        });
-
-        map.on('pm:globalrotatemodetoggled', (e) => {
-            clearAllEdits();
-            // Matikan rotasi otomatis seluruh layer agar penguji harus memilih/mengklik objek spesifik
-            [osmGroup, kmlGroup, drawGroup].forEach(group => {
-                processAllSubLayers(group, layer => {
-                    if (layer.pm && layer.pm.rotateEnabled && layer.pm.rotateEnabled()) {
-                        layer.pm.disableRotate();
-                    }
-                });
-            });
         });
 
         map.on('pm:globaldragmodetoggled', (e) => {
+            isRotateModeActive = false;
+            updateRotateButtonUI();
             clearAllEdits();
             const isDragActive = e.enabled;
             const mapContainer = map.getContainer();
@@ -514,6 +516,22 @@
             if (e.layer) {
                 // Simpan aksi penghapusan ke riwayat undo
                 pushUndoAction({ type: 'remove', group: drawGroup, layer: e.layer });
+            }
+        });
+
+        // --- Mode Rotate Layers Toggle ---
+        document.getElementById('btn-rotate').addEventListener('click', () => {
+            isRotateModeActive = !isRotateModeActive;
+            if (map.pm.globalEditEnabled()) map.pm.disableGlobalEditMode();
+            if (map.pm.globalDragModeEnabled()) map.pm.disableGlobalDragMode();
+            clearAllEdits();
+            updateRotateButtonUI();
+
+            if (isRotateModeActive) {
+                Swal.fire({
+                    toast: true, position: 'top-end', icon: 'info',
+                    title: 'Mode Rotasi Aktif: Klik pada objek untuk memutarnya', showConfirmButton: false, timer: 2500
+                });
             }
         });
 
@@ -649,7 +667,7 @@
 
         // --- 4. Interaksi Feature & Popup Binding ---
         function bindNamePopup(layer) {
-            // PERIKSA APAKAH LAYER ADALAH BOUNDARY/KML (LOCKED)
+            // PERIKSA PAKAH LAYER ADALAH BOUNDARY/KML (LOCKED)
             const isKmlLayer = layer.options && layer.options.pmIgnore === true;
 
             if (!isKmlLayer) {
@@ -657,6 +675,29 @@
             }
 
             layer.on('click', function(e) {
+                // Alur Mode Rotate Layers
+                if (isRotateModeActive) {
+                    if (e.originalEvent) L.DomEvent.stopPropagation(e);
+                    if (isKmlLayer) {
+                        Swal.fire({
+                            toast: true, position: 'top-end', icon: 'warning',
+                            title: 'Layer KML terkunci dan tidak dapat diputar!', showConfirmButton: false, timer: 2000
+                        });
+                        return;
+                    }
+                    clearAllEdits();
+                    setSelectedLayer(layer);
+                    if (layer.pm) {
+                        if (typeof layer.pm.enableRotate === 'function') {
+                            layer.pm.enableRotate();
+                        } else if (typeof layer.pm.enable === 'function') {
+                            layer.pm.enable({ allowEditing: false, allowRotating: true });
+                        }
+                        activeEditLayer = layer;
+                    }
+                    return;
+                }
+
                 setSelectedLayer(layer);
 
                 if (map.pm.globalDragModeEnabled()) {
@@ -664,25 +705,6 @@
                     return;
                 }
 
-                // MODE ROTATE: Aktifkan rotasi HANYA pada objek ini (tanpa vertex edit)
-                if (map.pm.globalRotateModeEnabled && map.pm.globalRotateModeEnabled()) {
-                    if (isKmlLayer) {
-                        if (e.originalEvent) L.DomEvent.stopPropagation(e);
-                        return;
-                    }
-
-                    if (activeEditLayer !== layer) {
-                        clearAllEdits();
-                        if (layer.pm) {
-                            layer.pm.enableRotate();
-                            activeEditLayer = layer;
-                        }
-                    }
-                    if (e.originalEvent) L.DomEvent.stopPropagation(e);
-                    return;
-                }
-
-                // MODE EDIT VERTEX
                 if (map.pm.globalEditEnabled()) {
                     // CEGAH SAMA SEKALI EDIT APABILA LAYER ADALAH BOUNDARY KML
                     if (isKmlLayer) {
@@ -716,7 +738,7 @@
             });
 
             if (layer.pm && !isKmlLayer) {
-                layer.on('pm:dragstart pm:edit pm:rotate', () => {
+                layer.on('pm:dragstart pm:edit', () => {
                     setSelectedLayer(layer);
                 });
             }
@@ -1027,7 +1049,7 @@
             });
         }
 
-        // --- 7. Save Project File ---
+        // --- 7. Save Project File (Dialog Penyimpanan Folder & File System Access) ---
         document.getElementById('btn-save').addEventListener('click', async () => {
             const allFeatures = [];
             extractFeaturesTo(kmlGroup, 'kml', allFeatures);
@@ -1039,35 +1061,62 @@
                 return;
             }
 
-            const { value: fileName } = await Swal.fire({
-                title: 'Simpan Proyek Peta',
-                input: 'text',
-                inputLabel: 'Masukkan nama file proyek:',
-                inputValue: 'proyek_geoconvert',
-                showCancelButton: true,
-                confirmButtonColor: '#10b981',
-                inputValidator: (value) => {
-                    if (!value) {
-                        return 'Nama file tidak boleh kosong!';
+            const featureCollection = { type: "FeatureCollection", features: allFeatures };
+            const jsonContent = JSON.stringify(featureCollection, null, 2);
+
+            // Alur Penyimpanan Native (Pilih Folder, Isi Nama File, lalu Simpan)
+            if ('showSaveFilePicker' in window) {
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: 'proyek_geoconvert.json',
+                        types: [{
+                            description: 'GeoJSON Project File (*.json)',
+                            accept: { 'application/json': ['.json', '.geojson'] },
+                        }],
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(jsonContent);
+                    await writable.close();
+
+                    Swal.fire({
+                        toast: true, position: 'top-end', icon: 'success',
+                        title: 'Proyek berhasil disimpan!', showConfirmButton: false, timer: 2000
+                    });
+                } catch (err) {
+                    if (err.name !== 'AbortError') {
+                        Swal.fire('Error', 'Gagal menyimpan file: ' + err.message, 'error');
                     }
                 }
-            });
-
-            if (fileName) {
-                const featureCollection = { type: "FeatureCollection", features: allFeatures };
-                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(featureCollection));
-                
-                const a = document.createElement('a');
-                a.href = dataStr;
-                a.download = `${fileName.trim()}.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-
-                Swal.fire({
-                    toast: true, position: 'top-end', icon: 'success',
-                    title: 'Proyek berhasil disimpan!', showConfirmButton: false, timer: 2000
+            } else {
+                // Fallback untuk browser yang belum mendukung File System Access API
+                const { value: fileName } = await Swal.fire({
+                    title: 'Simpan Proyek Peta',
+                    input: 'text',
+                    inputLabel: 'Masukkan nama file proyek:',
+                    inputValue: 'proyek_geoconvert',
+                    showCancelButton: true,
+                    confirmButtonColor: '#10b981',
+                    inputValidator: (value) => {
+                        if (!value) {
+                            return 'Nama file tidak boleh kosong!';
+                        }
+                    }
                 });
+
+                if (fileName) {
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonContent);
+                    const a = document.createElement('a');
+                    a.href = dataStr;
+                    a.download = `${fileName.trim()}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+
+                    Swal.fire({
+                        toast: true, position: 'top-end', icon: 'success',
+                        title: 'Proyek berhasil disimpan!', showConfirmButton: false, timer: 2000
+                    });
+                }
             }
         });
 
@@ -1152,7 +1201,7 @@
             e.target.value = '';
         });
 
-        // --- 9. Export to DXF (UPDATED ENGINE) ---
+        // --- 9. Export to DXF ---
         function lonLatToMeters(lon, lat) {
             lat = Math.max(-85.05112878, Math.min(85.05112878, lat));
             const x = lon * 20037508.34 / 180;

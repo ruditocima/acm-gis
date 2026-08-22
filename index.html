@@ -5,27 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GeoConvert Pro | KML to DXF (Production Ready)</title>
 
-    <!-- Tailwind CSS (Static Production Build) -->
+    <!-- Tailwind CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
 
-    <!-- Leaflet CSS & JS (for Maps) -->
+    <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-    <!-- Leaflet Geoman (for drawing/editing) -->
+    <!-- Leaflet Geoman -->
     <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.14.2/dist/leaflet-geoman.css" />
     <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.14.2/dist/leaflet-geoman.min.js"></script>
 
-    <!-- JSZip (for KMZ) -->
+    <!-- JSZip -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
-    <!-- toGeoJSON (for KML to GeoJSON) -->
+    <!-- toGeoJSON -->
     <script src="https://unpkg.com/@tmcw/togeojson@4.2.0/dist/togeojson.umd.js"></script>
 
-    <!-- Turf.js (for spatial processing, buffer & area calculation) -->
+    <!-- Turf.js -->
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
-    <!-- SweetAlert2 (for alerts) -->
+    <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <!-- FontAwesome -->
@@ -148,7 +148,7 @@
         <!-- Scrollable Content -->
         <div class="p-6 flex-1 overflow-y-auto space-y-6">
             
-            <!-- Layer Control (Map vs Earth) -->
+            <!-- Layer Control -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Base Layer</h2>
                 <div class="flex bg-gray-900 rounded-lg p-1">
@@ -193,10 +193,10 @@
                 </p>
             </div>
 
-            <!-- Drawing Controls Note -->
+            <!-- Editing Tools -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-1 text-gray-300 uppercase tracking-wider">Editing Tools</h2>
-                <p class="text-xs text-gray-400 mb-3">Gunakan toolbar di kanan atas peta untuk menggambar atau mengedit polygon/garis.</p>
+                <p class="text-xs text-gray-400 mb-3">Gunakan toolbar kanan atas untuk menggambar atau memindahkan objek.</p>
                 
                 <div class="grid grid-cols-2 gap-2 mt-2">
                     <button id="btn-copy" class="py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
@@ -280,7 +280,7 @@
             return { type: "FeatureCollection", features: features };
         }
 
-        // --- 1. Map Initialization with Canvas Renderer ---
+        // --- 1. Map Initialization ---
         const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 22,
             maxNativeZoom: 19,
@@ -313,7 +313,6 @@
         let uploadedKmlFeatures = []; 
         let activeEditLayer = null;
 
-        // --- Pembersih Edit State ---
         function clearAllEdits() {
             if (activeEditLayer) {
                 if (activeEditLayer.pm && activeEditLayer.pm.enabled()) {
@@ -358,12 +357,11 @@
             fillOpacity: 0.3
         });
 
-        // Event listener saat Global Edit dinyalakan/dimatikan
         map.on('pm:globaleditmodetoggled', (e) => {
             clearAllEdits();
         });
 
-        // Event listener penanganan khusus Global Drag Mode
+        // Event listener saat mode Drag dinyalakan/dimatikan secara global
         map.on('pm:globaldragmodetoggled', (e) => {
             clearAllEdits();
             const isDragActive = e.enabled;
@@ -374,23 +372,8 @@
             } else {
                 mapContainer.classList.remove('leaflet-drag-active');
             }
-
-            // Memastikan seluruh layer siap dan responsif untuk di-drag
-            [osmGroup, drawGroup, kmlGroup].forEach(group => {
-                group.eachLayer(layer => {
-                    if (layer.pm) {
-                        layer.options.pmIgnore = false;
-                        if (isDragActive) {
-                            layer.pm.enableLayerDrag();
-                        } else {
-                            layer.pm.disableLayerDrag();
-                        }
-                    }
-                });
-            });
         });
 
-        // Reset highlight jika mengklik area peta kosong
         map.on('click', () => {
             clearAllEdits();
         });
@@ -404,6 +387,7 @@
             e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Drawn Object' } };
             
             e.layer.options.pmIgnore = false;
+            L.PM.reInitLayer(e.layer);
             drawGroup.addLayer(e.layer);
             bindNamePopup(e.layer);
             lastSelectedLayer = e.layer;
@@ -488,20 +472,19 @@
                 pastedGeo.properties.name = (pastedGeo.properties.name || 'Object') + ' (Copy)';
             }
 
-            const newLayer = L.geoJSON(pastedGeo, {
+            const tempLayer = L.geoJSON(pastedGeo, {
                 renderer: L.canvas(),
                 style: { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 },
                 pointToLayer: function(feature, latlng) {
                     return L.marker(latlng, { icon: blueDotIcon });
-                },
-                onEachFeature: function(feature, layer) {
-                    layer.options.pmIgnore = false;
-                    bindNamePopup(layer);
                 }
             });
 
-            newLayer.eachLayer(lyr => {
+            tempLayer.eachLayer(lyr => {
+                lyr.options.pmIgnore = false;
+                L.PM.reInitLayer(lyr);
                 drawGroup.addLayer(lyr);
+                bindNamePopup(lyr);
                 lastSelectedLayer = lyr;
             });
 
@@ -513,11 +496,10 @@
 
         // --- 4. Interaksi Feature & Popup Binding ---
         function bindNamePopup(layer) {
-            // Memastikan Geoman tidak mengabaikan layer ini
             layer.options.pmIgnore = false;
+            if (L.PM) L.PM.reInitLayer(layer);
 
             layer.on('click', function(e) {
-                // Jika sedang dalam Mode Drag, hentikan popup dan izinkan dragging penuh
                 if (map.pm.globalDragModeEnabled()) {
                     if (e.originalEvent) L.DomEvent.stopPropagation(e);
                     return;
@@ -525,7 +507,6 @@
 
                 lastSelectedLayer = layer;
 
-                // Jika Mode Edit (Pensil) aktif pada peta:
                 if (map.pm.globalEditEnabled()) {
                     clearAllEdits();
 
@@ -603,7 +584,7 @@
 
             uploadedKmlFeatures = geojson.features;
 
-            const layer = L.geoJSON(geojson, {
+            const tempLayer = L.geoJSON(geojson, {
                 renderer: L.canvas(),
                 style: function(feature) {
                     const geomType = feature.geometry ? feature.geometry.type : '';
@@ -616,17 +597,21 @@
                 },
                 pointToLayer: function(feature, latlng) {
                     return L.marker(latlng, { icon: blueDotIcon });
-                },
-                onEachFeature: function(feature, layer) {
-                    layer.options.pmIgnore = false;
-                    bindNamePopup(layer);
                 }
             });
 
-            kmlGroup.addLayer(layer);
-            map.fitBounds(layer.getBounds(), { padding: [50, 50] });
+            tempLayer.eachLayer(sub => {
+                sub.options.pmIgnore = false;
+                L.PM.reInitLayer(sub);
+                bindNamePopup(sub);
+                kmlGroup.addLayer(sub);
+            });
 
-            currentBbox = layer.getBounds();
+            if (kmlGroup.getBounds().isValid()) {
+                map.fitBounds(kmlGroup.getBounds(), { padding: [50, 50] });
+                currentBbox = kmlGroup.getBounds();
+            }
+            
             document.getElementById('btn-fetch-osm').disabled = false;
             
             Swal.fire({
@@ -773,7 +758,7 @@
                 });
 
                 if (filteredFeatures.length > 0) {
-                    L.geoJSON({ type: "FeatureCollection", features: filteredFeatures }, {
+                    const tempGeoLayer = L.geoJSON({ type: "FeatureCollection", features: filteredFeatures }, {
                         renderer: L.canvas(),
                         style: function(feature) {
                             if (feature.properties.building) {
@@ -783,25 +768,20 @@
                                 return { color: '#3b82f6', weight: 1.5, fillColor: '#3b82f6', fillOpacity: 0.3 };
                             }
                             return { color: '#ffffff', weight: 1 };
-                        },
-                        onEachFeature: function(feature, layer) {
-                            if (!feature.properties.name) {
-                                if (feature.properties.building) feature.properties.name = "Building";
-                                else if (feature.properties.highway) feature.properties.name = "Road";
-                            }
-
-                            // Objek dapat langsung di-drag saat Drag Mode aktif
-                            layer.options.pmIgnore = false;
-                            bindNamePopup(layer);
                         }
-                    }).addTo(osmGroup);
+                    });
 
-                    // Jika saat data OSM selesai dimuat mode drag sudah aktif, langsung aktifkan drag-nya
-                    if (map.pm.globalDragModeEnabled()) {
-                        osmGroup.eachLayer(layer => {
-                            if (layer.pm) layer.pm.enableLayerDrag();
-                        });
-                    }
+                    // Ekstrak sub-layer langsung ke osmGroup agar Geoman dapat mengenali setiap objek
+                    tempGeoLayer.eachLayer(subLayer => {
+                        if (!subLayer.feature.properties.name) {
+                            if (subLayer.feature.properties.building) subLayer.feature.properties.name = "Building";
+                            else if (subLayer.feature.properties.highway) subLayer.feature.properties.name = "Road";
+                        }
+                        subLayer.options.pmIgnore = false;
+                        L.PM.reInitLayer(subLayer);
+                        bindNamePopup(subLayer);
+                        osmGroup.addLayer(subLayer);
+                    });
 
                     Swal.fire({
                         toast: true, position: 'top-end', icon: 'success',
@@ -914,12 +894,7 @@
                     osmGroup.clearLayers();
                     drawGroup.clearLayers();
 
-                    const tempGeoLayer = L.geoJSON(geojson);
-                    if (tempGeoLayer.getBounds().isValid()) {
-                        map.fitBounds(tempGeoLayer.getBounds(), { padding: [50, 50] });
-                    }
-
-                    L.geoJSON(geojson, {
+                    const tempGeo = L.geoJSON(geojson, {
                         renderer: L.canvas(),
                         style: function(feature) {
                             const props = feature.properties || {};
@@ -946,20 +921,26 @@
                         },
                         pointToLayer: function(feature, latlng) {
                             return L.marker(latlng, { icon: blueDotIcon });
-                        },
-                        onEachFeature: function(feature, layer) {
-                            const props = feature.properties || {};
-                            layer.options.pmIgnore = false;
-
-                            if (props.sourceGroup === 'kml') {
-                                kmlGroup.addLayer(layer);
-                            } else if (props.sourceGroup === 'osm') {
-                                osmGroup.addLayer(layer);
-                            } else {
-                                drawGroup.addLayer(layer);
-                            }
-                            bindNamePopup(layer);
                         }
+                    });
+
+                    if (tempGeo.getBounds().isValid()) {
+                        map.fitBounds(tempGeo.getBounds(), { padding: [50, 50] });
+                    }
+
+                    tempGeo.eachLayer(sub => {
+                        const props = sub.feature ? sub.feature.properties || {} : {};
+                        sub.options.pmIgnore = false;
+                        L.PM.reInitLayer(sub);
+
+                        if (props.sourceGroup === 'kml') {
+                            kmlGroup.addLayer(sub);
+                        } else if (props.sourceGroup === 'osm') {
+                            osmGroup.addLayer(sub);
+                        } else {
+                            drawGroup.addLayer(sub);
+                        }
+                        bindNamePopup(sub);
                     });
 
                     Swal.fire({

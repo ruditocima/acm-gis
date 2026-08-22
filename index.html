@@ -365,6 +365,7 @@
         let lastSelectedLayer = null;
         let uploadedKmlFeatures = []; 
         let activeEditLayer = null;
+        const activeEditLayers = new Set(); // Track layer yang aktif di-edit/rotasi untuk eksekusi kilat O(1)
         let isRotateModeActive = false;
 
         // --- Helper Seleksi & Highlight Objek ---
@@ -401,24 +402,18 @@
             }
         }
 
-        // --- Pembersih Edit State & Rotate State ---
+        // --- Pembersih Edit State & Rotate State (Optimized O(1)) ---
         function clearAllEdits() {
-            if (activeEditLayer) {
-                if (activeEditLayer.pm) {
-                    if (typeof activeEditLayer.pm.disable === 'function') activeEditLayer.pm.disable();
-                    if (typeof activeEditLayer.pm.disableRotate === 'function') activeEditLayer.pm.disableRotate();
-                }
-                activeEditLayer = null;
-            }
-
-            [osmGroup, kmlGroup, drawGroup].forEach(group => {
-                processAllSubLayers(group, l => {
-                    if (l.pm) {
+            if (activeEditLayers.size > 0) {
+                activeEditLayers.forEach(l => {
+                    if (l && l.pm) {
                         if (typeof l.pm.disable === 'function') l.pm.disable();
                         if (typeof l.pm.disableRotate === 'function') l.pm.disableRotate();
                     }
                 });
-            });
+                activeEditLayers.clear();
+            }
+            activeEditLayer = null;
         }
 
         function updateRotateButtonUI() {
@@ -694,6 +689,7 @@
                             layer.pm.enable({ allowEditing: false, allowRotating: true });
                         }
                         activeEditLayer = layer;
+                        activeEditLayers.add(layer);
                     }
                     return;
                 }
@@ -721,6 +717,7 @@
                                 snappable: false
                             });
                             activeEditLayer = layer;
+                            activeEditLayers.add(layer);
                         }
                     }
                     if (e.originalEvent) L.DomEvent.stopPropagation(e);

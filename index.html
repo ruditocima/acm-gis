@@ -277,7 +277,20 @@
             return { type: "FeatureCollection", features: features };
         }
 
-        // --- 1. Map Initialization with Canvas Renderer ---
+        // --- Optimized Canvas Renderer Engine ---
+        const canvasRenderer = L.canvas({ padding: 0.5, tolerance: 10 });
+
+        // Helper untuk memproses seluruh sub-layer secara rekursif dan efisien
+        function processAllSubLayers(group, callback) {
+            if (!group) return;
+            if (group.eachLayer) {
+                group.eachLayer(child => processAllSubLayers(child, callback));
+            } else {
+                callback(group);
+            }
+        }
+
+        // --- 1. Map Initialization ---
         const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 22,
             maxNativeZoom: 19,
@@ -295,7 +308,7 @@
             zoom: 5,
             layers: [osmLayer],
             zoomControl: false,
-            renderer: L.canvas()
+            renderer: canvasRenderer
         });
 
         L.control.zoom({ position: 'topright' }).addTo(map);
@@ -332,7 +345,7 @@
                         fillOpacity: layer.options.fillOpacity
                     };
                 }
-                layer.setStyle({ color: '#f59e0b', weight: 3.5 }); // Highlight Kuning/Emas
+                layer.setStyle({ color: '#f59e0b', weight: 3.5 });
             }
         }
 
@@ -354,7 +367,7 @@
             }
 
             [osmGroup, kmlGroup, drawGroup].forEach(group => {
-                group.eachLayer(l => {
+                processAllSubLayers(group, l => {
                     if (l.pm && l.pm.enabled()) {
                         l.pm.disable();
                     }
@@ -405,9 +418,14 @@
             }
 
             [osmGroup, drawGroup, kmlGroup].forEach(group => {
-                group.eachLayer(layer => {
+                processAllSubLayers(group, layer => {
                     if (layer.pm) {
                         layer.options.pmIgnore = false;
+                        if (isDragActive) {
+                            layer.pm.enableLayerDrag();
+                        } else {
+                            layer.pm.disableLayerDrag();
+                        }
                     }
                 });
             });
@@ -452,9 +470,13 @@
         // --- Copy & Paste Handlers ---
         document.getElementById('btn-copy').addEventListener('click', () => {
             if (!lastSelectedLayer) {
-                let layers = drawGroup.getLayers();
-                if (layers.length > 0) {
-                    setSelectedLayer(layers[layers.length - 1]);
+                let foundTarget = null;
+                processAllSubLayers(drawGroup, l => { if (l.toGeoJSON) foundTarget = l; });
+                if (!foundTarget) processAllSubLayers(kmlGroup, l => { if (l.toGeoJSON) foundTarget = l; });
+                if (!foundTarget) processAllSubLayers(osmGroup, l => { if (l.toGeoJSON) foundTarget = l; });
+                
+                if (foundTarget) {
+                    setSelectedLayer(foundTarget);
                 }
             }
             
@@ -507,7 +529,7 @@
             }
 
             const newLayer = L.geoJSON(pastedGeo, {
-                renderer: L.canvas(),
+                renderer: canvasRenderer,
                 style: { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 },
                 pointToLayer: function(feature, latlng) {
                     return L.marker(latlng, { icon: blueDotIcon });
@@ -521,6 +543,9 @@
             newLayer.eachLayer(lyr => {
                 drawGroup.addLayer(lyr);
                 setSelectedLayer(lyr);
+                if (map.pm.globalDragModeEnabled() && lyr.pm) {
+                    lyr.pm.enableLayerDrag();
+                }
             });
 
             Swal.fire({
@@ -552,7 +577,6 @@
             layer.options.pmIgnore = false;
 
             layer.on('click', function(e) {
-                // Selalu perbarui objek aktif terlebih dahulu
                 setSelectedLayer(layer);
 
                 if (map.pm.globalDragModeEnabled()) {
@@ -561,15 +585,16 @@
                 }
 
                 if (map.pm.globalEditEnabled()) {
-                    clearAllEdits();
-
-                    if (layer.pm) {
-                        layer.pm.enable({
-                            allowEditing: true,
-                            allowDragging: true,
-                            snappable: false
-                        });
-                        activeEditLayer = layer;
+                    if (activeEditLayer !== layer) {
+                        clearAllEdits();
+                        if (layer.pm) {
+                            layer.pm.enable({
+                                allowEditing: true,
+                                allowDragging: true,
+                                snappable: false
+                            });
+                            activeEditLayer = layer;
+                        }
                     }
                     if (e.originalEvent) L.DomEvent.stopPropagation(e);
                     return; 
@@ -644,7 +669,7 @@
             uploadedKmlFeatures = geojson.features;
 
             const layer = L.geoJSON(geojson, {
-                renderer: L.canvas(),
+                renderer: canvasRenderer,
                 style: function(feature) {
                     const geomType = feature.geometry ? feature.geometry.type : '';
                     if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
@@ -814,7 +839,7 @@
 
                 if (filteredFeatures.length > 0) {
                     L.geoJSON({ type: "FeatureCollection", features: filteredFeatures }, {
-                        renderer: L.canvas(),
+                        renderer: canvasRenderer,
                         style: function(feature) {
                             if (feature.properties.building) {
                                 return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
@@ -836,8 +861,8 @@
                     }).addTo(osmGroup);
 
                     if (map.pm.globalDragModeEnabled()) {
-                        osmGroup.eachLayer(layer => {
-                            if (layer.pm) layer.options.pmIgnore = false;
+                        processAllSubLayers(osmGroup, layer => {
+                            if (layer.pm) layer.pm.enableLayerDrag();
                         });
                     }
 
@@ -870,7 +895,7 @@
         });
 
         function extractFeaturesTo(group, sourceGroupName, targetArray) {
-            group.eachLayer(layer => {
+            processAllSubLayers(group, layer => {
                 if (typeof layer.toGeoJSON === 'function') {
                     let geo = layer.toGeoJSON();
                     if (geo.type === 'FeatureCollection' && geo.features) {
@@ -958,7 +983,7 @@
                     }
 
                     L.geoJSON(geojson, {
-                        renderer: L.canvas(),
+                        renderer: canvasRenderer,
                         style: function(feature) {
                             const props = feature.properties || {};
                             const geomType = feature.geometry ? feature.geometry.type : '';
@@ -1028,7 +1053,7 @@
             const allFeatures = [];
             
             [kmlGroup, osmGroup, drawGroup].forEach(group => {
-                group.eachLayer(layer => {
+                processAllSubLayers(group, layer => {
                     if (typeof layer.toGeoJSON === 'function') {
                         let geo = layer.toGeoJSON();
                         

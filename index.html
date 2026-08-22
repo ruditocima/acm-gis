@@ -968,7 +968,7 @@
             e.target.value = '';
         });
 
-        // --- 9. Export to DXF (FIXED UNIVERSAL ENGINE) ---
+        // --- 9. Export to DXF (FIXED SYMBOL & LINE COLOR ENGINE) ---
         function lonLatToMeters(lon, lat) {
             lat = Math.max(-85.05112878, Math.min(85.05112878, lat));
             const x = lon * 20037508.34 / 180;
@@ -1034,7 +1034,7 @@
             });
         });
 
-        // --- Generator DXF Standar Universal AC1009 dengan Auto-Fit Extents ---
+        // --- Generator DXF Standar Universal dengan Lingkaran, Label & Garis Merah ---
         function generateDXF(featureCollection) {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
@@ -1056,24 +1056,51 @@
 
             let entitiesDxf = [];
 
-            function addPoint(coord, layerName) {
+            // Mengubah Titik/Point menjadi Lingkaran (CIRCLE) + Teks Label (TEXT)
+            function addPointSymbol(coord, layerName, featureProps) {
                 if (!coord || coord.length < 2) return;
                 let [x, y] = lonLatToMeters(coord[0], coord[1]);
                 updateExtents(x, y);
 
-                entitiesDxf.push("  0", "POINT");
+                const radius = 3.0; // Ukuran radius lingkaran (3 meter)
+
+                // 1. Entitas Lingkaran (CIRCLE)
+                entitiesDxf.push("  0", "CIRCLE");
                 entitiesDxf.push("  8", layerName);
                 entitiesDxf.push(" 10", x.toFixed(4));
                 entitiesDxf.push(" 20", y.toFixed(4));
                 entitiesDxf.push(" 30", "0.0");
+                entitiesDxf.push(" 40", radius.toFixed(4));
+
+                // 2. Entitas Teks Label (TEXT)
+                let labelText = "Point";
+                if (featureProps) {
+                    labelText = featureProps.name || featureProps.Name || featureProps.title || featureProps.id || "Point";
+                }
+                labelText = String(labelText).replace(/[\r\n]+/g, " ");
+
+                entitiesDxf.push("  0", "TEXT");
+                entitiesDxf.push("  8", layerName);
+                entitiesDxf.push(" 10", (x + radius * 1.3).toFixed(4)); // Offset posisi teks di samping kanan lingkaran
+                entitiesDxf.push(" 20", y.toFixed(4));
+                entitiesDxf.push(" 30", "0.0");
+                entitiesDxf.push(" 40", "2.5"); // Tinggi Teks
+                entitiesDxf.push("  1", labelText);
             }
 
+            // Menggambar Polylines/LineStrings (Garis non-polygon dipaksa Merah)
             function addPolyline(coords, isClosed, layerName) {
                 if (!coords || coords.length < 2) return;
 
                 entitiesDxf.push("  0", "POLYLINE");
                 entitiesDxf.push("  8", layerName);
-                entitiesDxf.push(" 66", "1"); // Flag entitas VERTEX menyusul
+                
+                // Jika BUKAN polygon/boundary (garis terbuka), set warna MERAH (DXF Color Code 62 = 1)
+                if (!isClosed) {
+                    entitiesDxf.push(" 62", "1"); 
+                }
+
+                entitiesDxf.push(" 66", "1");
                 entitiesDxf.push(" 70", isClosed ? "1" : "0");
                 entitiesDxf.push(" 10", "0.0");
                 entitiesDxf.push(" 20", "0.0");
@@ -1086,6 +1113,9 @@
 
                     entitiesDxf.push("  0", "VERTEX");
                     entitiesDxf.push("  8", layerName);
+                    if (!isClosed) {
+                        entitiesDxf.push(" 62", "1"); // Warna merah per vertex
+                    }
                     entitiesDxf.push(" 10", x.toFixed(4));
                     entitiesDxf.push(" 20", y.toFixed(4));
                     entitiesDxf.push(" 30", "0.0");
@@ -1095,13 +1125,13 @@
                 entitiesDxf.push("  8", layerName);
             }
 
-            function processGeometry(gem, layerName) {
+            function processGeometry(gem, layerName, featureProps) {
                 if (!gem) return;
 
                 if (gem.type === "Point") {
-                    addPoint(gem.coordinates, layerName);
+                    addPointSymbol(gem.coordinates, layerName, featureProps);
                 } else if (gem.type === "MultiPoint") {
-                    gem.coordinates.forEach(pt => addPoint(pt, layerName));
+                    gem.coordinates.forEach(pt => addPointSymbol(pt, layerName, featureProps));
                 } else if (gem.type === "LineString") {
                     addPolyline(gem.coordinates, false, layerName);
                 } else if (gem.type === "MultiLineString") {
@@ -1111,7 +1141,7 @@
                 } else if (gem.type === "MultiPolygon") {
                     gem.coordinates.forEach(poly => poly.forEach(ring => addPolyline(ring, true, layerName)));
                 } else if (gem.type === "GeometryCollection") {
-                    gem.geometries.forEach(g => processGeometry(g, layerName));
+                    gem.geometries.forEach(g => processGeometry(g, layerName, featureProps));
                 }
             }
 
@@ -1119,7 +1149,7 @@
                 let gem = feature.geometry;
                 let layerName = (feature.properties && feature.properties.layer) ? feature.properties.layer : "0";
                 layerName = layerName.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
-                processGeometry(gem, layerName);
+                processGeometry(gem, layerName, feature.properties);
             });
 
             if (minX === Infinity) {
@@ -1128,7 +1158,7 @@
 
             let headerDxf = [];
 
-            // 1. HEADER SECTION (Mengunci Bounding Box Otomatis)
+            // 1. HEADER SECTION
             headerDxf.push("  0", "SECTION");
             headerDxf.push("  2", "HEADER");
             headerDxf.push("  9", "$ACADVER");
@@ -1153,7 +1183,7 @@
             const layerColors = {
                 "KML_Boundary": 3,  // Hijau
                 "OSM_Buildings": 2, // Kuning
-                "OSM_Roads": 5,     // Biru
+                "OSM_Roads": 1,     // Merah
                 "User_Drawn": 1     // Merah
             };
 

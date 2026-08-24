@@ -571,7 +571,7 @@
 
         const App = {
             config: {
-                autoSaveInterval: 30000,
+                autoSaveInterval: 300000,
                 maxUndoStack: 50,
                 osmTimeout: 30000,
                 defaultRoadWidth: 6,
@@ -1571,11 +1571,13 @@
                     setSelectedLayer(layer);
 
                     if (layer.pm && layer.options.allowRotation !== false) {
-                        if (typeof layer.pm.enableRotate === 'function') {
-                            layer.pm.enableRotate();
-                        } else if (typeof layer.pm.enable === 'function') {
-                            layer.pm.enable({ allowEditing: false, allowRotating: true });
-                        }
+                        layer.pm.enable({
+                            allowEditing: true,
+                            allowDragging: true,
+                            allowRemoval: false,
+                            allowCutting: false,
+                            snappable: false
+                        });
                         App.state.activeEditLayer = layer;
                     }
                     return;

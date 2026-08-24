@@ -2176,7 +2176,7 @@
         document.getElementById('btn-export').addEventListener('click', () => {
             const allFeatures = [];
             
-            [kmlGroup, osmGroup, drawGroup].forEach(group => {
+            [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
                 processAllSubLayers(group, layer => {
                     if (typeof layer.toGeoJSON === 'function') {
                         let geo = layer.toGeoJSON();
@@ -2187,9 +2187,9 @@
                                 f.properties = { ...layer.feature.properties, ...f.properties };
                             }
                             
-                            if (group === kmlGroup) f.properties.layer = "KML_Boundary";
-                            else if (group === osmGroup && f.properties.building) f.properties.layer = "OSM_Buildings";
-                            else if (group === osmGroup && f.properties.highway) f.properties.layer = "OSM_Roads";
+                            if (group === App.groups.kml) f.properties.layer = "KML_Boundary";
+                            else if (group === App.groups.osm && f.properties.building) f.properties.layer = "OSM_Buildings";
+                            else if (group === App.groups.osm && f.properties.highway) f.properties.layer = "OSM_Roads";
                             else f.properties.layer = "User_Drawn";
                             
                             allFeatures.push(f);

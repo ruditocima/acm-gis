@@ -305,6 +305,7 @@
             display: block;
         }
     </style>
+<base target="_blank">
 </head>
 <body class="flex flex-row bg-gray-900 text-gray-200">
 
@@ -2189,48 +2190,18 @@
         });
 
         // ============================================================
-        // 19. EXPORT TO DXF (Improved with LWPOLYLINE & MTEXT)
+        // 19. EXPORT TO DXF (Fixed - AutoCAD 2000 Compliant)
         // ============================================================
 
         document.getElementById('btn-export').addEventListener('click', () => {
-            const allFeatures = [];
-
-            [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
-                processAllSubLayers(group, layer => {
-                    if (typeof layer.toGeoJSON === 'function') {
-                        let geo = layer.toGeoJSON();
-
-                        const processFeature = (f) => {
-                            f.properties = f.properties || {};
-                            if (layer.feature && layer.feature.properties) {
-                                f.properties = { ...layer.feature.properties, ...f.properties };
-                            }
-
-                            if (group === App.groups.kml) f.properties.layer = "KML_Boundary";
-                            else if (group === App.groups.osm && f.properties.building) f.properties.layer = "OSM_Buildings";
-                            else if (group === App.groups.osm && f.properties.highway) f.properties.layer = "OSM_Roads";
-                            else f.properties.layer = "User_Drawn";
-
-                            allFeatures.push(f);
-                        };
-
-                        if (geo.type === 'FeatureCollection' && geo.features) {
-                            geo.features.forEach(processFeature);
-                        } else if (geo.type === 'Feature') {
-                            processFeature(geo);
-                        } else if (geo.type && geo.coordinates) {
-                            processFeature({ type: "Feature", geometry: geo, properties: {} });
-                        }
-                    }
-                });
-            });
+            const allFeatures = collectAllFeatures();
 
             if(allFeatures.length === 0) {
                 Swal.fire('Warning', 'Peta masih kosong. Upload KML atau gambar objek terlebih dahulu.', 'warning');
                 return;
             }
 
-            UI.showLoading('Membuat file DXF...', 'Mengkonversi geometri ke format AutoCAD');
+            UI.showLoading('Membuat file DXF...', `Mengekspor ${allFeatures.length} objek ke format AutoCAD`);
 
             setTimeout(() => {
                 const featureCollection = { type: "FeatureCollection", features: allFeatures };
@@ -2247,26 +2218,88 @@
                 URL.revokeObjectURL(url);
 
                 UI.hideLoading();
-                UI.toast('success', 'DXF Berhasil Di-export!', 2500);
+                UI.toast('success', `DXF Berhasil Di-export! (${allFeatures.length} objek)`, 2500);
             }, 100);
         });
 
-        // --- Generator DXF dengan LWPOLYLINE (AutoCAD Modern) ---
+        // --- Robust Feature Collector for DXF Export ---
+        function collectAllFeatures() {
+            const allFeatures = [];
+
+            function addFeature(geo, sourceGroup, layerProps) {
+                if (!geo) return;
+
+                const processFeature = (f) => {
+                    if (!f || !f.geometry) return;
+                    f.properties = f.properties || {};
+                    if (layerProps) {
+                        Object.assign(f.properties, layerProps);
+                    }
+
+                    if (sourceGroup === 'kml') f.properties.layer = "KML_Boundary";
+                    else if (sourceGroup === 'osm' && f.properties.building) f.properties.layer = "OSM_Buildings";
+                    else if (sourceGroup === 'osm' && f.properties.highway) f.properties.layer = "OSM_Roads";
+                    else if (sourceGroup === 'draw') f.properties.layer = "User_Drawn";
+                    else f.properties.layer = "0";
+
+                    allFeatures.push(f);
+                };
+
+                if (geo.type === 'FeatureCollection' && geo.features) {
+                    geo.features.forEach(processFeature);
+                } else if (geo.type === 'Feature') {
+                    processFeature(geo);
+                } else if (geo.type && geo.coordinates) {
+                    processFeature({ type: "Feature", geometry: geo, properties: {} });
+                }
+            }
+
+            // Helper to iterate a group (handles L.geoJSON containers and direct layers)
+            function iterateGroup(group, sourceGroup) {
+                if (!group) return;
+                group.eachLayer(layer => {
+                    if (typeof layer.toGeoJSON === 'function') {
+                        addFeature(layer.toGeoJSON(), sourceGroup, layer.feature?.properties);
+                    }
+                    // If it's a container (L.geoJSON / LayerGroup), also iterate its children
+                    if (layer.eachLayer) {
+                        layer.eachLayer(child => {
+                            if (typeof child.toGeoJSON === 'function') {
+                                addFeature(child.toGeoJSON(), sourceGroup, child.feature?.properties);
+                            }
+                        });
+                    }
+                });
+            }
+
+            iterateGroup(App.groups.kml, 'kml');
+            iterateGroup(App.groups.osm, 'osm');
+            iterateGroup(App.groups.draw, 'draw');
+
+            return allFeatures;
+        }
+
+        // --- Generator DXF yang Diperbaiki (AutoCAD 2000 compliant) ---
         function generateDXF(featureCollection) {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            let handleCounter = 256;
+
+            function getHandle() {
+                return (handleCounter++).toString(16).toUpperCase();
+            }
 
             function updateExtents(x, y) {
-                if (isNaN(x) || isNaN(y)) return;
+                if (!isFinite(x) || !isFinite(y)) return;
                 if (x < minX) minX = x;
                 if (y < minY) minY = y;
                 if (x > maxX) maxX = x;
                 if (y > maxY) maxY = y;
             }
 
-            const layerNames = new Set(["0", "KML_Boundary", "OSM_Buildings", "OSM_Roads", "User_Drawn"]);
+            const layerNames = new Set(["0"]);
             featureCollection.features.forEach(f => {
                 if (f.properties && f.properties.layer) {
-                    let name = f.properties.layer.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+                    let name = String(f.properties.layer).replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 31);
                     layerNames.add(name);
                 }
             });
@@ -2276,34 +2309,39 @@
             function addPointSymbol(coord, layerName, featureProps) {
                 if (!coord || coord.length < 2) return;
                 let [x, y] = CoordUtils.lonLatToMeters(coord[0], coord[1]);
+                if (!isFinite(x) || !isFinite(y)) return;
                 updateExtents(x, y);
 
                 const radius = 1.5;
 
                 // CIRCLE for point
                 entitiesDxf.push("  0", "CIRCLE");
+                entitiesDxf.push("  5", getHandle());
+                entitiesDxf.push("100", "AcDbEntity");
                 entitiesDxf.push("  8", layerName);
+                entitiesDxf.push("100", "AcDbCircle");
                 entitiesDxf.push(" 10", x.toFixed(4));
                 entitiesDxf.push(" 20", y.toFixed(4));
                 entitiesDxf.push(" 30", "0.0");
                 entitiesDxf.push(" 40", radius.toFixed(4));
 
-                // MTEXT for label (modern AutoCAD)
+                // TEXT for label (more compatible than MTEXT)
                 let labelText = "Point";
                 if (featureProps) {
                     labelText = featureProps.name || featureProps.Name || featureProps.title || featureProps.id || "Point";
                 }
-                labelText = String(labelText).replace(/[\r\n]+/g, " ");
+                labelText = String(labelText).replace(/[
+]+/g, " ").substring(0, 255);
 
-                entitiesDxf.push("  0", "MTEXT");
+                entitiesDxf.push("  0", "TEXT");
+                entitiesDxf.push("  5", getHandle());
+                entitiesDxf.push("100", "AcDbEntity");
                 entitiesDxf.push("  8", layerName);
+                entitiesDxf.push("100", "AcDbText");
                 entitiesDxf.push(" 10", (x + radius * 1.5).toFixed(4));
                 entitiesDxf.push(" 20", y.toFixed(4));
                 entitiesDxf.push(" 30", "0.0");
                 entitiesDxf.push(" 40", "1.5");
-                entitiesDxf.push(" 41", (labelText.length * 1.0).toFixed(4));
-                entitiesDxf.push(" 71", "1");
-                entitiesDxf.push(" 72", "1");
                 entitiesDxf.push("  1", labelText);
                 entitiesDxf.push(" 50", "0.0");
             }
@@ -2311,19 +2349,22 @@
             function addLWPOLYLINE(coords, isClosed, layerName) {
                 if (!coords || coords.length < 2) return;
 
+                // Filter invalid coordinates
+                const validCoords = coords.filter(c => Array.isArray(c) && c.length >= 2 && isFinite(c[0]) && isFinite(c[1]));
+                if (validCoords.length < 2) return;
+
                 entitiesDxf.push("  0", "LWPOLYLINE");
+                entitiesDxf.push("  5", getHandle());
+                entitiesDxf.push("100", "AcDbEntity");
                 entitiesDxf.push("  8", layerName);
-                entitiesDxf.push(" 90", coords.length.toString());
+                entitiesDxf.push("100", "AcDbPolyline");
+                entitiesDxf.push(" 90", validCoords.length.toString());
                 entitiesDxf.push(" 70", isClosed ? "1" : "0");
+                entitiesDxf.push(" 43", "0.0");  // constant width, required by some parsers
 
-                if (!isClosed) {
-                    const colorCode = (layerName === "OSM_Roads") ? "4" : "1";
-                    entitiesDxf.push(" 62", colorCode); 
-                }
-
-                coords.forEach(c => {
-                    if (!c || c.length < 2) return;
+                validCoords.forEach(c => {
                     let [x, y] = CoordUtils.lonLatToMeters(c[0], c[1]);
+                    if (!isFinite(x) || !isFinite(y)) return;
                     updateExtents(x, y);
                     entitiesDxf.push(" 10", x.toFixed(4));
                     entitiesDxf.push(" 20", y.toFixed(4));
@@ -2331,7 +2372,7 @@
             }
 
             function processGeometry(gem, layerName, featureProps) {
-                if (!gem) return;
+                if (!gem || !gem.type) return;
 
                 if (gem.type === "Point") {
                     addPointSymbol(gem.coordinates, layerName, featureProps);
@@ -2353,11 +2394,11 @@
             featureCollection.features.forEach((feature) => {
                 let gem = feature.geometry;
                 let layerName = (feature.properties && feature.properties.layer) ? feature.properties.layer : "0";
-                layerName = layerName.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+                layerName = String(layerName).replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 31);
                 processGeometry(gem, layerName, feature.properties);
             });
 
-            if (minX === Infinity) {
+            if (!isFinite(minX) || !isFinite(minY)) {
                 minX = 0; minY = 0; maxX = 100; maxY = 100;
             }
 
@@ -2366,7 +2407,7 @@
             headerDxf.push("  0", "SECTION");
             headerDxf.push("  2", "HEADER");
             headerDxf.push("  9", "$ACADVER");
-            headerDxf.push("  1", "AC1015"); // AutoCAD 2000 (supports LWPOLYLINE & MTEXT)
+            headerDxf.push("  1", "AC1015");
             headerDxf.push("  9", "$EXTMIN");
             headerDxf.push(" 10", minX.toFixed(4));
             headerDxf.push(" 20", minY.toFixed(4));
@@ -2375,24 +2416,36 @@
             headerDxf.push(" 10", maxX.toFixed(4));
             headerDxf.push(" 20", maxY.toFixed(4));
             headerDxf.push(" 30", "0.0");
+            headerDxf.push("  9", "$LIMMIN");
+            headerDxf.push(" 10", minX.toFixed(4));
+            headerDxf.push(" 20", minY.toFixed(4));
+            headerDxf.push("  9", "$LIMMAX");
+            headerDxf.push(" 10", maxX.toFixed(4));
+            headerDxf.push(" 20", maxY.toFixed(4));
             headerDxf.push("  0", "ENDSEC");
 
             headerDxf.push("  0", "SECTION");
             headerDxf.push("  2", "TABLES");
             headerDxf.push("  0", "TABLE");
             headerDxf.push("  2", "LAYER");
+            headerDxf.push("  5", getHandle());
+            headerDxf.push("100", "AcDbSymbolTable");
             headerDxf.push(" 70", layerNames.size.toString());
 
             const layerColors = {
                 "KML_Boundary": 3,
                 "OSM_Buildings": 2,
                 "OSM_Roads": 4,
-                "User_Drawn": 1
+                "User_Drawn": 1,
+                "0": 7
             };
 
             layerNames.forEach(name => {
                 const color = layerColors[name] || 7;
                 headerDxf.push("  0", "LAYER");
+                headerDxf.push("  5", getHandle());
+                headerDxf.push("100", "AcDbSymbolTableRecord");
+                headerDxf.push("100", "AcDbLayerTableRecord");
                 headerDxf.push("  2", name);
                 headerDxf.push(" 70", "0");
                 headerDxf.push(" 62", color.toString());
@@ -2411,9 +2464,7 @@
 
             return fullDxf.join("\r\n") + "\r\n";
         }
-
-        // ============================================================
-        // 20. EXPORT TO PNG
+// 20. EXPORT TO PNG
         // ============================================================
 
         document.getElementById('btn-export-png').addEventListener('click', async () => {

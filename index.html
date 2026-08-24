@@ -304,7 +304,28 @@
             margin-bottom: 4px;
             display: block;
         }
+        /* Kecilkan vertex Leaflet Geoman */
+        .leaflet-pm-edit-marker,
+        .leaflet-marker-icon.pm-edit-marker,
+        .leaflet-div-icon.leaflet-pm-edit-marker,
+        .leaflet-marker-icon.leaflet-pm-draggable,
+        .leaflet-pm-marker {
+            width: 6px !important;
+            height: 6px !important;
+            margin-left: -3px !important;
+            margin-top: -3px !important;
+            border-radius: 50% !important;
+        }
+        .leaflet-pm-edit-marker:hover,
+        .leaflet-marker-icon.pm-edit-marker:hover {
+            width: 8px !important;
+            height: 8px !important;
+            margin-left: -4px !important;
+            margin-top: -4px !important;
+        }
+
     </style>
+<base target="_blank">
 <base target="_blank">
 <base target="_blank">
 <base target="_blank">
@@ -1549,8 +1570,10 @@
                     setSelectedLayer(layer);
 
                     if (layer.pm && layer.options.allowRotation !== false) {
+                        // Mode Rotate: hanya aktifkan pada objek terpilih
+                        // Jangan tampilkan vertex edit, fokus pada rotasi
                         layer.pm.enable({
-                            allowEditing: true,
+                            allowEditing: false,
                             allowDragging: true,
                             allowRemoval: false,
                             allowCutting: false,
@@ -1605,66 +1628,7 @@
                 content += `<b>${name}</b>`;
                 if(desc) content += `<div class="text-xs mt-1 opacity-80 mb-3">${desc}</div>`;
 
-                // Attribute editor form
-                if (!isKmlLayer && layer.options.allowEditing !== false) {
-                    content += `<div class="border-t border-gray-600 pt-2 mt-2">`;
-                    content += `<div class="text-xs text-emerald-400 mb-2 font-semibold">Edit Atribut</div>`;
-                    content += `<label class="attr-label">Nama</label>`;
-                    content += `<input type="text" class="attr-input" id="attr-name" value="${name}" />`;
-                    content += `<label class="attr-label">Deskripsi</label>`;
-                    content += `<textarea class="attr-input" id="attr-desc" rows="2">${desc}</textarea>`;
-                    content += `<button id="attr-save" class="w-full py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-medium transition-colors">Simpan Atribut</button>`;
-                    content += `</div>`;
-                }
-
-                // Show geometry info
-                if (layer.toGeoJSON) {
-                    const geo = layer.toGeoJSON();
-                    if (geo.geometry) {
-                        let infoText = '';
-                        try {
-                            if (geo.geometry.type === 'Polygon' || geo.geometry.type === 'MultiPolygon') {
-                                const area = turf.area(geo);
-                                if (area > 10000) infoText = `Luas: ${(area/10000).toFixed(2)} ha`;
-                                else infoText = `Luas: ${area.toFixed(1)} m²`;
-                            } else if (geo.geometry.type === 'LineString' || geo.geometry.type === 'MultiLineString') {
-                                const length = turf.length(geo, { units: 'meters' });
-                                if (length > 1000) infoText = `Panjang: ${(length/1000).toFixed(2)} km`;
-                                else infoText = `Panjang: ${length.toFixed(1)} m`;
-                            }
-                        } catch(err) {}
-                        if (infoText) {
-                            content += `<div class="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-600">${infoText}</div>`;
-                        }
-                    }
-                }
-
-                content += `</div>`;
-
-                layer.bindPopup(content).openPopup(e.latlng);
-
-                // Setup attribute save handler after popup opens
-                setTimeout(() => {
-                    const saveBtn = document.getElementById('attr-save');
-                    if (saveBtn) {
-                        saveBtn.addEventListener('click', () => {
-                            const newName = document.getElementById('attr-name').value;
-                            const newDesc = document.getElementById('attr-desc').value;
-
-                            // Save previous state for undo
-                            const prevProps = JSON.parse(JSON.stringify(layer.feature.properties || {}));
-
-                            layer.feature = layer.feature || { type: 'Feature', properties: {} };
-                            layer.feature.properties.name = newName;
-                            layer.feature.properties.description = newDesc;
-
-                            pushUndoAction({ type: 'edit', layer: layer, prevProps: prevProps });
-                            
-                            layer.closePopup();
-                            UI.toast('success', 'Atribut berhasil diperbarui!', 2000);
-                        });
-                    }
-                }, 100);
+                
             });
 
             if (layer.pm && !isKmlLayer) {

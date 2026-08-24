@@ -1196,6 +1196,7 @@
         });
 
         App.map.on('pm:drawstart', (e) => {
+            // Matikan rotate mode saat mulai menggambar (mirror Edit Mode)
             App.state.isRotateModeActive = false;
             updateRotateButtonUI();
             clearAllEdits();
@@ -1203,6 +1204,7 @@
         });
 
         App.map.on('pm:globaleditmodetoggled', (e) => {
+            // Matikan rotate mode saat Edit Mode aktif/nonaktif (mirror behavior)
             App.state.isRotateModeActive = false;
             updateRotateButtonUI();
             clearAllEdits();
@@ -1333,15 +1335,6 @@
                 }
                 App.state.activeEditLayer = null;
             }
-
-            [App.groups.osm, App.groups.kml, App.groups.draw].forEach(group => {
-                processAllSubLayers(group, l => {
-                    if (l.pm) {
-                        if (typeof l.pm.disable === 'function') l.pm.disable();
-                        if (typeof l.pm.disableRotate === 'function') l.pm.disableRotate();
-                    }
-                });
-            });
         }
 
         function updateRotateButtonUI() {
@@ -1358,24 +1351,21 @@
         // ============================================================
 
         document.getElementById('btn-rotate').addEventListener('click', () => {
-            const willActivate = !App.state.isRotateModeActive;
+            App.state.isRotateModeActive = !App.state.isRotateModeActive;
 
-            if (willActivate) {
+            if (App.state.isRotateModeActive) {
                 // Aktifkan mode rotate: matikan semua mode lain (sama seperti Edit Mode)
                 if (App.map.pm.globalEditEnabled()) App.map.pm.disableGlobalEditMode();
                 if (App.map.pm.globalDragModeEnabled()) App.map.pm.disableGlobalDragMode();
                 if (App.map.pm.globalDrawModeEnabled()) App.map.pm.disableGlobalDrawMode();
                 clearMeasurement();
                 clearAllEdits();
-                App.state.isRotateModeActive = true;
-                updateRotateButtonUI();
                 UI.toast('info', 'Mode Rotasi Aktif: Klik pada objek untuk memutarnya', 2500);
             } else {
                 // Nonaktifkan mode rotate (sama seperti Edit Mode)
                 clearAllEdits();
-                App.state.isRotateModeActive = false;
-                updateRotateButtonUI();
             }
+            updateRotateButtonUI();
         });
 
         // ============================================================
@@ -1575,28 +1565,34 @@
                         return;
                     }
 
-                    // Sama seperti Edit Mode: toggle jika objek yang sama diklik
+                    // Mirror Edit Mode: toggle off jika objek yang sama diklik
                     if (App.state.activeEditLayer === layer) {
-                        clearAllEdits();
+                        if (layer.pm && typeof layer.pm.disable === 'function') {
+                            layer.pm.disable();
+                        }
+                        App.state.activeEditLayer = null;
                         return;
                     }
 
-                    clearAllEdits();
+                    // Mirror Edit Mode: matikan objek sebelumnya, aktifkan objek baru
+                    if (App.state.activeEditLayer && App.state.activeEditLayer.pm) {
+                        if (typeof App.state.activeEditLayer.pm.disable === 'function') {
+                            App.state.activeEditLayer.pm.disable();
+                        }
+                    }
+
                     setSelectedLayer(layer);
 
                     if (layer.pm && layer.options.allowRotation !== false) {
-                        // Aktifkan rotasi pada objek terpilih (sama seperti Edit Mode)
-                        if (typeof layer.pm.enableRotate === 'function') {
-                            layer.pm.enableRotate();
-                        } else {
-                            layer.pm.enable({
-                                allowEditing: false,
-                                allowDragging: true,
-                                allowRemoval: false,
-                                allowCutting: false,
-                                snappable: false
-                            });
-                        }
+                        // Gunakan allowEditing: true agar handle rotasi Geoman muncul
+                        // Vertex sudah dikecilkan via CSS sehingga tidak mengganggu
+                        layer.pm.enable({
+                            allowEditing: true,
+                            allowDragging: true,
+                            allowRemoval: false,
+                            allowCutting: false,
+                            snappable: false
+                        });
                         App.state.activeEditLayer = layer;
                     }
                     return;

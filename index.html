@@ -2330,8 +2330,7 @@
                 if (featureProps) {
                     labelText = featureProps.name || featureProps.Name || featureProps.title || featureProps.id || "Point";
                 }
-                labelText = String(labelText).replace(/[
-]+/g, " ").substring(0, 255);
+                labelText = String(labelText).replace(new RegExp("[\\r\\n]+", "g"), " ").substring(0, 255);
 
                 entitiesDxf.push("  0", "TEXT");
                 entitiesDxf.push("  5", getHandle());

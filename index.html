@@ -329,6 +329,7 @@
 <base target="_blank">
 <base target="_blank">
 <base target="_blank">
+<base target="_blank">
 </head>
 <body class="flex flex-row bg-gray-900 text-gray-200">
 
@@ -1631,18 +1632,49 @@
                     if (e.originalEvent) L.DomEvent.stopPropagation(e);
                     return; 
                 }
-
-                // Normal click - show popup with attribute editor
+                // Normal click - show popup with READ-ONLY attributes
                 let props = layer.feature?.properties || {};
                 let name = props.name || props.Name || props.NAME || props.type || props.building || props.highway || 'Object';
-                let desc = props.description || props.Description || '';
+                let geomType = layer.feature?.geometry?.type || 'Unknown';
 
-                // Build popup content with attribute editor
-                let content = `<div style="min-width:200px;">`;
-                content += `<b>${name}</b>`;
-                if(desc) content += `<div class="text-xs mt-1 opacity-80 mb-3">${desc}</div>`;
+                // Build popup content - READ ONLY (tidak bisa diedit)
+                let content = `<div style="min-width:220px;max-height:280px;overflow-y:auto;">`;
+                content += `<div style="font-weight:600;color:#10b981;font-size:13px;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:4px;">${name}</div>`;
+                content += `<div style="font-size:10px;color:#6b7280;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Tipe Geometri: ${geomType}</div>`;
 
-                
+                // Display all properties in read-only table
+                if (Object.keys(props).length > 0) {
+                    content += `<table style="width:100%;border-collapse:collapse;font-size:11px;">`;
+                    content += `<thead><tr style="background:rgba(255,255,255,0.05);">
+                        <th style="text-align:left;padding:4px 6px;color:#9ca3af;font-weight:500;border-bottom:1px solid rgba(255,255,255,0.08);width:35%;">Atribut</th>
+                        <th style="text-align:left;padding:4px 6px;color:#9ca3af;font-weight:500;border-bottom:1px solid rgba(255,255,255,0.08);">Nilai</th>
+                    </tr></thead><tbody>`;
+
+                    for (let [key, val] of Object.entries(props)) {
+                        let displayVal = val;
+                        if (val === null || val === undefined) displayVal = '-';
+                        else if (typeof val === 'object') displayVal = JSON.stringify(val);
+                        else displayVal = String(val);
+
+                        // Truncate very long values
+                        if (displayVal.length > 80) displayVal = displayVal.substring(0, 77) + '...';
+
+                        content += `<tr>
+                            <td style="padding:4px 6px;color:#9ca3af;border-bottom:1px solid rgba(255,255,255,0.04);vertical-align:top;white-space:nowrap;">${key}</td>
+                            <td style="padding:4px 6px;color:#e5e7eb;border-bottom:1px solid rgba(255,255,255,0.04);word-break:break-word;">${displayVal}</td>
+                        </tr>`;
+                    }
+                    content += `</tbody></table>`;
+                } else {
+                    content += `<div style="font-size:11px;color:#6b7280;font-style:italic;">Tidak ada atribut tersedia.</div>`;
+                }
+
+                content += `</div>`;
+
+                layer.bindPopup(content, {
+                    maxWidth: 320,
+                    className: 'custom-popup-readonly'
+                }).openPopup();
             });
 
             if (layer.pm && !isKmlLayer) {

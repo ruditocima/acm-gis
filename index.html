@@ -373,7 +373,7 @@
 
             <!-- Go To Coordinate -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
-                <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Loncat ke Koordinat</h2>
+                <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Masukkan Koordinat</h2>
                 <div class="grid grid-cols-2 gap-2 mb-2">
                     <input type="number" id="gotoLat" placeholder="Latitude" step="any"
                         class="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
@@ -497,7 +497,7 @@
                     </button>
                 </div>
                 <button id="btn-measure-clear" class="w-full mt-2 py-1.5 bg-red-900 bg-opacity-30 hover:bg-opacity-50 text-red-400 rounded-lg text-xs transition-colors hidden">
-                    <i class="fa-solid fa-eraser mr-1"></i> Hapuk Pengukuran
+                    <i class="fa-solid fa-eraser mr-1"></i> Hapus Pengukuran
                 </button>
             </div>
 
@@ -1217,7 +1217,7 @@
                         }
                     });
                 });
-                UI.toast('info', 'Mode Edit Aktif: Klik pada objek untuk menampilkan verteknya', 2500);
+                UI.toast('info', 'Silahkan Klik pada objek', 2500);
             }
         });
 
@@ -2196,7 +2196,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'GeoConvert_Export.dxf';
+            a.download = 'Convert_Export.dxf';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);

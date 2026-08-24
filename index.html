@@ -1358,14 +1358,23 @@
         // ============================================================
 
         document.getElementById('btn-rotate').addEventListener('click', () => {
-            App.state.isRotateModeActive = !App.state.isRotateModeActive;
-            if (App.map.pm.globalEditEnabled()) App.map.pm.disableGlobalEditMode();
-            if (App.map.pm.globalDragModeEnabled()) App.map.pm.disableGlobalDragMode();
-            clearAllEdits();
-            updateRotateButtonUI();
+            const willActivate = !App.state.isRotateModeActive;
 
-            if (App.state.isRotateModeActive) {
-                UI.toast('info', 'Mode Rotasi Aktif: Klik pada OSM Bangunan untuk memutarnya', 2500);
+            if (willActivate) {
+                // Aktifkan mode rotate: matikan semua mode lain (sama seperti Edit Mode)
+                if (App.map.pm.globalEditEnabled()) App.map.pm.disableGlobalEditMode();
+                if (App.map.pm.globalDragModeEnabled()) App.map.pm.disableGlobalDragMode();
+                if (App.map.pm.globalDrawModeEnabled()) App.map.pm.disableGlobalDrawMode();
+                clearMeasurement();
+                clearAllEdits();
+                App.state.isRotateModeActive = true;
+                updateRotateButtonUI();
+                UI.toast('info', 'Mode Rotasi Aktif: Klik pada objek untuk memutarnya', 2500);
+            } else {
+                // Nonaktifkan mode rotate (sama seperti Edit Mode)
+                clearAllEdits();
+                App.state.isRotateModeActive = false;
+                updateRotateButtonUI();
             }
         });
 
@@ -1566,19 +1575,28 @@
                         return;
                     }
 
+                    // Sama seperti Edit Mode: toggle jika objek yang sama diklik
+                    if (App.state.activeEditLayer === layer) {
+                        clearAllEdits();
+                        return;
+                    }
+
                     clearAllEdits();
                     setSelectedLayer(layer);
 
                     if (layer.pm && layer.options.allowRotation !== false) {
-                        // Mode Rotate: hanya aktifkan pada objek terpilih
-                        // Jangan tampilkan vertex edit, fokus pada rotasi
-                        layer.pm.enable({
-                            allowEditing: false,
-                            allowDragging: true,
-                            allowRemoval: false,
-                            allowCutting: false,
-                            snappable: false
-                        });
+                        // Aktifkan rotasi pada objek terpilih (sama seperti Edit Mode)
+                        if (typeof layer.pm.enableRotate === 'function') {
+                            layer.pm.enableRotate();
+                        } else {
+                            layer.pm.enable({
+                                allowEditing: false,
+                                allowDragging: true,
+                                allowRemoval: false,
+                                allowCutting: false,
+                                snappable: false
+                            });
+                        }
                         App.state.activeEditLayer = layer;
                     }
                     return;

@@ -674,8 +674,7 @@
                 document.getElementById('count-kml').textContent = kmlCount;
                 document.getElementById('count-osm').textContent = osmCount;
                 document.getElementById('count-draw').textContent = drawCount;
-                document.getElementById('total-features').textContent = kmlCount + osmCount + drawCount;
-            },
+                },
 
             toast(icon, title, timer = 2000) {
                 Swal.fire({
@@ -2166,7 +2165,7 @@
         });
 
         // ============================================================
-// 19. EXPORT TO DXF (AutoCAD 2000 Compliant - Improved)
+// 19. EXPORT TO DXF (AutoCAD 2000 Compliant)
 // ============================================================
 
 document.getElementById('btn-export').addEventListener('click', () => {
@@ -2198,33 +2197,22 @@ document.getElementById('btn-export').addEventListener('click', () => {
     }, 100);
 });
 
-// ============================================================
-// DXF GENERATOR ENGINE - AutoCAD 2000 (AC1015) Compliant
-// Diperbaiki untuk kompatibilitas penuh dengan AutoCAD
-// ============================================================
-
 function collectAllFeatures() {
     const allFeatures = [];
 
     function addFeature(geo, sourceGroup, layerProps) {
         if (!geo) return;
-
         const processFeature = (f) => {
             if (!f || !f.geometry) return;
             f.properties = f.properties || {};
-            if (layerProps) {
-                Object.assign(f.properties, layerProps);
-            }
-
+            if (layerProps) Object.assign(f.properties, layerProps);
             if (sourceGroup === 'kml') f.properties.layer = "KML_Boundary";
             else if (sourceGroup === 'osm' && f.properties.building) f.properties.layer = "OSM_Buildings";
             else if (sourceGroup === 'osm' && f.properties.highway) f.properties.layer = "OSM_Roads";
             else if (sourceGroup === 'draw') f.properties.layer = "User_Drawn";
             else f.properties.layer = "0";
-
             allFeatures.push(f);
         };
-
         if (geo.type === 'FeatureCollection' && geo.features) {
             geo.features.forEach(processFeature);
         } else if (geo.type === 'Feature') {
@@ -2253,36 +2241,34 @@ function collectAllFeatures() {
     iterateGroup(App.groups.kml, 'kml');
     iterateGroup(App.groups.osm, 'osm');
     iterateGroup(App.groups.draw, 'draw');
-
     return allFeatures;
 }
 
 function generateDXF(featureCollection) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    let handleCounter = 256;
+    let handle = 256;
+    function h() { return (handle++).toString(16).toUpperCase(); }
+    function c(code, val) { return code.toString().padStart(3, ' ') + "\n" + String(val); }
 
-    function getHandle() {
-        return (handleCounter++).toString(16).toUpperCase();
+    function toMeters(lon, lat) {
+        lat = Math.max(-85.05112878, Math.min(85.05112878, lat));
+        const x = lon * 20037508.34 / 180;
+        let y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);
+        y = y * 20037508.34 / 180;
+        return [x, y];
     }
 
-    function gc(code) {
-        return code.toString().padStart(3, ' ');
-    }
-
-    function updateExtents(x, y) {
+    function updateExt(x, y) {
         if (!isFinite(x) || !isFinite(y)) return;
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
+        if (x < minX) minX = x; if (y < minY) minY = y;
+        if (x > maxX) maxX = x; if (y > maxY) maxY = y;
     }
 
     // Layer definitions
     const layerNames = new Set(["0"]);
     featureCollection.features.forEach(f => {
         if (f.properties && f.properties.layer) {
-            let name = String(f.properties.layer).replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 31);
-            layerNames.add(name);
+            layerNames.add(String(f.properties.layer).replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 31));
         }
     });
 
@@ -2294,722 +2280,617 @@ function generateDXF(featureCollection) {
         "User_Drawn": 1
     };
 
-    // Collect all entity strings
-    let entitiesContent = [];
+    // Build entities
+    let entities = [];
 
-    function addPointEntity(coord, layerName, featureProps) {
-        if (!coord || coord.length < 2) return;
-        let [x, y] = CoordUtils.lonLatToMeters(coord[0], coord[1]);
-        if (!isFinite(x) || !isFinite(y)) return;
-        updateExtents(x, y);
+    featureCollection.features.forEach(feature => {
+        const gem = feature.geometry;
+        const props = feature.properties || {};
+        const layerName = String(props.layer || "0").replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 31);
+        const labelText = String(props.name || props.Name || props.title || props.id || "").replace(/[
+]+/g, " ").substring(0, 255);
 
-        let labelText = "Point";
-        if (featureProps) {
-            labelText = featureProps.name || featureProps.Name || featureProps.title || featureProps.id || "Point";
-        }
-        labelText = String(labelText).replace(/[\r\n]+/g, " ").substring(0, 255);
-
-        // POINT entity
-        entitiesContent.push(gc(0), "POINT");
-        entitiesContent.push(gc(5), getHandle());
-        entitiesContent.push(gc(100), "AcDbEntity");
-        entitiesContent.push(gc(8), layerName);
-        entitiesContent.push(gc(100), "AcDbPoint");
-        entitiesContent.push(gc(10), x.toFixed(4));
-        entitiesContent.push(gc(20), y.toFixed(4));
-        entitiesContent.push(gc(30), "0.0");
-
-        // TEXT label
-        entitiesContent.push(gc(0), "TEXT");
-        entitiesContent.push(gc(5), getHandle());
-        entitiesContent.push(gc(100), "AcDbEntity");
-        entitiesContent.push(gc(8), layerName);
-        entitiesContent.push(gc(100), "AcDbText");
-        entitiesContent.push(gc(10), (x + 2.0).toFixed(4));
-        entitiesContent.push(gc(20), (y + 2.0).toFixed(4));
-        entitiesContent.push(gc(30), "0.0");
-        entitiesContent.push(gc(40), "2.5");
-        entitiesContent.push(gc(1), labelText);
-        entitiesContent.push(gc(50), "0.0");
-        entitiesContent.push(gc(72), "0");
-        entitiesContent.push(gc(11), (x + 2.0).toFixed(4));
-        entitiesContent.push(gc(21), (y + 2.0).toFixed(4));
-        entitiesContent.push(gc(31), "0.0");
-        entitiesContent.push(gc(100), "AcDbText");
-    }
-
-    function addLWPOLYLINE(coords, isClosed, layerName) {
-        if (!coords || coords.length < 2) return;
-
-        const validCoords = coords.filter(c => Array.isArray(c) && c.length >= 2 && isFinite(c[0]) && isFinite(c[1]));
-        if (validCoords.length < 2) return;
-
-        entitiesContent.push(gc(0), "LWPOLYLINE");
-        entitiesContent.push(gc(5), getHandle());
-        entitiesContent.push(gc(100), "AcDbEntity");
-        entitiesContent.push(gc(8), layerName);
-        entitiesContent.push(gc(100), "AcDbPolyline");
-        entitiesContent.push(gc(90), validCoords.length.toString());
-        entitiesContent.push(gc(70), isClosed ? "1" : "0");
-        entitiesContent.push(gc(43), "0.0");
-
-        validCoords.forEach(c => {
-            let [x, y] = CoordUtils.lonLatToMeters(c[0], c[1]);
-            if (!isFinite(x) || !isFinite(y)) return;
-            updateExtents(x, y);
-            entitiesContent.push(gc(10), x.toFixed(4));
-            entitiesContent.push(gc(20), y.toFixed(4));
-        });
-    }
-
-    function processGeometry(gem, layerName, featureProps) {
         if (!gem || !gem.type) return;
 
         if (gem.type === "Point") {
-            addPointEntity(gem.coordinates, layerName, featureProps);
-        } else if (gem.type === "MultiPoint") {
-            gem.coordinates.forEach(pt => addPointEntity(pt, layerName, featureProps));
-        } else if (gem.type === "LineString") {
-            addLWPOLYLINE(gem.coordinates, false, layerName);
-        } else if (gem.type === "MultiLineString") {
-            gem.coordinates.forEach(line => addLWPOLYLINE(line, false, layerName));
-        } else if (gem.type === "Polygon") {
-            gem.coordinates.forEach(ring => addLWPOLYLINE(ring, true, layerName));
-        } else if (gem.type === "MultiPolygon") {
-            gem.coordinates.forEach(poly => poly.forEach(ring => addLWPOLYLINE(ring, true, layerName)));
-        } else if (gem.type === "GeometryCollection") {
-            gem.geometries.forEach(g => processGeometry(g, layerName, featureProps));
-        }
-    }
-
-    featureCollection.features.forEach((feature) => {
-        let gem = feature.geometry;
-        let layerName = (feature.properties && feature.properties.layer) ? feature.properties.layer : "0";
-        layerName = String(layerName).replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 31);
-        processGeometry(gem, layerName, feature.properties);
-    });
-
-    if (!isFinite(minX) || !isFinite(minY)) {
-        minX = 0; minY = 0; maxX = 100; maxY = 100;
-    }
-
-    // ============================================================
-    // BUILD DXF
-    // ============================================================
-    let d = [];
-
-    function add(code, value) {
-        d.push(gc(code));
-        d.push(String(value));
-    }
-
-    function section(name, contentFn) {
-        add(0, 'SECTION');
-        add(2, name);
-        contentFn();
-        add(0, 'ENDSEC');
-    }
-
-    // --- HEADER ---
-    section('HEADER', () => {
-        add(9, '$ACADVER');
-        add(1, 'AC1015');
-        add(9, '$ACADMAINTVER');
-        add(70, 0);
-        add(9, '$DWGCODEPAGE');
-        add(3, 'ANSI_1252');
-        add(9, '$INSBASE');
-        add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$EXTMIN');
-        add(10, minX.toFixed(4)); add(20, minY.toFixed(4)); add(30, 0.0);
-        add(9, '$EXTMAX');
-        add(10, maxX.toFixed(4)); add(20, maxY.toFixed(4)); add(30, 0.0);
-        add(9, '$LIMMIN');
-        add(10, minX.toFixed(4)); add(20, minY.toFixed(4));
-        add(9, '$LIMMAX');
-        add(10, maxX.toFixed(4)); add(20, maxY.toFixed(4));
-        add(9, '$ORTHOMODE'); add(70, 0);
-        add(9, '$REGENMODE'); add(70, 1);
-        add(9, '$FILLMODE'); add(70, 1);
-        add(9, '$QTEXTMODE'); add(70, 0);
-        add(9, '$MIRRTEXT'); add(70, 1);
-        add(9, '$LTSCALE'); add(40, 1.0);
-        add(9, '$ATTMODE'); add(70, 1);
-        add(9, '$TEXTSIZE'); add(40, 2.5);
-        add(9, '$TRACEWID'); add(40, 1.0);
-        add(9, '$TEXTSTYLE'); add(7, 'Standard');
-        add(9, '$CLAYER'); add(8, '0');
-        add(9, '$CELTYPE'); add(6, 'ByLayer');
-        add(9, '$CECOLOR'); add(62, 256);
-        add(9, '$CELTSCALE'); add(40, 1.0);
-        add(9, '$DISPSILH'); add(70, 0);
-        add(9, '$DIMSCALE'); add(40, 1.0);
-        add(9, '$DIMASZ'); add(40, 2.5);
-        add(9, '$DIMEXO'); add(40, 0.625);
-        add(9, '$DIMDLI'); add(40, 3.75);
-        add(9, '$DIMRND'); add(40, 0.0);
-        add(9, '$DIMDLE'); add(40, 0.0);
-        add(9, '$DIMEXE'); add(40, 1.25);
-        add(9, '$DIMTP'); add(40, 0.0);
-        add(9, '$DIMTM'); add(40, 0.0);
-        add(9, '$DIMTXT'); add(40, 2.5);
-        add(9, '$DIMCEN'); add(40, 2.5);
-        add(9, '$DIMTSZ'); add(40, 0.0);
-        add(9, '$DIMTOL'); add(70, 0);
-        add(9, '$DIMLIM'); add(70, 0);
-        add(9, '$DIMTIH'); add(70, 1);
-        add(9, '$DIMTOH'); add(70, 1);
-        add(9, '$DIMSE1'); add(70, 0);
-        add(9, '$DIMSE2'); add(70, 0);
-        add(9, '$DIMTAD'); add(70, 1);
-        add(9, '$DIMZIN'); add(70, 8);
-        add(9, '$DIMBLK'); add(1, '');
-        add(9, '$DIMASO'); add(70, 1);
-        add(9, '$DIMSHO'); add(70, 1);
-        add(9, '$DIMPOST'); add(1, '');
-        add(9, '$DIMAPOST'); add(1, '');
-        add(9, '$DIMALT'); add(70, 0);
-        add(9, '$DIMALTD'); add(70, 3);
-        add(9, '$DIMALTF'); add(40, 0.0394);
-        add(9, '$DIMLFAC'); add(40, 1.0);
-        add(9, '$DIMTOFL'); add(70, 1);
-        add(9, '$DIMTVP'); add(40, 0.0);
-        add(9, '$DIMTIX'); add(70, 0);
-        add(9, '$DIMSOXD'); add(70, 0);
-        add(9, '$DIMSAH'); add(70, 0);
-        add(9, '$DIMBLK1'); add(1, '');
-        add(9, '$DIMBLK2'); add(1, '');
-        add(9, '$DIMSTYLE'); add(2, 'ISO-25');
-        add(9, '$DIMCLRD'); add(70, 0);
-        add(9, '$DIMCLRE'); add(70, 0);
-        add(9, '$DIMCLRT'); add(70, 0);
-        add(9, '$DIMTFAC'); add(40, 1.0);
-        add(9, '$DIMGAP'); add(40, 0.625);
-        add(9, '$DIMJUST'); add(70, 0);
-        add(9, '$DIMSD1'); add(70, 0);
-        add(9, '$DIMSD2'); add(70, 0);
-        add(9, '$DIMTOLJ'); add(70, 0);
-        add(9, '$DIMTZIN'); add(70, 8);
-        add(9, '$DIMALTZ'); add(70, 0);
-        add(9, '$DIMALTTZ'); add(70, 0);
-        add(9, '$DIMUPT'); add(70, 0);
-        add(9, '$DIMDEC'); add(70, 2);
-        add(9, '$DIMTDEC'); add(70, 2);
-        add(9, '$DIMALTU'); add(70, 2);
-        add(9, '$DIMALTTD'); add(70, 3);
-        add(9, '$DIMTXTDIRECTION'); add(70, 0);
-        add(9, '$DIMMAUNIT'); add(70, 0);
-        add(9, '$DIMARCSYM'); add(70, 0);
-        add(9, '$DIMLUNIT'); add(70, 2);
-        add(9, '$DIMLWD'); add(70, -2);
-        add(9, '$DIMLWE'); add(70, -2);
-        add(9, '$DIMFXL'); add(40, 1.0);
-        add(9, '$DIMFXLON'); add(70, 0);
-        add(9, '$DIMJOGANG'); add(40, 0.7854);
-        add(9, '$DIMTFILL'); add(70, 0);
-        add(9, '$DIMTFILLCLR'); add(70, 0);
-        add(9, '$DIMFRAC'); add(70, 0);
-        add(9, '$DIMLDRBLK'); add(1, 'STANDARD');
-        add(9, '$DIMLTYPE'); add(6, 'ByLayer');
-        add(9, '$DIMLTEX1'); add(6, 'ByLayer');
-        add(9, '$DIMLTEX2'); add(6, 'ByLayer');
-        add(9, '$DIMTXTDIRECTION'); add(70, 0);
-        add(9, '$LUNITS'); add(70, 2);
-        add(9, '$LUPREC'); add(70, 4);
-        add(9, '$SKETCHINC'); add(40, 1.0);
-        add(9, '$FILLETRAD'); add(40, 0.0);
-        add(9, '$AUNITS'); add(70, 0);
-        add(9, '$AUPREC'); add(70, 2);
-        add(9, '$MENU'); add(1, '.');
-        add(9, '$ELEVATION'); add(40, 0.0);
-        add(9, '$PELEVATION'); add(40, 0.0);
-        add(9, '$THICKNESS'); add(40, 0.0);
-        add(9, '$LIMCHECK'); add(70, 0);
-        add(9, '$CHAMFERA'); add(40, 0.0);
-        add(9, '$CHAMFERB'); add(40, 0.0);
-        add(9, '$CHAMFERC'); add(40, 0.0);
-        add(9, '$CHAMFERD'); add(40, 0.0);
-        add(9, '$SKPOLY'); add(70, 0);
-        add(9, '$TDCREATE'); add(40, 2450000.0);
-        add(9, '$TDUCREATE'); add(40, 2450000.0);
-        add(9, '$TDUPDATE'); add(40, 2450000.0);
-        add(9, '$TDUUPDATE'); add(40, 2450000.0);
-        add(9, '$TDINDWG'); add(40, 0.0);
-        add(9, '$TDUSRTIMER'); add(40, 0.0);
-        add(9, '$USRTIMER'); add(70, 1);
-        add(9, '$ANGBASE'); add(50, 0.0);
-        add(9, '$ANGDIR'); add(70, 0);
-        add(9, '$PDMODE'); add(70, 35);
-        add(9, '$PDSIZE'); add(40, 0.0);
-        add(9, '$PLINEWID'); add(40, 0.0);
-        add(9, '$SPLFRAME'); add(70, 0);
-        add(9, '$SPLINETYPE'); add(70, 6);
-        add(9, '$SPLINESEGS'); add(70, 8);
-        add(9, '$HANDSEED');
-        add(5, (handleCounter + 1000).toString(16).toUpperCase());
-        add(9, '$SURFTAB1'); add(70, 6);
-        add(9, '$SURFTAB2'); add(70, 6);
-        add(9, '$SURFTYPE'); add(70, 6);
-        add(9, '$SURFU'); add(70, 6);
-        add(9, '$SURFV'); add(70, 6);
-        add(9, '$UCSBASE'); add(2, '');
-        add(9, '$UCSNAME'); add(2, '');
-        add(9, '$UCSORG'); add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$UCSXDIR'); add(10, 1.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$UCSYDIR'); add(10, 0.0); add(20, 1.0); add(30, 0.0);
-        add(9, '$UCSORTHOREF'); add(2, '');
-        add(9, '$UCSORTHOVIEW'); add(70, 0);
-        add(9, '$UCSORGTOP'); add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$UCSORGBOTTOM'); add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$UCSORGLEFT'); add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$UCSORGRIGHT'); add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$UCSORGFRONT'); add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$UCSORGBACK'); add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$PUCSBASE'); add(2, '');
-        add(9, '$PUCSNAME'); add(2, '');
-        add(9, '$PUCSORG'); add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$PUCSXDIR'); add(10, 1.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$PUCSYDIR'); add(10, 0.0); add(20, 1.0); add(30, 0.0);
-        add(9, '$PUCSORTHOREF'); add(2, '');
-        add(9, '$PUCSORTHOVIEW'); add(70, 0);
-        add(9, '$PUCSORGTOP'); add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$PUCSORGBOTTOM'); add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$PUCSORGLEFT'); add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$PUCSORGRIGHT'); add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$PUCSORGFRONT'); add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$PUCSORGBACK'); add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$USERI1'); add(70, 0);
-        add(9, '$USERI2'); add(70, 0);
-        add(9, '$USERI3'); add(70, 0);
-        add(9, '$USERI4'); add(70, 0);
-        add(9, '$USERI5'); add(70, 0);
-        add(9, '$USERR1'); add(40, 0.0);
-        add(9, '$USERR2'); add(40, 0.0);
-        add(9, '$USERR3'); add(40, 0.0);
-        add(9, '$USERR4'); add(40, 0.0);
-        add(9, '$USERR5'); add(40, 0.0);
-        add(9, '$WORLDVIEW'); add(70, 1);
-        add(9, '$SHADEDGE'); add(70, 3);
-        add(9, '$SHADEDIF'); add(70, 70);
-        add(9, '$TILEMODE'); add(70, 1);
-        add(9, '$MAXACTVP'); add(70, 64);
-        add(9, '$PINSBASE'); add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(9, '$PLIMCHECK'); add(70, 0);
-        add(9, '$PEXTMIN'); add(10, minX.toFixed(4)); add(20, minY.toFixed(4)); add(30, 0.0);
-        add(9, '$PEXTMAX'); add(10, maxX.toFixed(4)); add(20, maxY.toFixed(4)); add(30, 0.0);
-        add(9, '$PLIMMIN'); add(10, minX.toFixed(4)); add(20, minY.toFixed(4));
-        add(9, '$PLIMMAX'); add(10, maxX.toFixed(4)); add(20, maxY.toFixed(4));
-        add(9, '$UNITMODE'); add(70, 0);
-        add(9, '$VISRETAIN'); add(70, 1);
-        add(9, '$PLINEGEN'); add(70, 0);
-        add(9, '$PSLTSCALE'); add(70, 1);
-        add(9, '$TREEDEPTH'); add(70, 3020);
-        add(9, '$CMLSTYLE'); add(2, 'Standard');
-        add(9, '$CMLJUST'); add(70, 0);
-        add(9, '$CMLSCALE'); add(40, 20.0);
-        add(9, '$PROXYGRAPHICS'); add(70, 1);
-        add(9, '$MEASUREMENT'); add(70, 1);
-        add(9, '$CELWEIGHT'); add(370, -1);
-        add(9, '$ENDCAPS'); add(280, 0);
-        add(9, '$JOINSTYLE'); add(280, 0);
-        add(9, '$LWDISPLAY'); add(290, 0);
-        add(9, '$INSUNITS'); add(70, 6);
-        add(9, '$HYPERLINKBASE'); add(1, '');
-        add(9, '$STYLESHEET'); add(1, '');
-    });
-
-    // --- CLASSES ---
-    section('CLASSES', () => {
-        add(0, 'CLASS');
-        add(1, 'ACDBDICTIONARYWDFLT');
-        add(2, 'AcDbDictionaryWithDefault');
-        add(3, 'ObjectDBX Classes');
-        add(90, 0); add(91, 1); add(280, 0); add(281, 0);
-
-        add(0, 'CLASS');
-        add(1, 'SUN');
-        add(2, 'AcDbSun');
-        add(3, 'SCENEOE');
-        add(90, 1153); add(91, 1); add(280, 0); add(281, 0);
-
-        add(0, 'CLASS');
-        add(1, 'DICTIONARYVAR');
-        add(2, 'AcDbDictionaryVar');
-        add(3, 'ObjectDBX Classes');
-        add(90, 0); add(91, 13); add(280, 0); add(281, 0);
-
-        add(0, 'CLASS');
-        add(1, 'TABLESTYLE');
-        add(2, 'AcDbTableStyle');
-        add(3, 'ObjectDBX Classes');
-        add(90, 4095); add(91, 1); add(280, 0); add(281, 0);
-
-        add(0, 'CLASS');
-        add(1, 'MATERIAL');
-        add(2, 'AcDbMaterial');
-        add(3, 'ObjectDBX Classes');
-        add(90, 1153); add(91, 3); add(280, 0); add(281, 0);
-
-        add(0, 'CLASS');
-        add(1, 'VISUALSTYLE');
-        add(2, 'AcDbVisualStyle');
-        add(3, 'ObjectDBX Classes');
-        add(90, 4095); add(91, 25); add(280, 0); add(281, 0);
-    });
-
-    // --- TABLES ---
-    section('TABLES', () => {
-        // VPORT Table
-        add(0, 'TABLE');
-        add(2, 'VPORT');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTable');
-        add(70, 1);
-
-        add(0, 'VPORT');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTableRecord');
-        add(100, 'AcDbViewportTableRecord');
-        add(2, '*Active');
-        add(70, 0);
-        add(10, 0.0); add(20, 0.0);
-        add(11, 1.0); add(21, 1.0);
-        add(12, ((minX + maxX) / 2).toFixed(4));
-        add(22, ((minY + maxY) / 2).toFixed(4));
-        add(13, 0.0); add(23, 0.0);
-        add(14, 0.5); add(24, 0.5);
-        add(15, 0.5); add(25, 0.5);
-        add(16, 0.0); add(26, 0.0); add(36, 1.0);
-        add(17, 0.0); add(27, 0.0); add(37, 0.0);
-        add(40, Math.max(maxX - minX, maxY - minY).toFixed(4));
-        add(41, 1.0);
-        add(42, 50.0);
-        add(43, 0.0); add(44, 0.0);
-        add(50, 0.0); add(51, 0.0);
-        add(71, 0); add(72, 100); add(73, 1); add(74, 3);
-        add(75, 0); add(76, 0); add(77, 0); add(78, 0);
-        add(0, 'ENDTAB');
-
-        // LTYPE Table
-        add(0, 'TABLE');
-        add(2, 'LTYPE');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTable');
-        add(70, 4);
-
-        // ByLayer
-        add(0, 'LTYPE');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTableRecord');
-        add(100, 'AcDbLinetypeTableRecord');
-        add(2, 'ByLayer');
-        add(70, 0); add(3, ''); add(72, 65); add(73, 0); add(40, 0.0);
-
-        // ByBlock
-        add(0, 'LTYPE');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTableRecord');
-        add(100, 'AcDbLinetypeTableRecord');
-        add(2, 'ByBlock');
-        add(70, 0); add(3, ''); add(72, 65); add(73, 0); add(40, 0.0);
-
-        // Continuous
-        add(0, 'LTYPE');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTableRecord');
-        add(100, 'AcDbLinetypeTableRecord');
-        add(2, 'Continuous');
-        add(70, 0); add(3, 'Solid line'); add(72, 65); add(73, 0); add(40, 0.0);
-
-        // Hidden
-        add(0, 'LTYPE');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTableRecord');
-        add(100, 'AcDbLinetypeTableRecord');
-        add(2, 'Hidden');
-        add(70, 0);
-        add(3, 'Hidden _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _');
-        add(72, 65); add(73, 2); add(40, 0.075);
-        add(49, 0.05); add(49, -0.025);
-
-        // Center
-        add(0, 'LTYPE');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTableRecord');
-        add(100, 'AcDbLinetypeTableRecord');
-        add(2, 'Center');
-        add(70, 0);
-        add(3, 'Center ____ _ ____ _ ____ _ ____ _ ____ _ ____');
-        add(72, 65); add(73, 4); add(40, 0.1);
-        add(49, 0.05); add(49, -0.025); add(49, 0.025); add(49, -0.025);
-
-        add(0, 'ENDTAB');
-
-        // LAYER Table
-        add(0, 'TABLE');
-        add(2, 'LAYER');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTable');
-        add(70, layerNames.size);
-
-        layerNames.forEach(name => {
-            const color = layerColors[name] || 7;
-            add(0, 'LAYER');
-            add(5, getHandle());
-            add(100, 'AcDbSymbolTableRecord');
-            add(100, 'AcDbLayerTableRecord');
-            add(2, name);
-            add(70, 0);
-            add(62, color);
-            add(6, 'Continuous');
-            add(290, 1);
-            add(370, -3);
-            add(390, '11');
-        });
-
-        add(0, 'ENDTAB');
-
-        // STYLE Table
-        add(0, 'TABLE');
-        add(2, 'STYLE');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTable');
-        add(70, 2);
-
-        add(0, 'STYLE');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTableRecord');
-        add(100, 'AcDbTextStyleTableRecord');
-        add(2, 'Standard');
-        add(70, 0); add(40, 0.0); add(41, 1.0); add(50, 0.0);
-        add(71, 0); add(42, 2.5); add(3, 'txt'); add(4, '');
-
-        add(0, 'STYLE');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTableRecord');
-        add(100, 'AcDbTextStyleTableRecord');
-        add(2, 'Annotative');
-        add(70, 0); add(40, 0.0); add(41, 1.0); add(50, 0.0);
-        add(71, 0); add(42, 0.2); add(3, 'txt'); add(4, '');
-
-        add(0, 'ENDTAB');
-
-        // VIEW Table
-        add(0, 'TABLE');
-        add(2, 'VIEW');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTable');
-        add(70, 0);
-        add(0, 'ENDTAB');
-
-        // UCS Table
-        add(0, 'TABLE');
-        add(2, 'UCS');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTable');
-        add(70, 0);
-        add(0, 'ENDTAB');
-
-        // APPID Table
-        add(0, 'TABLE');
-        add(2, 'APPID');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTable');
-        add(70, 3);
-
-        add(0, 'APPID');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTableRecord');
-        add(100, 'AcDbRegAppTableRecord');
-        add(2, 'ACAD'); add(70, 0);
-
-        add(0, 'APPID');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTableRecord');
-        add(100, 'AcDbRegAppTableRecord');
-        add(2, 'ACADANNOPO'); add(70, 0);
-
-        add(0, 'APPID');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTableRecord');
-        add(100, 'AcDbRegAppTableRecord');
-        add(2, 'ACADANNOTATIVE'); add(70, 0);
-
-        add(0, 'ENDTAB');
-
-        // DIMSTYLE Table
-        add(0, 'TABLE');
-        add(2, 'DIMSTYLE');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTable');
-        add(70, 2);
-
-        add(0, 'DIMSTYLE');
-        add(105, getHandle());
-        add(100, 'AcDbSymbolTableRecord');
-        add(100, 'AcDbDimStyleTableRecord');
-        add(2, 'Standard');
-        add(70, 0); add(3, ''); add(4, ''); add(5, ''); add(6, ''); add(7, '');
-        add(40, 1.0); add(41, 2.5); add(42, 0.625); add(43, 3.75); add(44, 1.25);
-        add(45, 0.0); add(46, 0.0); add(47, 0.0); add(48, 0.0);
-        add(140, 2.5); add(141, 2.5); add(142, 0.0); add(143, 0.0394);
-        add(144, 1.0); add(145, 0.0); add(146, 1.0); add(147, 0.625);
-        add(71, 0); add(72, 0); add(73, 1); add(74, 1); add(75, 0); add(76, 0);
-        add(77, 1); add(78, 8); add(79, 3); add(170, 0); add(171, 0); add(172, 0);
-        add(173, 0); add(174, 0); add(175, 0); add(176, 0); add(177, 1); add(178, 0);
-        add(179, 0); add(271, 2); add(272, 2); add(273, 2); add(274, 3); add(275, 0);
-        add(276, 0); add(277, 2); add(278, 0); add(279, 0); add(280, 0); add(281, 0);
-        add(282, 0); add(283, 1); add(284, 0); add(285, 0); add(286, 0); add(288, 0);
-        add(289, 3); add(340, '11'); add(341, '11');
-
-        add(0, 'ENDTAB');
-
-        // BLOCK_RECORD Table
-        add(0, 'TABLE');
-        add(2, 'BLOCK_RECORD');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTable');
-        add(70, 2);
-
-        add(0, 'BLOCK_RECORD');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTableRecord');
-        add(100, 'AcDbBlockTableRecord');
-        add(2, '*MODEL_SPACE');
-        add(70, 0); add(280, 1); add(281, 0);
-
-        add(0, 'BLOCK_RECORD');
-        add(5, getHandle());
-        add(100, 'AcDbSymbolTableRecord');
-        add(100, 'AcDbBlockTableRecord');
-        add(2, '*PAPER_SPACE');
-        add(70, 0); add(280, 1); add(281, 0);
-
-        add(0, 'ENDTAB');
-    });
-
-    // --- BLOCKS ---
-    section('BLOCKS', () => {
-        // *MODEL_SPACE block
-        add(0, 'BLOCK');
-        add(5, getHandle());
-        add(100, 'AcDbEntity');
-        add(8, '0');
-        add(100, 'AcDbBlockBegin');
-        add(2, '*MODEL_SPACE');
-        add(70, 0);
-        add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(3, '*MODEL_SPACE');
-        add(1, '');
-
-        // Insert semua entities ke dalam block *MODEL_SPACE
-        for (let i = 0; i < entitiesContent.length; i += 2) {
-            if (i + 1 < entitiesContent.length) {
-                d.push(entitiesContent[i]);
-                d.push(entitiesContent[i + 1]);
+            const [x, y] = toMeters(gem.coordinates[0], gem.coordinates[1]);
+            updateExt(x, y);
+            entities.push(c(0, "POINT"));
+            entities.push(c(5, h()));
+            entities.push(c(100, "AcDbEntity"));
+            entities.push(c(8, layerName));
+            entities.push(c(100, "AcDbPoint"));
+            entities.push(c(10, x.toFixed(4)));
+            entities.push(c(20, y.toFixed(4)));
+            entities.push(c(30, "0.0"));
+            if (labelText) {
+                entities.push(c(0, "TEXT"));
+                entities.push(c(5, h()));
+                entities.push(c(100, "AcDbEntity"));
+                entities.push(c(8, layerName));
+                entities.push(c(100, "AcDbText"));
+                entities.push(c(10, (x + 2).toFixed(4)));
+                entities.push(c(20, (y + 2).toFixed(4)));
+                entities.push(c(30, "0.0"));
+                entities.push(c(40, "2.5"));
+                entities.push(c(1, labelText));
+                entities.push(c(50, "0.0"));
             }
         }
-
-        add(0, 'ENDBLK');
-        add(5, getHandle());
-        add(100, 'AcDbEntity');
-        add(8, '0');
-        add(100, 'AcDbBlockEnd');
-
-        // *PAPER_SPACE block
-        add(0, 'BLOCK');
-        add(5, getHandle());
-        add(100, 'AcDbEntity');
-        add(8, '0');
-        add(100, 'AcDbBlockBegin');
-        add(2, '*PAPER_SPACE');
-        add(70, 0);
-        add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(3, '*PAPER_SPACE');
-        add(1, '');
-        add(0, 'ENDBLK');
-        add(5, getHandle());
-        add(100, 'AcDbEntity');
-        add(8, '0');
-        add(100, 'AcDbBlockEnd');
+        else if (gem.type === "MultiPoint") {
+            gem.coordinates.forEach(pt => {
+                const [x, y] = toMeters(pt[0], pt[1]);
+                updateExt(x, y);
+                entities.push(c(0, "POINT"));
+                entities.push(c(5, h()));
+                entities.push(c(100, "AcDbEntity"));
+                entities.push(c(8, layerName));
+                entities.push(c(100, "AcDbPoint"));
+                entities.push(c(10, x.toFixed(4)));
+                entities.push(c(20, y.toFixed(4)));
+                entities.push(c(30, "0.0"));
+            });
+        }
+        else if (gem.type === "LineString") {
+            const coords = gem.coordinates.filter(c => Array.isArray(c) && c.length >= 2 && isFinite(c[0]) && isFinite(c[1]));
+            if (coords.length < 2) return;
+            entities.push(c(0, "LWPOLYLINE"));
+            entities.push(c(5, h()));
+            entities.push(c(100, "AcDbEntity"));
+            entities.push(c(8, layerName));
+            entities.push(c(100, "AcDbPolyline"));
+            entities.push(c(90, coords.length));
+            entities.push(c(70, "0"));
+            entities.push(c(43, "0.0"));
+            coords.forEach(crd => {
+                const [x, y] = toMeters(crd[0], crd[1]);
+                updateExt(x, y);
+                entities.push(c(10, x.toFixed(4)));
+                entities.push(c(20, y.toFixed(4)));
+            });
+            if (labelText) {
+                const [mx, my] = toMeters(coords[Math.floor(coords.length/2)][0], coords[Math.floor(coords.length/2)][1]);
+                entities.push(c(0, "TEXT"));
+                entities.push(c(5, h()));
+                entities.push(c(100, "AcDbEntity"));
+                entities.push(c(8, layerName));
+                entities.push(c(100, "AcDbText"));
+                entities.push(c(10, (mx + 2).toFixed(4)));
+                entities.push(c(20, (my + 2).toFixed(4)));
+                entities.push(c(30, "0.0"));
+                entities.push(c(40, "2.5"));
+                entities.push(c(1, labelText));
+                entities.push(c(50, "0.0"));
+            }
+        }
+        else if (gem.type === "MultiLineString") {
+            gem.coordinates.forEach(line => {
+                const coords = line.filter(c => Array.isArray(c) && c.length >= 2 && isFinite(c[0]) && isFinite(c[1]));
+                if (coords.length < 2) return;
+                entities.push(c(0, "LWPOLYLINE"));
+                entities.push(c(5, h()));
+                entities.push(c(100, "AcDbEntity"));
+                entities.push(c(8, layerName));
+                entities.push(c(100, "AcDbPolyline"));
+                entities.push(c(90, coords.length));
+                entities.push(c(70, "0"));
+                entities.push(c(43, "0.0"));
+                coords.forEach(crd => {
+                    const [x, y] = toMeters(crd[0], crd[1]);
+                    updateExt(x, y);
+                    entities.push(c(10, x.toFixed(4)));
+                    entities.push(c(20, y.toFixed(4)));
+                });
+            });
+        }
+        else if (gem.type === "Polygon") {
+            gem.coordinates.forEach((ring, idx) => {
+                const coords = ring.filter(c => Array.isArray(c) && c.length >= 2 && isFinite(c[0]) && isFinite(c[1]));
+                if (coords.length < 2) return;
+                entities.push(c(0, "LWPOLYLINE"));
+                entities.push(c(5, h()));
+                entities.push(c(100, "AcDbEntity"));
+                entities.push(c(8, layerName));
+                entities.push(c(100, "AcDbPolyline"));
+                entities.push(c(90, coords.length));
+                entities.push(c(70, idx === 0 ? "1" : "1"));
+                entities.push(c(43, "0.0"));
+                coords.forEach(crd => {
+                    const [x, y] = toMeters(crd[0], crd[1]);
+                    updateExt(x, y);
+                    entities.push(c(10, x.toFixed(4)));
+                    entities.push(c(20, y.toFixed(4)));
+                });
+            });
+            if (labelText) {
+                const ring = gem.coordinates[0];
+                const midIdx = Math.floor(ring.length / 2);
+                const [mx, my] = toMeters(ring[midIdx][0], ring[midIdx][1]);
+                entities.push(c(0, "TEXT"));
+                entities.push(c(5, h()));
+                entities.push(c(100, "AcDbEntity"));
+                entities.push(c(8, layerName));
+                entities.push(c(100, "AcDbText"));
+                entities.push(c(10, (mx + 2).toFixed(4)));
+                entities.push(c(20, (my + 2).toFixed(4)));
+                entities.push(c(30, "0.0"));
+                entities.push(c(40, "2.5"));
+                entities.push(c(1, labelText));
+                entities.push(c(50, "0.0"));
+            }
+        }
+        else if (gem.type === "MultiPolygon") {
+            gem.coordinates.forEach(poly => {
+                poly.forEach(ring => {
+                    const coords = ring.filter(c => Array.isArray(c) && c.length >= 2 && isFinite(c[0]) && isFinite(c[1]));
+                    if (coords.length < 2) return;
+                    entities.push(c(0, "LWPOLYLINE"));
+                    entities.push(c(5, h()));
+                    entities.push(c(100, "AcDbEntity"));
+                    entities.push(c(8, layerName));
+                    entities.push(c(100, "AcDbPolyline"));
+                    entities.push(c(90, coords.length));
+                    entities.push(c(70, "1"));
+                    entities.push(c(43, "0.0"));
+                    coords.forEach(crd => {
+                        const [x, y] = toMeters(crd[0], crd[1]);
+                        updateExt(x, y);
+                        entities.push(c(10, x.toFixed(4)));
+                        entities.push(c(20, y.toFixed(4)));
+                    });
+                });
+            });
+        }
     });
 
-    // --- ENTITIES ---
-    section('ENTITIES', () => {
-        // Block reference ke *MODEL_SPACE
-        add(0, 'INSERT');
-        add(5, getHandle());
-        add(100, 'AcDbEntity');
-        add(8, '0');
-        add(100, 'AcDbBlockReference');
-        add(2, '*MODEL_SPACE');
-        add(10, 0.0); add(20, 0.0); add(30, 0.0);
-        add(41, 1.0); add(42, 1.0); add(43, 1.0);
-        add(50, 0.0);
+    if (!isFinite(minX) || !isFinite(minY)) { minX = 0; minY = 0; maxX = 100; maxY = 100; }
+
+    // Build DXF
+    let d = [];
+    function s(name, fn) {
+        d.push(c(0, "SECTION"));
+        d.push(c(2, name));
+        fn();
+        d.push(c(0, "ENDSEC"));
+    }
+
+    // HEADER
+    s("HEADER", () => {
+        d.push(c(9, "$ACADVER")); d.push(c(1, "AC1015"));
+        d.push(c(9, "$ACADMAINTVER")); d.push(c(70, 0));
+        d.push(c(9, "$DWGCODEPAGE")); d.push(c(3, "ANSI_1252"));
+        d.push(c(9, "$INSBASE")); d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$EXTMIN")); d.push(c(10, minX.toFixed(4))); d.push(c(20, minY.toFixed(4))); d.push(c(30, 0));
+        d.push(c(9, "$EXTMAX")); d.push(c(10, maxX.toFixed(4))); d.push(c(20, maxY.toFixed(4))); d.push(c(30, 0));
+        d.push(c(9, "$LIMMIN")); d.push(c(10, minX.toFixed(4))); d.push(c(20, minY.toFixed(4)));
+        d.push(c(9, "$LIMMAX")); d.push(c(10, maxX.toFixed(4))); d.push(c(20, maxY.toFixed(4)));
+        d.push(c(9, "$ORTHOMODE")); d.push(c(70, 0));
+        d.push(c(9, "$REGENMODE")); d.push(c(70, 1));
+        d.push(c(9, "$FILLMODE")); d.push(c(70, 1));
+        d.push(c(9, "$QTEXTMODE")); d.push(c(70, 0));
+        d.push(c(9, "$MIRRTEXT")); d.push(c(70, 1));
+        d.push(c(9, "$LTSCALE")); d.push(c(40, 1.0));
+        d.push(c(9, "$ATTMODE")); d.push(c(70, 1));
+        d.push(c(9, "$TEXTSIZE")); d.push(c(40, 2.5));
+        d.push(c(9, "$TRACEWID")); d.push(c(40, 1.0));
+        d.push(c(9, "$TEXTSTYLE")); d.push(c(7, "Standard"));
+        d.push(c(9, "$CLAYER")); d.push(c(8, "0"));
+        d.push(c(9, "$CELTYPE")); d.push(c(6, "ByLayer"));
+        d.push(c(9, "$CECOLOR")); d.push(c(62, 256));
+        d.push(c(9, "$CELTSCALE")); d.push(c(40, 1.0));
+        d.push(c(9, "$DISPSILH")); d.push(c(70, 0));
+        d.push(c(9, "$DIMSCALE")); d.push(c(40, 1.0));
+        d.push(c(9, "$DIMASZ")); d.push(c(40, 2.5));
+        d.push(c(9, "$DIMEXO")); d.push(c(40, 0.625));
+        d.push(c(9, "$DIMDLI")); d.push(c(40, 3.75));
+        d.push(c(9, "$DIMRND")); d.push(c(40, 0.0));
+        d.push(c(9, "$DIMDLE")); d.push(c(40, 0.0));
+        d.push(c(9, "$DIMEXE")); d.push(c(40, 1.25));
+        d.push(c(9, "$DIMTP")); d.push(c(40, 0.0));
+        d.push(c(9, "$DIMTM")); d.push(c(40, 0.0));
+        d.push(c(9, "$DIMTXT")); d.push(c(40, 2.5));
+        d.push(c(9, "$DIMCEN")); d.push(c(40, 2.5));
+        d.push(c(9, "$DIMTSZ")); d.push(c(40, 0.0));
+        d.push(c(9, "$DIMTOL")); d.push(c(70, 0));
+        d.push(c(9, "$DIMLIM")); d.push(c(70, 0));
+        d.push(c(9, "$DIMTIH")); d.push(c(70, 1));
+        d.push(c(9, "$DIMTOH")); d.push(c(70, 1));
+        d.push(c(9, "$DIMSE1")); d.push(c(70, 0));
+        d.push(c(9, "$DIMSE2")); d.push(c(70, 0));
+        d.push(c(9, "$DIMTAD")); d.push(c(70, 1));
+        d.push(c(9, "$DIMZIN")); d.push(c(70, 8));
+        d.push(c(9, "$DIMBLK")); d.push(c(1, ""));
+        d.push(c(9, "$DIMASO")); d.push(c(70, 1));
+        d.push(c(9, "$DIMSHO")); d.push(c(70, 1));
+        d.push(c(9, "$DIMPOST")); d.push(c(1, ""));
+        d.push(c(9, "$DIMAPOST")); d.push(c(1, ""));
+        d.push(c(9, "$DIMALT")); d.push(c(70, 0));
+        d.push(c(9, "$DIMALTD")); d.push(c(70, 3));
+        d.push(c(9, "$DIMALTF")); d.push(c(40, 0.0394));
+        d.push(c(9, "$DIMLFAC")); d.push(c(40, 1.0));
+        d.push(c(9, "$DIMTOFL")); d.push(c(70, 1));
+        d.push(c(9, "$DIMTVP")); d.push(c(40, 0.0));
+        d.push(c(9, "$DIMTIX")); d.push(c(70, 0));
+        d.push(c(9, "$DIMSOXD")); d.push(c(70, 0));
+        d.push(c(9, "$DIMSAH")); d.push(c(70, 0));
+        d.push(c(9, "$DIMBLK1")); d.push(c(1, ""));
+        d.push(c(9, "$DIMBLK2")); d.push(c(1, ""));
+        d.push(c(9, "$DIMSTYLE")); d.push(c(2, "ISO-25"));
+        d.push(c(9, "$DIMCLRD")); d.push(c(70, 0));
+        d.push(c(9, "$DIMCLRE")); d.push(c(70, 0));
+        d.push(c(9, "$DIMCLRT")); d.push(c(70, 0));
+        d.push(c(9, "$DIMTFAC")); d.push(c(40, 1.0));
+        d.push(c(9, "$DIMGAP")); d.push(c(40, 0.625));
+        d.push(c(9, "$DIMJUST")); d.push(c(70, 0));
+        d.push(c(9, "$DIMSD1")); d.push(c(70, 0));
+        d.push(c(9, "$DIMSD2")); d.push(c(70, 0));
+        d.push(c(9, "$DIMTOLJ")); d.push(c(70, 0));
+        d.push(c(9, "$DIMTZIN")); d.push(c(70, 8));
+        d.push(c(9, "$DIMALTZ")); d.push(c(70, 0));
+        d.push(c(9, "$DIMALTTZ")); d.push(c(70, 0));
+        d.push(c(9, "$DIMUPT")); d.push(c(70, 0));
+        d.push(c(9, "$DIMDEC")); d.push(c(70, 2));
+        d.push(c(9, "$DIMTDEC")); d.push(c(70, 2));
+        d.push(c(9, "$DIMALTU")); d.push(c(70, 2));
+        d.push(c(9, "$DIMALTTD")); d.push(c(70, 3));
+        d.push(c(9, "$DIMTXTDIRECTION")); d.push(c(70, 0));
+        d.push(c(9, "$DIMMAUNIT")); d.push(c(70, 0));
+        d.push(c(9, "$DIMARCSYM")); d.push(c(70, 0));
+        d.push(c(9, "$DIMLUNIT")); d.push(c(70, 2));
+        d.push(c(9, "$DIMLWD")); d.push(c(70, -2));
+        d.push(c(9, "$DIMLWE")); d.push(c(70, -2));
+        d.push(c(9, "$DIMFXL")); d.push(c(40, 1.0));
+        d.push(c(9, "$DIMFXLON")); d.push(c(70, 0));
+        d.push(c(9, "$DIMJOGANG")); d.push(c(40, 0.7854));
+        d.push(c(9, "$DIMTFILL")); d.push(c(70, 0));
+        d.push(c(9, "$DIMTFILLCLR")); d.push(c(70, 0));
+        d.push(c(9, "$DIMFRAC")); d.push(c(70, 0));
+        d.push(c(9, "$DIMLDRBLK")); d.push(c(1, "STANDARD"));
+        d.push(c(9, "$DIMLTYPE")); d.push(c(6, "ByLayer"));
+        d.push(c(9, "$DIMLTEX1")); d.push(c(6, "ByLayer"));
+        d.push(c(9, "$DIMLTEX2")); d.push(c(6, "ByLayer"));
+        d.push(c(9, "$LUNITS")); d.push(c(70, 2));
+        d.push(c(9, "$LUPREC")); d.push(c(70, 4));
+        d.push(c(9, "$SKETCHINC")); d.push(c(40, 1.0));
+        d.push(c(9, "$FILLETRAD")); d.push(c(40, 0.0));
+        d.push(c(9, "$AUNITS")); d.push(c(70, 0));
+        d.push(c(9, "$AUPREC")); d.push(c(70, 2));
+        d.push(c(9, "$MENU")); d.push(c(1, "."));
+        d.push(c(9, "$ELEVATION")); d.push(c(40, 0.0));
+        d.push(c(9, "$PELEVATION")); d.push(c(40, 0.0));
+        d.push(c(9, "$THICKNESS")); d.push(c(40, 0.0));
+        d.push(c(9, "$LIMCHECK")); d.push(c(70, 0));
+        d.push(c(9, "$CHAMFERA")); d.push(c(40, 0.0));
+        d.push(c(9, "$CHAMFERB")); d.push(c(40, 0.0));
+        d.push(c(9, "$CHAMFERC")); d.push(c(40, 0.0));
+        d.push(c(9, "$CHAMFERD")); d.push(c(40, 0.0));
+        d.push(c(9, "$SKPOLY")); d.push(c(70, 0));
+        d.push(c(9, "$TDCREATE")); d.push(c(40, 2450000.0));
+        d.push(c(9, "$TDUCREATE")); d.push(c(40, 2450000.0));
+        d.push(c(9, "$TDUPDATE")); d.push(c(40, 2450000.0));
+        d.push(c(9, "$TDUUPDATE")); d.push(c(40, 2450000.0));
+        d.push(c(9, "$TDINDWG")); d.push(c(40, 0.0));
+        d.push(c(9, "$TDUSRTIMER")); d.push(c(40, 0.0));
+        d.push(c(9, "$USRTIMER")); d.push(c(70, 1));
+        d.push(c(9, "$ANGBASE")); d.push(c(50, 0.0));
+        d.push(c(9, "$ANGDIR")); d.push(c(70, 0));
+        d.push(c(9, "$PDMODE")); d.push(c(70, 35));
+        d.push(c(9, "$PDSIZE")); d.push(c(40, 0.0));
+        d.push(c(9, "$PLINEWID")); d.push(c(40, 0.0));
+        d.push(c(9, "$SPLFRAME")); d.push(c(70, 0));
+        d.push(c(9, "$SPLINETYPE")); d.push(c(70, 6));
+        d.push(c(9, "$SPLINESEGS")); d.push(c(70, 8));
+        d.push(c(9, "$HANDSEED")); d.push(c(5, (handle + 1000).toString(16).toUpperCase()));
+        d.push(c(9, "$SURFTAB1")); d.push(c(70, 6));
+        d.push(c(9, "$SURFTAB2")); d.push(c(70, 6));
+        d.push(c(9, "$SURFTYPE")); d.push(c(70, 6));
+        d.push(c(9, "$SURFU")); d.push(c(70, 6));
+        d.push(c(9, "$SURFV")); d.push(c(70, 6));
+        d.push(c(9, "$UCSBASE")); d.push(c(2, ""));
+        d.push(c(9, "$UCSNAME")); d.push(c(2, ""));
+        d.push(c(9, "$UCSORG")); d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$UCSXDIR")); d.push(c(10, 1)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$UCSYDIR")); d.push(c(10, 0)); d.push(c(20, 1)); d.push(c(30, 0));
+        d.push(c(9, "$UCSORTHOREF")); d.push(c(2, ""));
+        d.push(c(9, "$UCSORTHOVIEW")); d.push(c(70, 0));
+        d.push(c(9, "$UCSORGTOP")); d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$UCSORGBOTTOM")); d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$UCSORGLEFT")); d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$UCSORGRIGHT")); d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$UCSORGFRONT")); d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$UCSORGBACK")); d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$PUCSBASE")); d.push(c(2, ""));
+        d.push(c(9, "$PUCSNAME")); d.push(c(2, ""));
+        d.push(c(9, "$PUCSORG")); d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$PUCSXDIR")); d.push(c(10, 1)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$PUCSYDIR")); d.push(c(10, 0)); d.push(c(20, 1)); d.push(c(30, 0));
+        d.push(c(9, "$PUCSORTHOREF")); d.push(c(2, ""));
+        d.push(c(9, "$PUCSORTHOVIEW")); d.push(c(70, 0));
+        d.push(c(9, "$PUCSORGTOP")); d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$PUCSORGBOTTOM")); d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$PUCSORGLEFT")); d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$PUCSORGRIGHT")); d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$PUCSORGFRONT")); d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$PUCSORGBACK")); d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$USERI1")); d.push(c(70, 0));
+        d.push(c(9, "$USERI2")); d.push(c(70, 0));
+        d.push(c(9, "$USERI3")); d.push(c(70, 0));
+        d.push(c(9, "$USERI4")); d.push(c(70, 0));
+        d.push(c(9, "$USERI5")); d.push(c(70, 0));
+        d.push(c(9, "$USERR1")); d.push(c(40, 0.0));
+        d.push(c(9, "$USERR2")); d.push(c(40, 0.0));
+        d.push(c(9, "$USERR3")); d.push(c(40, 0.0));
+        d.push(c(9, "$USERR4")); d.push(c(40, 0.0));
+        d.push(c(9, "$USERR5")); d.push(c(40, 0.0));
+        d.push(c(9, "$WORLDVIEW")); d.push(c(70, 1));
+        d.push(c(9, "$SHADEDGE")); d.push(c(70, 3));
+        d.push(c(9, "$SHADEDIF")); d.push(c(70, 70));
+        d.push(c(9, "$TILEMODE")); d.push(c(70, 1));
+        d.push(c(9, "$MAXACTVP")); d.push(c(70, 64));
+        d.push(c(9, "$PINSBASE")); d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(9, "$PLIMCHECK")); d.push(c(70, 0));
+        d.push(c(9, "$PEXTMIN")); d.push(c(10, minX.toFixed(4))); d.push(c(20, minY.toFixed(4))); d.push(c(30, 0));
+        d.push(c(9, "$PEXTMAX")); d.push(c(10, maxX.toFixed(4))); d.push(c(20, maxY.toFixed(4))); d.push(c(30, 0));
+        d.push(c(9, "$PLIMMIN")); d.push(c(10, minX.toFixed(4))); d.push(c(20, minY.toFixed(4)));
+        d.push(c(9, "$PLIMMAX")); d.push(c(10, maxX.toFixed(4))); d.push(c(20, maxY.toFixed(4)));
+        d.push(c(9, "$UNITMODE")); d.push(c(70, 0));
+        d.push(c(9, "$VISRETAIN")); d.push(c(70, 1));
+        d.push(c(9, "$PLINEGEN")); d.push(c(70, 0));
+        d.push(c(9, "$PSLTSCALE")); d.push(c(70, 1));
+        d.push(c(9, "$TREEDEPTH")); d.push(c(70, 3020));
+        d.push(c(9, "$CMLSTYLE")); d.push(c(2, "Standard"));
+        d.push(c(9, "$CMLJUST")); d.push(c(70, 0));
+        d.push(c(9, "$CMLSCALE")); d.push(c(40, 20.0));
+        d.push(c(9, "$PROXYGRAPHICS")); d.push(c(70, 1));
+        d.push(c(9, "$MEASUREMENT")); d.push(c(70, 1));
+        d.push(c(9, "$CELWEIGHT")); d.push(c(370, -1));
+        d.push(c(9, "$ENDCAPS")); d.push(c(280, 0));
+        d.push(c(9, "$JOINSTYLE")); d.push(c(280, 0));
+        d.push(c(9, "$LWDISPLAY")); d.push(c(290, 0));
+        d.push(c(9, "$INSUNITS")); d.push(c(70, 6));
+        d.push(c(9, "$HYPERLINKBASE")); d.push(c(1, ""));
+        d.push(c(9, "$STYLESHEET")); d.push(c(1, ""));
     });
 
-    // --- OBJECTS ---
-    section('OBJECTS', () => {
-        // Dictionary (root)
-        add(0, 'DICTIONARY');
-        add(5, 'C');
-        add(100, 'AcDbDictionary');
+    // CLASSES
+    s("CLASSES", () => {
+        d.push(c(0, "CLASS"));
+        d.push(c(1, "ACDBDICTIONARYWDFLT"));
+        d.push(c(2, "AcDbDictionaryWithDefault"));
+        d.push(c(3, "ObjectDBX Classes"));
+        d.push(c(90, 0)); d.push(c(91, 1)); d.push(c(280, 0)); d.push(c(281, 0));
 
-        add(0, 'DICTIONARY');
-        add(5, getHandle());
-        add(100, 'AcDbDictionary');
-        add(3, 'ACAD_GROUP');
-        add(350, getHandle());
-        add(3, 'ACAD_MLINESTYLE');
-        add(350, getHandle());
+        d.push(c(0, "CLASS"));
+        d.push(c(1, "SUN"));
+        d.push(c(2, "AcDbSun"));
+        d.push(c(3, "SCENEOE"));
+        d.push(c(90, 1153)); d.push(c(91, 1)); d.push(c(280, 0)); d.push(c(281, 0));
 
-        // ACAD_GROUP
-        add(0, 'DICTIONARY');
-        add(5, getHandle());
-        add(100, 'AcDbDictionary');
+        d.push(c(0, "CLASS"));
+        d.push(c(1, "DICTIONARYVAR"));
+        d.push(c(2, "AcDbDictionaryVar"));
+        d.push(c(3, "ObjectDBX Classes"));
+        d.push(c(90, 0)); d.push(c(91, 13)); d.push(c(280, 0)); d.push(c(281, 0));
 
-        // ACAD_MLINESTYLE
-        add(0, 'DICTIONARY');
-        add(5, getHandle());
-        add(100, 'AcDbDictionary');
-        add(3, 'Standard');
-        add(350, getHandle());
+        d.push(c(0, "CLASS"));
+        d.push(c(1, "TABLESTYLE"));
+        d.push(c(2, "AcDbTableStyle"));
+        d.push(c(3, "ObjectDBX Classes"));
+        d.push(c(90, 4095)); d.push(c(91, 1)); d.push(c(280, 0)); d.push(c(281, 0));
 
-        // MLINESTYLE Standard
-        add(0, 'MLINESTYLE');
-        add(5, getHandle());
-        add(100, 'AcDbObject');
-        add(100, 'AcDbMlineStyle');
-        add(2, 'Standard');
-        add(70, 0);
-        add(3, 'STANDARD');
-        add(62, 256);
-        add(51, 90.0);
-        add(52, 90.0);
-        add(71, 2);
-        add(49, 0.5);
-        add(62, 256); add(6, 'BYLAYER');
-        add(49, -0.5);
-        add(62, 256); add(6, 'BYLAYER');
+        d.push(c(0, "CLASS"));
+        d.push(c(1, "MATERIAL"));
+        d.push(c(2, "AcDbMaterial"));
+        d.push(c(3, "ObjectDBX Classes"));
+        d.push(c(90, 1153)); d.push(c(91, 3)); d.push(c(280, 0)); d.push(c(281, 0));
 
-        // Layout Dictionary
-        add(0, 'DICTIONARY');
-        add(5, getHandle());
-        add(100, 'AcDbDictionary');
-        add(3, 'ACAD_PLOTSETTINGS');
-        add(350, getHandle());
-        add(3, 'ACAD_PLOTSTYLENAME');
-        add(350, getHandle());
-        add(3, 'ACAD_XDICTIONARY');
-        add(360, getHandle());
-        add(3, 'ACAD_LAYOUT');
-        add(350, getHandle());
+        d.push(c(0, "CLASS"));
+        d.push(c(1, "VISUALSTYLE"));
+        d.push(c(2, "AcDbVisualStyle"));
+        d.push(c(3, "ObjectDBX Classes"));
+        d.push(c(90, 4095)); d.push(c(91, 25)); d.push(c(280, 0)); d.push(c(281, 0));
     });
 
-    // EOF
-    add(0, 'EOF');
+    // TABLES
+    s("TABLES", () => {
+        // VPORT
+        d.push(c(0, "TABLE")); d.push(c(2, "VPORT")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTable")); d.push(c(70, 1));
+        d.push(c(0, "VPORT")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTableRecord")); d.push(c(100, "AcDbViewportTableRecord"));
+        d.push(c(2, "*Active")); d.push(c(70, 0));
+        d.push(c(10, 0)); d.push(c(20, 0));
+        d.push(c(11, 1)); d.push(c(21, 1));
+        d.push(c(12, ((minX + maxX) / 2).toFixed(4)));
+        d.push(c(22, ((minY + maxY) / 2).toFixed(4)));
+        d.push(c(13, 0)); d.push(c(23, 0));
+        d.push(c(14, 0.5)); d.push(c(24, 0.5));
+        d.push(c(15, 0.5)); d.push(c(25, 0.5));
+        d.push(c(16, 0)); d.push(c(26, 0)); d.push(c(36, 1));
+        d.push(c(17, 0)); d.push(c(27, 0)); d.push(c(37, 0));
+        d.push(c(40, Math.max(maxX - minX, maxY - minY).toFixed(4)));
+        d.push(c(41, 1)); d.push(c(42, 50));
+        d.push(c(43, 0)); d.push(c(44, 0));
+        d.push(c(50, 0)); d.push(c(51, 0));
+        d.push(c(71, 0)); d.push(c(72, 100)); d.push(c(73, 1)); d.push(c(74, 3));
+        d.push(c(75, 0)); d.push(c(76, 0)); d.push(c(77, 0)); d.push(c(78, 0));
+        d.push(c(0, "ENDTAB"));
 
-    return d.join("\r\n") + "\r\n";
+        // LTYPE
+        d.push(c(0, "TABLE")); d.push(c(2, "LTYPE")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTable")); d.push(c(70, 4));
+        d.push(c(0, "LTYPE")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTableRecord")); d.push(c(100, "AcDbLinetypeTableRecord"));
+        d.push(c(2, "ByLayer")); d.push(c(70, 0)); d.push(c(3, "")); d.push(c(72, 65)); d.push(c(73, 0)); d.push(c(40, 0));
+        d.push(c(0, "LTYPE")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTableRecord")); d.push(c(100, "AcDbLinetypeTableRecord"));
+        d.push(c(2, "ByBlock")); d.push(c(70, 0)); d.push(c(3, "")); d.push(c(72, 65)); d.push(c(73, 0)); d.push(c(40, 0));
+        d.push(c(0, "LTYPE")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTableRecord")); d.push(c(100, "AcDbLinetypeTableRecord"));
+        d.push(c(2, "Continuous")); d.push(c(70, 0)); d.push(c(3, "Solid line")); d.push(c(72, 65)); d.push(c(73, 0)); d.push(c(40, 0));
+        d.push(c(0, "LTYPE")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTableRecord")); d.push(c(100, "AcDbLinetypeTableRecord"));
+        d.push(c(2, "Hidden")); d.push(c(70, 0)); d.push(c(3, "Hidden _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _"));
+        d.push(c(72, 65)); d.push(c(73, 2)); d.push(c(40, 0.075));
+        d.push(c(49, 0.05)); d.push(c(49, -0.025));
+        d.push(c(0, "LTYPE")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTableRecord")); d.push(c(100, "AcDbLinetypeTableRecord"));
+        d.push(c(2, "Center")); d.push(c(70, 0)); d.push(c(3, "Center ____ _ ____ _ ____ _ ____ _ ____ _ ____"));
+        d.push(c(72, 65)); d.push(c(73, 4)); d.push(c(40, 0.1));
+        d.push(c(49, 0.05)); d.push(c(49, -0.025)); d.push(c(49, 0.025)); d.push(c(49, -0.025));
+        d.push(c(0, "ENDTAB"));
+
+        // LAYER
+        d.push(c(0, "TABLE")); d.push(c(2, "LAYER")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTable")); d.push(c(70, layerNames.size));
+        layerNames.forEach(name => {
+            const color = layerColors[name] || 7;
+            d.push(c(0, "LAYER")); d.push(c(5, h()));
+            d.push(c(100, "AcDbSymbolTableRecord")); d.push(c(100, "AcDbLayerTableRecord"));
+            d.push(c(2, name)); d.push(c(70, 0)); d.push(c(62, color));
+            d.push(c(6, "Continuous")); d.push(c(290, 1)); d.push(c(370, -3)); d.push(c(390, "11"));
+        });
+        d.push(c(0, "ENDTAB"));
+
+        // STYLE
+        d.push(c(0, "TABLE")); d.push(c(2, "STYLE")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTable")); d.push(c(70, 2));
+        d.push(c(0, "STYLE")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTableRecord")); d.push(c(100, "AcDbTextStyleTableRecord"));
+        d.push(c(2, "Standard")); d.push(c(70, 0)); d.push(c(40, 0)); d.push(c(41, 1)); d.push(c(50, 0));
+        d.push(c(71, 0)); d.push(c(42, 2.5)); d.push(c(3, "txt")); d.push(c(4, ""));
+        d.push(c(0, "STYLE")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTableRecord")); d.push(c(100, "AcDbTextStyleTableRecord"));
+        d.push(c(2, "Annotative")); d.push(c(70, 0)); d.push(c(40, 0)); d.push(c(41, 1)); d.push(c(50, 0));
+        d.push(c(71, 0)); d.push(c(42, 0.2)); d.push(c(3, "txt")); d.push(c(4, ""));
+        d.push(c(0, "ENDTAB"));
+
+        // VIEW
+        d.push(c(0, "TABLE")); d.push(c(2, "VIEW")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTable")); d.push(c(70, 0));
+        d.push(c(0, "ENDTAB"));
+
+        // UCS
+        d.push(c(0, "TABLE")); d.push(c(2, "UCS")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTable")); d.push(c(70, 0));
+        d.push(c(0, "ENDTAB"));
+
+        // APPID
+        d.push(c(0, "TABLE")); d.push(c(2, "APPID")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTable")); d.push(c(70, 3));
+        d.push(c(0, "APPID")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTableRecord")); d.push(c(100, "AcDbRegAppTableRecord"));
+        d.push(c(2, "ACAD")); d.push(c(70, 0));
+        d.push(c(0, "APPID")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTableRecord")); d.push(c(100, "AcDbRegAppTableRecord"));
+        d.push(c(2, "ACADANNOPO")); d.push(c(70, 0));
+        d.push(c(0, "APPID")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTableRecord")); d.push(c(100, "AcDbRegAppTableRecord"));
+        d.push(c(2, "ACADANNOTATIVE")); d.push(c(70, 0));
+        d.push(c(0, "ENDTAB"));
+
+        // DIMSTYLE
+        d.push(c(0, "TABLE")); d.push(c(2, "DIMSTYLE")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTable")); d.push(c(70, 2));
+        d.push(c(0, "DIMSTYLE")); d.push(c(105, h()));
+        d.push(c(100, "AcDbSymbolTableRecord")); d.push(c(100, "AcDbDimStyleTableRecord"));
+        d.push(c(2, "Standard")); d.push(c(70, 0)); d.push(c(3, "")); d.push(c(4, "")); d.push(c(5, "")); d.push(c(6, "")); d.push(c(7, ""));
+        d.push(c(40, 1)); d.push(c(41, 2.5)); d.push(c(42, 0.625)); d.push(c(43, 3.75)); d.push(c(44, 1.25));
+        d.push(c(45, 0)); d.push(c(46, 0)); d.push(c(47, 0)); d.push(c(48, 0));
+        d.push(c(140, 2.5)); d.push(c(141, 2.5)); d.push(c(142, 0)); d.push(c(143, 0.0394));
+        d.push(c(144, 1)); d.push(c(145, 0)); d.push(c(146, 1)); d.push(c(147, 0.625));
+        d.push(c(71, 0)); d.push(c(72, 0)); d.push(c(73, 1)); d.push(c(74, 1)); d.push(c(75, 0)); d.push(c(76, 0));
+        d.push(c(77, 1)); d.push(c(78, 8)); d.push(c(79, 3)); d.push(c(170, 0)); d.push(c(171, 0)); d.push(c(172, 0));
+        d.push(c(173, 0)); d.push(c(174, 0)); d.push(c(175, 0)); d.push(c(176, 0)); d.push(c(177, 1)); d.push(c(178, 0));
+        d.push(c(179, 0)); d.push(c(271, 2)); d.push(c(272, 2)); d.push(c(273, 2)); d.push(c(274, 3)); d.push(c(275, 0));
+        d.push(c(276, 0)); d.push(c(277, 2)); d.push(c(278, 0)); d.push(c(279, 0)); d.push(c(280, 0)); d.push(c(281, 0));
+        d.push(c(282, 0)); d.push(c(283, 1)); d.push(c(284, 0)); d.push(c(285, 0)); d.push(c(286, 0)); d.push(c(288, 0));
+        d.push(c(289, 3)); d.push(c(340, "11")); d.push(c(341, "11"));
+        d.push(c(0, "ENDTAB"));
+
+        // BLOCK_RECORD
+        d.push(c(0, "TABLE")); d.push(c(2, "BLOCK_RECORD")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTable")); d.push(c(70, 2));
+        d.push(c(0, "BLOCK_RECORD")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTableRecord")); d.push(c(100, "AcDbBlockTableRecord"));
+        d.push(c(2, "*MODEL_SPACE")); d.push(c(70, 0)); d.push(c(280, 1)); d.push(c(281, 0));
+        d.push(c(0, "BLOCK_RECORD")); d.push(c(5, h()));
+        d.push(c(100, "AcDbSymbolTableRecord")); d.push(c(100, "AcDbBlockTableRecord"));
+        d.push(c(2, "*PAPER_SPACE")); d.push(c(70, 0)); d.push(c(280, 1)); d.push(c(281, 0));
+        d.push(c(0, "ENDTAB"));
+    });
+
+    // BLOCKS
+    s("BLOCKS", () => {
+        d.push(c(0, "BLOCK")); d.push(c(5, h()));
+        d.push(c(100, "AcDbEntity")); d.push(c(8, "0"));
+        d.push(c(100, "AcDbBlockBegin"));
+        d.push(c(2, "*MODEL_SPACE")); d.push(c(70, 0));
+        d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(3, "*MODEL_SPACE")); d.push(c(1, ""));
+        d.push(c(0, "ENDBLK")); d.push(c(5, h()));
+        d.push(c(100, "AcDbEntity")); d.push(c(8, "0"));
+        d.push(c(100, "AcDbBlockEnd"));
+
+        d.push(c(0, "BLOCK")); d.push(c(5, h()));
+        d.push(c(100, "AcDbEntity")); d.push(c(8, "0"));
+        d.push(c(100, "AcDbBlockBegin"));
+        d.push(c(2, "*PAPER_SPACE")); d.push(c(70, 0));
+        d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(3, "*PAPER_SPACE")); d.push(c(1, ""));
+        d.push(c(0, "ENDBLK")); d.push(c(5, h()));
+        d.push(c(100, "AcDbEntity")); d.push(c(8, "0"));
+        d.push(c(100, "AcDbBlockEnd"));
+    });
+
+    // ENTITIES - entities langsung di sini, tidak melalui BLOCK/INSERT
+    s("ENTITIES", () => {
+        // Insert block reference
+        d.push(c(0, "INSERT")); d.push(c(5, h()));
+        d.push(c(100, "AcDbEntity")); d.push(c(8, "0"));
+        d.push(c(100, "AcDbBlockReference"));
+        d.push(c(2, "*MODEL_SPACE"));
+        d.push(c(10, 0)); d.push(c(20, 0)); d.push(c(30, 0));
+        d.push(c(41, 1)); d.push(c(42, 1)); d.push(c(43, 1));
+        d.push(c(50, 0));
+
+        // Semua entities
+        for (let i = 0; i < entities.length; i++) {
+            d.push(entities[i]);
+        }
+    });
+
+    // OBJECTS
+    s("OBJECTS", () => {
+        d.push(c(0, "DICTIONARY")); d.push(c(5, "C")); d.push(c(100, "AcDbDictionary"));
+        d.push(c(0, "DICTIONARY")); d.push(c(5, h()));
+        d.push(c(100, "AcDbDictionary"));
+        d.push(c(3, "ACAD_GROUP")); d.push(c(350, h()));
+        d.push(c(3, "ACAD_MLINESTYLE")); d.push(c(350, h()));
+        d.push(c(0, "DICTIONARY")); d.push(c(5, h()));
+        d.push(c(100, "AcDbDictionary"));
+        d.push(c(0, "DICTIONARY")); d.push(c(5, h()));
+        d.push(c(100, "AcDbDictionary"));
+        d.push(c(3, "Standard")); d.push(c(350, h()));
+        d.push(c(0, "MLINESTYLE")); d.push(c(5, h()));
+        d.push(c(100, "AcDbObject")); d.push(c(100, "AcDbMlineStyle"));
+        d.push(c(2, "Standard")); d.push(c(70, 0)); d.push(c(3, "STANDARD"));
+        d.push(c(62, 256)); d.push(c(51, 90)); d.push(c(52, 90));
+        d.push(c(71, 2)); d.push(c(49, 0.5));
+        d.push(c(62, 256)); d.push(c(6, "BYLAYER"));
+        d.push(c(49, -0.5));
+        d.push(c(62, 256)); d.push(c(6, "BYLAYER"));
+        d.push(c(0, "DICTIONARY")); d.push(c(5, h()));
+        d.push(c(100, "AcDbDictionary"));
+        d.push(c(3, "ACAD_PLOTSETTINGS")); d.push(c(350, h()));
+        d.push(c(3, "ACAD_PLOTSTYLENAME")); d.push(c(350, h()));
+        d.push(c(3, "ACAD_XDICTIONARY")); d.push(c(360, h()));
+        d.push(c(3, "ACAD_LAYOUT")); d.push(c(350, h()));
+    });
+
+    d.push(c(0, "EOF"));
+
+    return d.join("\n") + "\n";
 }
 // 20. EXPORT TO PNG
         // ============================================================

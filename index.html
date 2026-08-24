@@ -307,6 +307,7 @@
     </style>
 <base target="_blank">
 <base target="_blank">
+<base target="_blank">
 </head>
 <body class="flex flex-row bg-gray-900 text-gray-200">
 
@@ -498,20 +499,6 @@
                     </button>
                 </div>
             </div>
-
-            <!-- Auto Save Status -->
-            <div class="bg-gray-800 bg-opacity-30 p-3 rounded-lg border border-gray-700 border-opacity-30">
-                <div class="flex items-center justify-between">
-                    <span class="text-xs text-gray-500">Auto-save</span>
-                    <span id="autosave-status" class="text-xs text-emerald-400 flex items-center gap-1">
-                        <i class="fa-solid fa-check-circle text-[10px]"></i> Aktif
-                    </span>
-                </div>
-                <div class="flex items-center justify-between mt-1">
-                    <span class="text-xs text-gray-500">Total Fitur</span>
-                    <span id="total-features" class="text-xs text-gray-300 font-mono">0</span>
-                </div>
-            </div>
         </div>
 
         <!-- Footer Actions -->
@@ -572,7 +559,6 @@
 
         const App = {
             config: {
-                autoSaveInterval: 1800000,
                 maxUndoStack: 50,
                 osmTimeout: 30000,
                 defaultRoadWidth: 6,
@@ -591,9 +577,7 @@
                 activeEditLayer: null,
                 currentBbox: null,
                 uploadedKmlFeatures: [],
-                coordFormat: 'dd',
-                autoSaveEnabled: true,
-                lastSaveTime: null
+                coordFormat: 'dd'
             },
             groups: {},
             undoStack: [],
@@ -733,8 +717,7 @@
             if (App.undoStack.length > App.config.maxUndoStack) {
                 App.undoStack.shift();
             }
-            triggerAutoSave();
-        }
+                    }
 
         function performUndo() {
             if (App.undoStack.length === 0) {
@@ -765,8 +748,7 @@
 
             UI.updateFeatureCounts();
             UI.toast('success', 'Aksi sebelumnya dibatalkan (Undo)!', 1500);
-            triggerAutoSave();
-        }
+                    }
 
         // --- Custom OSM to GeoJSON ---
         function customOSMToGeoJSON(data) {
@@ -1011,8 +993,7 @@
                             if (groupName === 'osm') document.getElementById('btn-fetch-osm').disabled = true;
                             UI.updateFeatureCounts();
                             UI.toast('success', `Layer ${groupName.toUpperCase()} dihapus`, 2000);
-                            triggerAutoSave();
-                        }
+                                                    }
                     });
                 });
             }
@@ -1268,8 +1249,7 @@
 
             pushUndoAction({ type: 'add', group: App.groups.draw, layer: e.layer });
             UI.updateFeatureCounts();
-            triggerAutoSave();
-        });
+                    });
 
         App.map.on('pm:remove', (e) => {
             if (e.layer) {
@@ -1281,8 +1261,7 @@
                 }
                 pushUndoAction({ type: 'remove', group: App.groups.draw, layer: e.layer });
                 UI.updateFeatureCounts();
-                triggerAutoSave();
-            }
+                            }
         });
 
         // ============================================================
@@ -1472,8 +1451,7 @@
             });
 
             UI.updateFeatureCounts();
-            triggerAutoSave();
-            UI.toast('success', 'Objek berhasil di-paste!', 2000);
+                        UI.toast('success', 'Objek berhasil di-paste!', 2000);
         });
 
         // ============================================================
@@ -1682,8 +1660,7 @@
                             layer.feature.properties.description = newDesc;
 
                             pushUndoAction({ type: 'edit', layer: layer, prevProps: prevProps });
-                            triggerAutoSave();
-
+                            
                             layer.closePopup();
                             UI.toast('success', 'Atribut berhasil diperbarui!', 2000);
                         });
@@ -1694,8 +1671,7 @@
             if (layer.pm && !isKmlLayer) {
                 layer.on('pm:dragstart pm:edit', () => {
                     setSelectedLayer(layer);
-                    triggerAutoSave();
-                });
+                                    });
             }
         }
 
@@ -1781,8 +1757,7 @@
             document.getElementById('btn-fetch-osm').disabled = false;
 
             UI.updateFeatureCounts();
-            triggerAutoSave();
-            UI.toast('success', 'KML Berhasil Dimuat!', 3000);
+                        UI.toast('success', 'KML Berhasil Dimuat!', 3000);
         }
 
         // ============================================================
@@ -1971,8 +1946,7 @@
                     }
 
                     UI.updateFeatureCounts();
-                    triggerAutoSave();
-                    UI.toast('success', `Berhasil memuat ${filteredFeatures.length} objek dari OSM!`, 3000);
+                                        UI.toast('success', `Berhasil memuat ${filteredFeatures.length} objek dari OSM!`, 3000);
                 } else {
                     UI.toast('info', 'Tidak ada gedung/jalan ditemukan pada area ini.', 3000);
                 }
@@ -2175,8 +2149,7 @@
                     }
 
                     UI.updateFeatureCounts();
-                    triggerAutoSave();
-
+                    
                     Swal.fire({
                         icon: 'success',
                         title: 'Proyek Berhasil Dimuat!',
@@ -2190,39 +2163,6 @@
             };
             reader.readAsText(file);
             e.target.value = '';
-        });
-
-        // ============================================================
-        // 19. EXPORT TO DXF (Fixed - AutoCAD 2000 Compliant)
-        // ============================================================
-
-        document.getElementById('btn-export').addEventListener('click', () => {
-            const allFeatures = collectAllFeatures();
-
-            if(allFeatures.length === 0) {
-                Swal.fire('Warning', 'Peta masih kosong. Upload KML atau gambar objek terlebih dahulu.', 'warning');
-                return;
-            }
-
-            UI.showLoading('Membuat file DXF...', `Mengekspor ${allFeatures.length} objek ke format AutoCAD`);
-
-            setTimeout(() => {
-                const featureCollection = { type: "FeatureCollection", features: allFeatures };
-                const dxfString = generateDXF(featureCollection);
-
-                const blob = new Blob([dxfString], { type: 'application/dxf' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'GeoConvert_Export.dxf';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-
-                UI.hideLoading();
-                UI.toast('success', `DXF Berhasil Di-export! (${allFeatures.length} objek)`, 2500);
-            }, 100);
         });
 
         // ============================================================
@@ -3103,205 +3043,13 @@ function generateDXF(featureCollection) {
         });
 
         // ============================================================
-        // 21. AUTO-SAVE TO LOCALSTORAGE
-        // ============================================================
-
-        function triggerAutoSave() {
-            if (!App.state.autoSaveEnabled) return;
-
-            const allFeatures = [];
-            extractFeaturesTo(App.groups.kml, 'kml', allFeatures);
-            extractFeaturesTo(App.groups.osm, 'osm', allFeatures);
-            extractFeaturesTo(App.groups.draw, 'draw', allFeatures);
-
-            if (allFeatures.length === 0) {
-                localStorage.removeItem('geoconvert_autosave');
-                return;
-            }
-
-            const data = {
-                timestamp: new Date().toISOString(),
-                features: allFeatures,
-                version: App.config.version
-            };
-
-            try {
-                localStorage.setItem('geoconvert_autosave', JSON.stringify(data));
-                App.state.lastSaveTime = new Date();
-
-                const statusEl = document.getElementById('autosave-status');
-                statusEl.innerHTML = '<i class="fa-solid fa-check-circle text-[10px]"></i> Tersimpan';
-                statusEl.className = 'text-xs text-emerald-400 flex items-center gap-1';
-
-                setTimeout(() => {
-                    statusEl.innerHTML = '<i class="fa-solid fa-check-circle text-[10px]"></i> Aktif';
-                }, 2000);
-            } catch (err) {
-                console.warn('Auto-save failed:', err);
-            }
-        }
-
-        function loadAutoSave() {
-            try {
-                const saved = localStorage.getItem('geoconvert_autosave');
-                if (!saved) return;
-
-                const data = JSON.parse(saved);
-                if (!data.features || data.features.length === 0) return;
-
-                Swal.fire({
-                    title: 'Pulihkan Sesi?',
-                    text: `Ditemukan auto-save dari ${new Date(data.timestamp).toLocaleString('id-ID')}. Pulihkan data?`,
-                    icon: 'question',
-                    showCancelButton: true,
-                    confirmButtonColor: '#10b981',
-                    cancelButtonColor: '#6b7280',
-                    confirmButtonText: 'Ya, Pulihkan',
-                    cancelButtonText: 'Tidak'
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        const geojson = { type: "FeatureCollection", features: data.features };
-
-                        App.groups.kml.clearLayers();
-                        App.groups.osm.clearLayers();
-                        App.groups.draw.clearLayers();
-
-                        L.geoJSON(geojson, {
-                            renderer: canvasRenderer,
-                            style: function(feature) {
-                                const props = feature.properties || {};
-                                const geomType = feature.geometry ? feature.geometry.type : '';
-
-                                if (props.sourceGroup === 'kml') {
-                                    if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
-                                        return { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.15 };
-                                    } else {
-                                        return { color: '#ef4444', weight: 3 };
-                                    }
-                                } 
-                                else if (props.sourceGroup === 'osm') {
-                                    if (props.building) {
-                                        return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
-                                    }
-                                    if (props.highway) {
-                                        return { color: '#06b6d4', weight: 1.5, fillColor: '#06b6d4', fillOpacity: 0.3 };
-                                    }
-                                    return { color: '#06b6d4', weight: 1.5, fillOpacity: 0.3 };
-                                }
-
-                                return { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 };
-                            },
-                            pointToLayer: function(feature, latlng) {
-                                return L.marker(latlng, { icon: blueDotIcon });
-                            },
-                            onEachFeature: function(feature, layer) {
-                                const props = feature.properties || {};
-
-                                if (props.sourceGroup === 'kml') {
-                                    layer.options.pmIgnore = true;
-                                    if (L.PM) L.PM.reInitLayer(layer);
-                                    App.groups.kml.addLayer(layer);
-                                } else if (props.sourceGroup === 'osm') {
-                                    layer.options.pmIgnore = false;
-                                    if (props.building) {
-                                        layer.options.allowEditing = true;
-                                        layer.options.allowDragging = true;
-                                        layer.options.allowRemoval = false;
-                                        layer.options.allowRotation = true;
-                                    } else if (props.highway) {
-                                        layer.options.allowEditing = false;
-                                        layer.options.allowDragging = true;
-                                        layer.options.allowRemoval = false;
-                                        layer.options.allowRotation = false;
-                                    }
-                                    App.groups.osm.addLayer(layer);
-                                } else {
-                                    layer.options.pmIgnore = false;
-                                    layer.options.allowEditing = true;
-                                    layer.options.allowDragging = true;
-                                    layer.options.allowRemoval = true;
-                                    layer.options.allowRotation = true;
-                                    App.groups.draw.addLayer(layer);
-                                }
-                                bindNamePopup(layer);
-                            }
-                        });
-
-                        const allKml = [];
-                        extractFeaturesTo(App.groups.kml, 'kml', allKml);
-                        App.state.uploadedKmlFeatures = allKml;
-
-                        if (App.groups.kml.getLayers().length > 0) {
-                            App.state.currentBbox = App.groups.kml.getBounds();
-                            document.getElementById('btn-fetch-osm').disabled = false;
-                        }
-
-                        const tempGeoLayer = L.geoJSON(geojson);
-                        if (tempGeoLayer.getBounds().isValid()) {
-                            App.map.fitBounds(tempGeoLayer.getBounds(), { padding: [50, 50] });
-                        }
-
-                        UI.updateFeatureCounts();
-                        UI.toast('success', 'Sesi berhasil dipulihkan!', 3000);
-                    }
-                });
-            } catch (err) {
-                console.warn('Failed to load auto-save:', err);
-            }
-        }
-
-        // Setup auto-save interval
-        setInterval(triggerAutoSave, App.config.autoSaveInterval);
-
-        // Update feature counts on layer changes
-        App.map.on('layeradd layerremove', () => {
-            UI.updateFeatureCounts();
-        });
-
-        // ============================================================
         // 22. INITIALIZATION
         // ============================================================
 
         // Wait for everything to load
-        
-        // ============================================================
-        // 23. BEFOREUNLOAD - KONFIRMASI SIMPAN SEBELUM REFRESH
-        // ============================================================
-
-        let hasUnsavedChanges = false;
-
-        function markUnsaved() {
-            hasUnsavedChanges = true;
-        }
-
-        function markSaved() {
-            hasUnsavedChanges = false;
-        }
-
-        // Tandai perubahan saat ada aktivitas edit
-        App.map.on('pm:create pm:remove pm:edit pm:dragend layeradd layerremove', markUnsaved);
-        document.getElementById('fileInput').addEventListener('change', markUnsaved);
-        document.getElementById('btn-fetch-osm').addEventListener('click', markUnsaved);
-
-        // Tandai tersimpan saat save/export
-        document.getElementById('btn-save').addEventListener('click', markSaved);
-        document.getElementById('btn-export').addEventListener('click', markSaved);
-
-        window.addEventListener('beforeunload', (e) => {
-            if (hasUnsavedChanges) {
-                e.preventDefault();
-                e.returnValue = 'Anda memiliki perubahan yang belum disimpan. Yakin ingin meninggalkan halaman?';
-                return e.returnValue;
-            }
-        });
 
         window.addEventListener('load', () => {
             UI.updateFeatureCounts();
-
-            // Try to restore auto-save after a short delay
-            setTimeout(() => {
-                loadAutoSave();
-            }, 1000);
         });
 
     </script>

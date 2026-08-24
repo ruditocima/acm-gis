@@ -308,6 +308,7 @@
 <base target="_blank">
 <base target="_blank">
 <base target="_blank">
+<base target="_blank">
 </head>
 <body class="flex flex-row bg-gray-900 text-gray-200">
 
@@ -1344,7 +1345,7 @@
             updateRotateButtonUI();
 
             if (App.state.isRotateModeActive) {
-                UI.toast('info', 'Mode Rotasi Aktif: Klik pada OSM Bangunan untuk memutarnya', 2500);
+                UI.toast('info', 'Mode Rotasi Aktif: Klik pada objek yang ingin diputar', 3000);
             }
         });
 
@@ -1541,7 +1542,7 @@
                     }
 
                     if (isRoad) {
-                        UI.toast('warning', 'OSM Jalan hanya diperbolehkan Drag, tidak bisa di-rotate!', 2000);
+                        UI.toast('warning', 'OSM Jalan tidak dapat di-rotate!', 2000);
                         return;
                     }
 
@@ -1549,13 +1550,7 @@
                     setSelectedLayer(layer);
 
                     if (layer.pm && layer.options.allowRotation !== false) {
-                        layer.pm.enable({
-                            allowEditing: true,
-                            allowDragging: true,
-                            allowRemoval: false,
-                            allowCutting: false,
-                            snappable: false
-                        });
+                        layer.pm.enableRotate();
                         App.state.activeEditLayer = layer;
                     }
                     return;

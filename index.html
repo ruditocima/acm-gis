@@ -2287,8 +2287,7 @@ function generateDXF(featureCollection) {
         const gem = feature.geometry;
         const props = feature.properties || {};
         const layerName = String(props.layer || "0").replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 31);
-        const labelText = String(props.name || props.Name || props.title || props.id || "").replace(/[
-]+/g, " ").substring(0, 255);
+        const labelText = String(props.name || props.Name || props.title || props.id || "").replace(/\r\n|\n|\r/g, " ").substring(0, 255);
 
         if (!gem || !gem.type) return;
 

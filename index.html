@@ -309,6 +309,7 @@
 <base target="_blank">
 <base target="_blank">
 <base target="_blank">
+<base target="_blank">
 </head>
 <body class="flex flex-row bg-gray-900 text-gray-200">
 
@@ -578,7 +579,8 @@
                 activeEditLayer: null,
                 currentBbox: null,
                 uploadedKmlFeatures: [],
-                coordFormat: 'dd'
+                coordFormat: 'dd',
+                _layerJustClicked: false
             },
             groups: {},
             undoStack: [],
@@ -1188,13 +1190,8 @@
             clearAllEdits();
 
             if (e.enabled) {
-                [App.groups.osm, App.groups.draw, App.groups.kml].forEach(group => {
-                    processAllSubLayers(group, l => {
-                        if (l.pm && typeof l.pm.disable === 'function') {
-                            l.pm.disable();
-                        }
-                    });
-                });
+                // Note: Global edit mode in Geoman shows handles on all editable layers
+                // We keep this behavior for global edit, but ensure rotate is off
                 UI.toast('info', 'Mode Edit Aktif: Klik pada objek untuk menampilkan verteknya', 2500);
             }
         });
@@ -1212,6 +1209,8 @@
                 mapContainer.classList.remove('leaflet-drag-active');
             }
 
+            // Only enable drag on individual layers when global drag is active
+            // Do NOT enable edit/rotate handles here
             [App.groups.osm, App.groups.draw].forEach(group => {
                 processAllSubLayers(group, layer => {
                     if (layer.pm) {
@@ -1226,7 +1225,14 @@
         });
 
         App.map.on('click', () => {
+            // If a layer was just clicked, don't clear its edit state (the layer handler manages it)
+            if (App.state._layerJustClicked) {
+                App.state._layerJustClicked = false;
+                return;
+            }
             clearAllEdits();
+            App.state.isRotateModeActive = false;
+            updateRotateButtonUI();
         });
 
         App.map.on('pm:create', (e) => {
@@ -1306,19 +1312,23 @@
         // ============================================================
 
         function clearAllEdits() {
+            // First disable any active edit/rotate on the currently active layer
             if (App.state.activeEditLayer) {
                 if (App.state.activeEditLayer.pm) {
                     if (typeof App.state.activeEditLayer.pm.disable === 'function') App.state.activeEditLayer.pm.disable();
                     if (typeof App.state.activeEditLayer.pm.disableRotate === 'function') App.state.activeEditLayer.pm.disableRotate();
+                    if (typeof App.state.activeEditLayer.pm.disableLayerDrag === 'function') App.state.activeEditLayer.pm.disableLayerDrag();
                 }
                 App.state.activeEditLayer = null;
             }
 
+            // Then disable edit/rotate/drag on ALL layers across all groups
             [App.groups.osm, App.groups.kml, App.groups.draw].forEach(group => {
                 processAllSubLayers(group, l => {
                     if (l.pm) {
                         if (typeof l.pm.disable === 'function') l.pm.disable();
                         if (typeof l.pm.disableRotate === 'function') l.pm.disableRotate();
+                        if (typeof l.pm.disableLayerDrag === 'function') l.pm.disableLayerDrag();
                     }
                 });
             });
@@ -1339,13 +1349,21 @@
 
         document.getElementById('btn-rotate').addEventListener('click', () => {
             App.state.isRotateModeActive = !App.state.isRotateModeActive;
+
+            // Disable any global Geoman modes first
             if (App.map.pm.globalEditEnabled()) App.map.pm.disableGlobalEditMode();
             if (App.map.pm.globalDragModeEnabled()) App.map.pm.disableGlobalDragMode();
+            if (App.map.pm.globalRemovalEnabled()) App.map.pm.disableGlobalRemovalMode();
+            if (App.map.pm.globalCutModeEnabled()) App.map.pm.disableGlobalCutMode();
+
+            // Clear all existing edit/rotate/drag states from ALL layers
             clearAllEdits();
             updateRotateButtonUI();
 
             if (App.state.isRotateModeActive) {
                 UI.toast('info', 'Mode Rotasi Aktif: Klik pada objek yang ingin diputar', 3000);
+            } else {
+                UI.toast('info', 'Mode Rotasi Dinonaktifkan', 2000);
             }
         });
 
@@ -1525,6 +1543,10 @@
             }
 
             layer.on('click', function(e) {
+                // Mark that a layer was clicked so map click handler doesn't clear it immediately
+                App.state._layerJustClicked = true;
+                setTimeout(() => { App.state._layerJustClicked = false; }, 100);
+
                 if (App.map.pm && App.map.pm.globalDrawModeEnabled()) {
                     return;
                 }
@@ -1532,9 +1554,13 @@
                 const isRoad = layer.feature && layer.feature.properties && layer.feature.properties.highway;
                 const isBuilding = layer.feature && layer.feature.properties && layer.feature.properties.building;
 
-                // Mode Rotate
+                // Mode Rotate - ONLY enable rotate on the clicked layer
                 if (App.state.isRotateModeActive) {
-                    if (e.originalEvent) L.DomEvent.stopPropagation(e);
+                    // Stop event from bubbling to map (prevents map click from clearing this)
+                    if (e.originalEvent) {
+                        L.DomEvent.stopPropagation(e);
+                        L.DomEvent.stopPropagation(e.originalEvent);
+                    }
 
                     if (isKmlLayer) {
                         UI.toast('warning', 'Layer KML terkunci dan tidak dapat diputar!', 2000);
@@ -1546,9 +1572,11 @@
                         return;
                     }
 
+                    // Clear any existing edit/rotate on OTHER layers first
                     clearAllEdits();
                     setSelectedLayer(layer);
 
+                    // Only enable rotate on THIS specific clicked layer
                     if (layer.pm && layer.options.allowRotation !== false) {
                         layer.pm.enableRotate();
                         App.state.activeEditLayer = layer;

@@ -1250,16 +1250,73 @@
                     });
 
         App.map.on('pm:remove', (e) => {
-            if (e.layer) {
-                const props = e.layer.feature?.properties || {};
-                if (props.highway || (props.sourceGroup === 'osm' && !props.building) || e.layer.options.allowRemoval === false) {
-                    App.groups.osm.addLayer(e.layer);
-                    UI.toast('warning', 'Data OSM Jalan tidak diizinkan untuk dihapus!', 2000);
-                    return;
-                }
-                pushUndoAction({ type: 'remove', group: App.groups.draw, layer: e.layer });
-                UI.updateFeatureCounts();
+            if (!e.layer) return;
+
+            const props = e.layer.feature?.properties || {};
+            const isOSMRoad = props.highway || (props.sourceGroup === 'osm' && !props.building);
+            const isProtected = isOSMRoad || e.layer.options.allowRemoval === false;
+
+            if (isProtected) {
+                // Simpan geojson backup sebelum layer di-destroy
+                const geojsonBackup = e.layer._osmGeoJSON || (e.layer.toGeoJSON ? e.layer.toGeoJSON() : null);
+                const layerStyle = e.layer.options || {};
+
+                // Coba re-add layer asli dengan delay agar Geoman selesai proses
+                setTimeout(() => {
+                    const layerStillExists = e.layer._map || App.groups.osm.hasLayer(e.layer);
+                    if (!layerStillExists) {
+                        try {
+                            App.groups.osm.addLayer(e.layer);
+                        } catch (err) {
+                            // Jika layer asli sudah invalid, re-create dari geojson backup
+                            if (geojsonBackup) {
+                                const newLayer = L.geoJSON(geojsonBackup, {
+                                    renderer: canvasRenderer,
+                                    style: function() {
+                                        return {
+                                            color: layerStyle.color || '#06b6d4',
+                                            weight: layerStyle.weight || 1.5,
+                                            fillColor: layerStyle.fillColor || '#06b6d4',
+                                            fillOpacity: typeof layerStyle.fillOpacity !== 'undefined' ? layerStyle.fillOpacity : 0.3,
+                                            className: 'osm-road-layer'
+                                        };
+                                    },
+                                    onEachFeature: function(feature, layer) {
+                                        layer.options.interactive = true;
+                                        layer.options.pmIgnore = false;
+                                        layer.feature = layer.feature || { type: 'Feature', properties: {} };
+                                        layer.feature.properties = { ...layer.feature.properties, ...feature.properties };
+                                        layer.options.allowRemoval = false;
+                                        layer._osmGeoJSON = JSON.parse(JSON.stringify(feature));
+                                        layer.on('click', function(e) {
+                                            if (App.map.pm.globalRemovalModeEnabled()) {
+                                                L.DomEvent.stop(e);
+                                                UI.toast('warning', 'Data OSM Jalan tidak diizinkan untuk dihapus!', 2500);
+                                            }
+                                        });
+                                        bindNamePopup(layer);
+                                    }
+                                });
+                                newLayer.eachLayer(lyr => App.groups.osm.addLayer(lyr));
                             }
+                        }
+                    }
+                }, 50);
+
+                UI.toast('warning', 'Data OSM Jalan tidak diizinkan untuk dihapus!', 2500);
+                return;
+            }
+
+            // Tentukan grup asal untuk undo
+            let sourceGroup = App.groups.draw;
+            if (props.sourceGroup === 'kml' || e.layer.options.pmIgnore === true) {
+                sourceGroup = App.groups.kml;
+            } else if (props.sourceGroup === 'osm' || props.building) {
+                sourceGroup = App.groups.osm;
+            }
+
+            pushUndoAction({ type: 'remove', group: sourceGroup, layer: e.layer });
+            UI.updateFeatureCounts();
         });
 
         // ============================================================
@@ -1776,12 +1833,25 @@
                             layer.feature = layer.feature || { type: 'Feature', properties: {} };
                             layer.feature.properties = { ...layer.feature.properties, ...feature.properties };
 
+                            // Simpan geojson asli untuk recovery jika dihapus
+                            layer._osmGeoJSON = JSON.parse(JSON.stringify(feature));
+
                             // Bangunan boleh dihapus, jalan tidak boleh dihapus
                             if (feature.properties.building) {
                                 layer.options.allowRemoval = true;
                             } else if (feature.properties.highway) {
                                 layer.options.allowRemoval = false;
                             }
+
+                            // INTERCEPTOR: Cegah klik pada jalan saat removal mode aktif
+                            layer.on('click', function(e) {
+                                const props = layer.feature?.properties || {};
+                                const isRoad = props.highway || layer.options.allowRemoval === false;
+                                if (isRoad && App.map.pm.globalRemovalModeEnabled()) {
+                                    L.DomEvent.stop(e);
+                                    UI.toast('warning', 'Data OSM Jalan tidak diizinkan untuk dihapus!', 2500);
+                                }
+                            });
 
                             bindNamePopup(layer);
                         }

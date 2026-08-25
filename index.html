@@ -1776,6 +1776,7 @@
                             layer.feature = layer.feature || { type: 'Feature', properties: {} };
                             layer.feature.properties = { ...layer.feature.properties, ...feature.properties };
 
+                            // Bangunan boleh dihapus, jalan tidak boleh dihapus
                             if (feature.properties.building) {
                                 layer.options.allowRemoval = true;
                             } else if (feature.properties.highway) {

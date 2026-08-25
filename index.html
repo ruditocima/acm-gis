@@ -1182,6 +1182,12 @@
         App.map.on('pm:drawstart', ({ workingLayer, shape }) => {
             clearMeasurement();
 
+            if (shape === 'Rectangle') {
+            App.map.pm.setGlobalOptions({ ortho: false });
+            if (workingLayer && workingLayer.options) {
+            workingLayer.options.ortho = false;
+                }    
+            }    
             if (shape === 'Polygon' || shape === 'Rectangle') {
                 let firstLatLng = null;
 

@@ -2496,33 +2496,25 @@ document.getElementById('loadProjectInput').addEventListener('change', (e) => {
         // ============================================================
 
         document.getElementById('btn-export-png').addEventListener('click', async () => {
-            UI.showLoading('Membuat gambar...', 'Menangkap tampilan peta');
-
-            try {
-                const mapContainer = document.getElementById('map');
-                const canvas = await html2canvas(mapContainer, {
-                    useCORS: true,
-                    allowTaint: true,
-                    backgroundColor: null,
-                    scale: 2
-                });
-
-                const link = document.createElement('a');
-                link.download = `GeoConvert_Map_${new Date().getTime()}.png`;
-                link.href = canvas.toDataURL('image/png');
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-
-                UI.hideLoading();
-                UI.toast('success', 'Gambar peta berhasil di-export!', 2500);
-            } catch (err) {
-                UI.hideLoading();
-                console.error(err);
-                Swal.fire('Error', 'Gagal mengeksport gambar: ' + err.message, 'error');
-            }
+    UI.showLoading('Membuat gambar...', 'Menangkap tampilan peta');
+    try {
+        const mapContainer = document.getElementById('map');
+        const canvas = await html2canvas(mapContainer, {
+            useCORS: true,
+            allowTaint: true,
+            ignoreElements: (el) => el.classList.contains('leaflet-control-zoom')
         });
-
+        const link = document.createElement('a');
+        link.download = 'GeoConvert_Map.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        UI.toast('success', 'Gambar PNG berhasil diekspor!', 2000);
+    } catch (err) {
+        Swal.fire('Error', 'Gagal mengekspor gambar: ' + err.message, 'error');
+    } finally {
+        UI.hideLoading();
+    }
+});
         // ============================================================
         // 18. INITIALIZATION
         // ============================================================

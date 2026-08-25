@@ -337,6 +337,7 @@
 <base target="_blank">
 <base target="_blank">
 <base target="_blank">
+<base target="_blank">
 </head>
 <body class="flex flex-row bg-gray-900 text-gray-200">
 
@@ -1215,13 +1216,45 @@
             fillOpacity: 0.3
         });
 
-        App.map.on('pm:drawstart', (e) => {
+        App.map.on('pm:drawstart', ({ workingLayer, shape }) => {
             clearMeasurement();
+
+            // AUTO-FINISH POLYGON: Saat vertex terakhir snap ke vertex pertama, selesaikan gambar
+            if (shape === 'Polygon' || shape === 'Rectangle') {
+                let firstLatLng = null;
+
+                workingLayer.on('pm:vertexadded', (e) => {
+                    const latlngs = workingLayer.getLatLngs ? workingLayer.getLatLngs() : [];
+                    if (latlngs && latlngs.length > 0 && latlngs[0].length > 0) {
+                        // Simpan vertex pertama
+                        if (!firstLatLng) {
+                            firstLatLng = latlngs[0][0];
+                        }
+                        // Cek apakah vertex terakhir berada sangat dekat dengan vertex pertama
+                        const ring = latlngs[0];
+                        if (ring.length >= 3) {
+                            const last = ring[ring.length - 1];
+                            if (firstLatLng && last && firstLatLng !== last) {
+                                const dist = L.latLng(firstLatLng).distanceTo(L.latLng(last));
+                                if (dist < 2) { // threshold 2 meter
+                                    workingLayer.pm._finishShape();
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // Cek juga saat drag marker mendekati first vertex
+                workingLayer.on('pm:markerdrag', (e) => {
+                    if (firstLatLng && e.latlng) {
+                        const dist = L.latLng(firstLatLng).distanceTo(e.latlng);
+                        if (dist < 2) {
+                            workingLayer.pm._finishShape();
+                        }
+                    }
+                });
+            }
         });
-
-        
-
-        
 
         App.map.on('click', () => {
             // Drag and removal modes are preserved; edit/cut/rotate disabled
@@ -1251,8 +1284,9 @@
             }
                     });
 
-        // --- EDIT MODE RESTRICTION: Only allow editing for user-drawn layers ---
+        // --- EDIT MODE RESTRICTION: Only allow editing for user-drawn layers, ONE AT A TIME ---
         let editWarningShown = false;
+        let currentlyEditingLayer = null;
 
         function isLayerFromDrawGroup(layer) {
             let found = false;
@@ -1272,32 +1306,39 @@
             return found;
         }
 
-        // When global edit mode is toggled on, immediately disable editing for non-draw layers
+        // When global edit mode is toggled on, disable editing for ALL layers first
+        // User harus KLIK objek yang ingin diedit
         App.map.on('pm:globaleditmodetoggled', (e) => {
             if (e.enabled) {
-                setTimeout(() => {
-                    let blockedAny = false;
-                    [App.groups.kml, App.groups.osm].forEach(group => {
-                        processAllSubLayers(group, layer => {
-                            if (layer.pm && layer.pm.enabled && layer.pm.enabled()) {
-                                layer.pm.disable();
-                                blockedAny = true;
-                            }
-                        });
+                currentlyEditingLayer = null;
+                // Disable editing untuk SEMUA layer (termasuk draw group)
+                [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
+                    processAllSubLayers(group, layer => {
+                        if (layer.pm && layer.pm.enabled && layer.pm.enabled()) {
+                            layer.pm.disable();
+                        }
                     });
-                    if (blockedAny && !editWarningShown) {
-                        editWarningShown = true;
-                        UI.toast('info', 'Edit mode hanya tersedia untuk objek yang Anda gambar.', 2500);
-                        setTimeout(() => { editWarningShown = false; }, 3000);
-                    }
-                }, 50);
+                });
+                UI.toast('info', 'Klik objek yang ingin diedit', 3000);
+            } else {
+                // Saat edit mode dimatikan, disable semua edit
+                currentlyEditingLayer = null;
+                [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
+                    processAllSubLayers(group, layer => {
+                        if (layer.pm && layer.pm.enabled && layer.pm.enabled()) {
+                            layer.pm.disable();
+                        }
+                    });
+                });
             }
         });
 
-        // Fallback: if any non-draw layer gets enabled, disable it immediately
+        // Saat layer di-enable (edit), pastikan hanya 1 layer yang diedit dalam satu waktu
         App.map.on('pm:enable', (e) => {
             const layer = e.layer;
             if (!layer) return;
+
+            // Jika bukan dari draw group, disable langsung
             if (!isLayerFromDrawGroup(layer)) {
                 if (layer.pm && layer.pm.enabled && layer.pm.enabled()) {
                     layer.pm.disable();
@@ -1307,6 +1348,22 @@
                     UI.toast('info', 'Edit mode hanya tersedia untuk objek yang Anda gambar.', 2500);
                     setTimeout(() => { editWarningShown = false; }, 3000);
                 }
+                return;
+            }
+
+            // Jika dari draw group, disable layer lain yang sedang diedit
+            if (currentlyEditingLayer && currentlyEditingLayer !== layer) {
+                if (currentlyEditingLayer.pm && currentlyEditingLayer.pm.enabled && currentlyEditingLayer.pm.enabled()) {
+                    currentlyEditingLayer.pm.disable();
+                }
+            }
+            currentlyEditingLayer = layer;
+        });
+
+        // Reset currentlyEditingLayer saat edit di-disable
+        App.map.on('pm:disable', (e) => {
+            if (currentlyEditingLayer === e.layer) {
+                currentlyEditingLayer = null;
             }
         });
 
@@ -2425,4 +2482,3 @@
     </script>
 </body>
 </html>
-

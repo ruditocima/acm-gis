@@ -324,6 +324,22 @@
             margin-top: -4px !important;
         }
 
+    
+        /* Rotate Handle */
+        .rotate-handle-marker {
+            z-index: 1000 !important;
+        }
+        .rotate-handle-marker:hover {
+            transform: scale(1.15);
+            transition: transform 0.15s;
+        }
+        .rotate-connector {
+            stroke: #f59e0b;
+            stroke-width: 1.5;
+            stroke-dasharray: 4, 4;
+            opacity: 0.6;
+            pointer-events: none;
+        }
     </style>
 <base target="_blank">
 <base target="_blank">
@@ -824,6 +840,216 @@ const OSMFetcher = {
 // Expose ke global untuk debugging (tidak mengubah UI)
 window.clearOSMCache = () => OSMCache.clear().then(() => UI.toast('success', 'Cache OSM dibersihkan!', 2000));
 window.getOSMCacheStats = () => OSMCache.getStats().then(s => console.table(s));
+
+
+// ============================================================
+// ROTATE HANDLER MODULE (Mirror Edit Mode Behavior)
+// ============================================================
+
+const RotateHandler = {
+    handles: new Map(),
+    connectors: new Map(),
+
+    getCentroid(layer) {
+        try {
+            const geojson = layer.toGeoJSON();
+            const centroid = turf.centroid(geojson);
+            return [centroid.geometry.coordinates[1], centroid.geometry.coordinates[0]];
+        } catch (e) {
+            const latlngs = layer.getLatLngs ? layer.getLatLngs() : (layer.getLatLng ? [layer.getLatLng()] : []);
+            if (latlngs.length === 0) return [0, 0];
+            let sumLat = 0, sumLng = 0, count = 0;
+            function processLatLngs(arr) {
+                arr.forEach(item => {
+                    if (Array.isArray(item)) {
+                        if (typeof item[0] === 'number') {
+                            sumLat += item[0];
+                            sumLng += item[1];
+                            count++;
+                        } else {
+                            processLatLngs(item);
+                        }
+                    } else if (item.lat !== undefined) {
+                        sumLat += item.lat;
+                        sumLng += item.lng;
+                        count++;
+                    }
+                });
+            }
+            processLatLngs(latlngs);
+            return count > 0 ? [sumLat / count, sumLng / count] : [0, 0];
+        }
+    },
+
+    enable(layer) {
+        this.disable(layer);
+
+        const centroidLatLng = this.getCentroid(layer);
+        const center = L.latLng(centroidLatLng[0], centroidLatLng[1]);
+
+        // Hitung radius awal (jarak dari centroid ke vertex terjauh)
+        let maxDist = 50; // default 50 meter
+        try {
+            const latlngs = layer.getLatLngs ? layer.getLatLngs() : [];
+            function findMaxDist(arr) {
+                arr.forEach(item => {
+                    if (Array.isArray(item)) {
+                        if (typeof item[0] === 'number') {
+                            const d = center.distanceTo(L.latLng(item[0], item[1]));
+                            if (d > maxDist) maxDist = d;
+                        } else {
+                            findMaxDist(item);
+                        }
+                    } else if (item.lat !== undefined) {
+                        const d = center.distanceTo(item);
+                        if (d > maxDist) maxDist = d;
+                    }
+                });
+            }
+            if (latlngs.length > 0) findMaxDist(latlngs);
+        } catch (e) {}
+
+        // Posisi awal handle: di atas centroid pada jarak maxDist + 30m
+        const handleDistance = maxDist + 30;
+        const handlePos = this._destinationPoint(center, handleDistance, -90); // 12 o'clock
+
+        const handleIcon = L.divIcon({
+            className: 'rotate-handle-marker',
+            html: '<div style="background:#f59e0b;width:18px;height:18px;border:2px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.5);cursor:grab;display:flex;align-items:center;justify-content:center;"><i class="fa-solid fa-rotate" style="font-size:10px;color:#fff;"></i></div>',
+            iconSize: [18, 18],
+            iconAnchor: [9, 9]
+        });
+
+        const handle = L.marker(handlePos, {
+            icon: handleIcon,
+            draggable: true,
+            zIndexOffset: 1000
+        }).addTo(App.map);
+
+        // Garis penghubung centroid-handle
+        const connector = L.polyline([center, handlePos], {
+            className: 'rotate-connector',
+            color: '#f59e0b',
+            weight: 1.5,
+            dashArray: '4, 4',
+            opacity: 0.6,
+            interactive: false
+        }).addTo(App.map);
+
+        // Simpan state rotasi
+        layer._rotateState = {
+            originalGeoJSON: JSON.parse(JSON.stringify(layer.toGeoJSON().geometry)),
+            centroid: [centroidLatLng[1], centroidLatLng[0]], // [lon, lat] untuk turf
+            center: center,
+            currentAngle: 0,
+            startAngle: 0,
+            handleDistance: handleDistance
+        };
+
+        handle.on('dragstart', () => {
+            const pos = handle.getLatLng();
+            layer._rotateState.startAngle = this._calculateAngle(center, pos);
+            handle.getElement().querySelector('div').style.cursor = 'grabbing';
+        });
+
+        handle.on('drag', (e) => {
+            const pos = e.latlng;
+            const currentMouseAngle = this._calculateAngle(center, pos);
+            const delta = currentMouseAngle - layer._rotateState.startAngle;
+            const totalAngle = layer._rotateState.currentAngle + delta;
+
+            const rotated = turf.transformRotate(
+                layer._rotateState.originalGeoJSON,
+                totalAngle,
+                { pivot: layer._rotateState.centroid }
+            );
+
+            if (rotated) {
+                this._applyGeometry(layer, rotated);
+
+                // Update connector
+                const newHandlePos = this._destinationPoint(center, layer._rotateState.handleDistance, currentMouseAngle);
+                handle.setLatLng(newHandlePos);
+                connector.setLatLngs([center, newHandlePos]);
+
+                layer._rotateState.startAngle = currentMouseAngle;
+                layer._rotateState.currentAngle = totalAngle;
+                layer._rotateState.originalGeoJSON = JSON.parse(JSON.stringify(layer.toGeoJSON().geometry));
+            }
+        });
+
+        handle.on('dragend', () => {
+            handle.getElement().querySelector('div').style.cursor = 'grab';
+            // Update original geometry setelah rotasi selesai
+            layer._rotateState.originalGeoJSON = JSON.parse(JSON.stringify(layer.toGeoJSON().geometry));
+        });
+
+        this.handles.set(layer, handle);
+        this.connectors.set(layer, connector);
+    },
+
+    disable(layer) {
+        if (this.handles.has(layer)) {
+            App.map.removeLayer(this.handles.get(layer));
+            this.handles.delete(layer);
+        }
+        if (this.connectors.has(layer)) {
+            App.map.removeLayer(this.connectors.get(layer));
+            this.connectors.delete(layer);
+        }
+        if (layer._rotateState) {
+            delete layer._rotateState;
+        }
+    },
+
+    clearAll() {
+        this.handles.forEach((handle, layer) => {
+            App.map.removeLayer(handle);
+            delete layer._rotateState;
+        });
+        this.handles.clear();
+        this.connectors.forEach(conn => App.map.removeLayer(conn));
+        this.connectors.clear();
+    },
+
+    _calculateAngle(center, point) {
+        const dy = point.lat - center.lat;
+        const dx = point.lng - center.lng;
+        return Math.atan2(dy, dx) * (180 / Math.PI);
+    },
+
+    _destinationPoint(center, distanceMeters, bearingDeg) {
+        const R = 6371000;
+        const lat1 = center.lat * Math.PI / 180;
+        const lon1 = center.lng * Math.PI / 180;
+        const bearing = bearingDeg * Math.PI / 180;
+        const d = distanceMeters;
+
+        const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d / R) +
+            Math.cos(lat1) * Math.sin(d / R) * Math.cos(bearing));
+        const lon2 = lon1 + Math.atan2(Math.sin(bearing) * Math.sin(d / R) * Math.cos(lat1),
+            Math.cos(d / R) - Math.sin(lat1) * Math.sin(lat2));
+
+        return L.latLng(lat2 * 180 / Math.PI, lon2 * 180 / Math.PI);
+    },
+
+    _applyGeometry(layer, geojson) {
+        if (!geojson || !layer.setLatLngs) return;
+        const coords = geojson.coordinates;
+        if (geojson.type === 'Polygon') {
+            layer.setLatLngs(coords[0].map(c => [c[1], c[0]]));
+        } else if (geojson.type === 'MultiPolygon') {
+            const newLatLngs = coords.map(poly => poly.map(ring => ring.map(c => [c[1], c[0]])));
+            layer.setLatLngs(newLatLngs);
+        } else if (geojson.type === 'LineString') {
+            layer.setLatLngs(coords.map(c => [c[1], c[0]]));
+        } else if (geojson.type === 'MultiLineString') {
+            layer.setLatLngs(coords.map(line => line.map(c => [c[1], c[0]])));
+        }
+    }
+};
+
+
 
 // --- Coordinate Utilities ---
         const CoordUtils = {
@@ -1549,6 +1775,7 @@ window.getOSMCacheStats = () => OSMCache.getStats().then(s => console.table(s));
                     if (typeof App.state.activeEditLayer.pm.disable === 'function') App.state.activeEditLayer.pm.disable();
                     if (typeof App.state.activeEditLayer.pm.disableRotate === 'function') App.state.activeEditLayer.pm.disableRotate();
                 }
+                RotateHandler.disable(App.state.activeEditLayer);
                 App.state.activeEditLayer = null;
             }
         }
@@ -1570,15 +1797,24 @@ window.getOSMCacheStats = () => OSMCache.getStats().then(s => console.table(s));
             App.state.isRotateModeActive = !App.state.isRotateModeActive;
 
             if (App.state.isRotateModeActive) {
-                // Aktifkan mode rotate: matikan semua mode lain (sama seperti Edit Mode)
+                // Mirror Edit Mode: matikan semua mode lain
                 if (App.map.pm.globalEditEnabled()) App.map.pm.disableGlobalEditMode();
                 if (App.map.pm.globalDragModeEnabled()) App.map.pm.disableGlobalDragMode();
                 if (App.map.pm.globalDrawModeEnabled()) App.map.pm.disableGlobalDrawMode();
                 clearMeasurement();
                 clearAllEdits();
-                UI.toast('info', 'Mode Rotasi Aktif: Klik pada objek untuk memutarnya', 2500);
+
+                // Mirror Edit Mode: disable semua layer edits dulu
+                [App.groups.osm, App.groups.draw, App.groups.kml].forEach(group => {
+                    processAllSubLayers(group, l => {
+                        if (l.pm && typeof l.pm.disable === 'function') {
+                            l.pm.disable();
+                        }
+                    });
+                });
+
+                UI.toast('info', 'Silahkan Klik pada objek', 2500);
             } else {
-                // Nonaktifkan mode rotate (sama seperti Edit Mode)
                 clearAllEdits();
             }
             updateRotateButtonUI();
@@ -1767,7 +2003,7 @@ window.getOSMCacheStats = () => OSMCache.getStats().then(s => console.table(s));
                 const isRoad = layer.feature && layer.feature.properties && layer.feature.properties.highway;
                 const isBuilding = layer.feature && layer.feature.properties && layer.feature.properties.building;
 
-                // Mode Rotate
+                // Mode Rotate (Mirror Edit Mode behavior)
                 if (App.state.isRotateModeActive) {
                     if (e.originalEvent) L.DomEvent.stopPropagation(e);
 
@@ -1783,25 +2019,15 @@ window.getOSMCacheStats = () => OSMCache.getStats().then(s => console.table(s));
 
                     // Mirror Edit Mode: toggle off jika objek yang sama diklik
                     if (App.state.activeEditLayer === layer) {
-                        if (layer.pm && typeof layer.pm.disable === 'function') {
-                            layer.pm.disable();
-                        }
-                        App.state.activeEditLayer = null;
+                        clearAllEdits();
                         return;
                     }
 
                     // Mirror Edit Mode: matikan objek sebelumnya, aktifkan objek baru
-                    if (App.state.activeEditLayer && App.state.activeEditLayer.pm) {
-                        if (typeof App.state.activeEditLayer.pm.disable === 'function') {
-                            App.state.activeEditLayer.pm.disable();
-                        }
-                    }
-
+                    clearAllEdits();
                     setSelectedLayer(layer);
 
                     if (layer.pm && layer.options.allowRotation !== false) {
-                        // Gunakan allowEditing: true agar handle rotasi Geoman muncul
-                        // Vertex sudah dikecilkan via CSS sehingga tidak mengganggu
                         layer.pm.enable({
                             allowEditing: true,
                             allowDragging: true,
@@ -1810,6 +2036,8 @@ window.getOSMCacheStats = () => OSMCache.getStats().then(s => console.table(s));
                             snappable: false
                         });
                         App.state.activeEditLayer = layer;
+                        // Aktifkan custom rotate handle
+                        RotateHandler.enable(layer);
                     }
                     return;
                 }

@@ -122,8 +122,6 @@
             100% { transform: rotate(360deg); }
         }
 
-        
-
         /* Coordinate Display */
         .coord-display {
             background: rgba(17, 24, 39, 0.9);
@@ -298,24 +296,30 @@
             margin-bottom: 4px;
             display: block;
         }
-        /* Kecilkan vertex Leaflet Geoman */
+        
+        /* Styling Vertex Marker Leaflet Geoman */
         .leaflet-pm-edit-marker,
         .leaflet-marker-icon.pm-edit-marker,
         .leaflet-div-icon.leaflet-pm-edit-marker,
         .leaflet-marker-icon.leaflet-pm-draggable,
         .leaflet-pm-marker {
-            width: 6px !important;
-            height: 6px !important;
-            margin-left: -3px !important;
-            margin-top: -3px !important;
+            width: 10px !important;
+            height: 10px !important;
+            margin-left: -5px !important;
+            margin-top: -5px !important;
+            background-color: #3b82f6 !important;
+            border: 2px solid #ffffff !important;
             border-radius: 50% !important;
+            box-shadow: 0 0 4px rgba(0,0,0,0.5) !important;
+            z-index: 2000 !important;
         }
         .leaflet-pm-edit-marker:hover,
         .leaflet-marker-icon.pm-edit-marker:hover {
-            width: 8px !important;
-            height: 8px !important;
-            margin-left: -4px !important;
-            margin-top: -4px !important;
+            width: 14px !important;
+            height: 14px !important;
+            margin-left: -7px !important;
+            margin-top: -7px !important;
+            background-color: #f59e0b !important;
         }
 
         /* Pastikan OSM layer tetap solid saat zoom */
@@ -326,18 +330,7 @@
         .leaflet-overlay-pane svg g path.osm-road-layer {
             transition: none !important;
         }
-
     </style>
-<base target="_blank">
-<base target="_blank">
-<base target="_blank">
-<base target="_blank">
-<base target="_blank">
-<base target="_blank">
-<base target="_blank">
-<base target="_blank">
-<base target="_blank">
-<base target="_blank">
 </head>
 <body class="flex flex-row bg-gray-900 text-gray-200">
 
@@ -576,12 +569,6 @@
 
     <!-- Application Logic -->
     <script>
-
-        // ============================================================
-        // GEOCONVERT V2 - ENHANCED GIS APPLICATION
-        // Modular Architecture with Backward Compatibility
-        // ============================================================
-
         const App = {
             config: {
                 maxUndoStack: 50,
@@ -598,7 +585,6 @@
                 measureTooltip: null,
                 clipboardGeoJSON: null,
                 lastSelectedLayer: null,
-                
                 currentBbox: null,
                 uploadedKmlFeatures: [],
                 coordFormat: 'dd'
@@ -629,7 +615,6 @@
             toUTM(lon, lat) {
                 const zone = Math.floor((lon + 180) / 6) + 1;
                 const hemisphere = lat >= 0 ? 'N' : 'S';
-                // Simplified UTM conversion using Proj4-like math
                 const a = 6378137;
                 const e = 0.081819191;
                 const e2 = e * e;
@@ -698,7 +683,7 @@
                 document.getElementById('count-kml').textContent = kmlCount;
                 document.getElementById('count-osm').textContent = osmCount;
                 document.getElementById('count-draw').textContent = drawCount;
-                },
+            },
 
             toast(icon, title, timer = 2000) {
                 Swal.fire({
@@ -713,10 +698,8 @@
             }
         };
 
-        // --- Optimized Canvas Renderer Engine ---
         const canvasRenderer = L.canvas({ padding: 0.5, tolerance: 10 });
 
-        // Helper untuk memproses seluruh sub-layer secara rekursif dan efisien
         function processAllSubLayers(group, callback) {
             if (!group) return;
             if (group.eachLayer) {
@@ -726,7 +709,6 @@
             }
         }
 
-        // --- Blue Dot Icon ---
         const blueDotIcon = L.divIcon({
             className: 'custom-blue-dot-symbol',
             html: '<div style="background-color: #38bdf8; width: 10px; height: 10px; border: 2px solid #ffffff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></div>',
@@ -734,13 +716,12 @@
             iconAnchor: [5, 5]
         });
 
-        // --- Undo / History Stack Engine ---
         function pushUndoAction(action) {
             App.undoStack.push(action);
             if (App.undoStack.length > App.config.maxUndoStack) {
                 App.undoStack.shift();
             }
-                    }
+        }
 
         function performUndo() {
             if (App.undoStack.length === 0) {
@@ -771,9 +752,8 @@
 
             UI.updateFeatureCounts();
             UI.toast('success', 'Aksi sebelumnya dibatalkan (Undo)!', 1500);
-                    }
+        }
 
-        // --- Coordinate Validation Helper ---
         function validateCoords(coords) {
             if (!Array.isArray(coords)) return false;
             for (let c of coords) {
@@ -789,7 +769,6 @@
             return rings.filter(ring => validateCoords(ring) && ring.length >= 4);
         }
 
-        // --- Custom OSM to GeoJSON ---
         function customOSMToGeoJSON(data) {
             const features = [];
             if (!data || !data.elements) return { type: "FeatureCollection", features: [] };
@@ -856,7 +835,6 @@
         L.control.zoom({ position: 'topright' }).addTo(App.map);
         L.control.scale({ position: 'bottomright', metric: true, imperial: false }).addTo(App.map);
 
-        // Mini Map
         const miniMapLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 18,
             attribution: '© OSM'
@@ -871,7 +849,6 @@
             toggleDisplay: true
         }).addTo(App.map);
 
-        // Layer Groups
         App.groups.kml = L.featureGroup().addTo(App.map);
         App.groups.osm = L.featureGroup().addTo(App.map);
         App.groups.draw = L.featureGroup().addTo(App.map);
@@ -959,7 +936,6 @@
             if (e.key === 'Enter') performSearch(searchInput.value);
         });
 
-        // Hide search results when clicking outside
         document.addEventListener('click', (e) => {
             if (!e.target.closest('#searchInput') && !e.target.closest('#searchResults') && !e.target.closest('#btn-search')) {
                 searchResults.classList.add('hidden');
@@ -1032,7 +1008,7 @@
                             if (groupName === 'osm') document.getElementById('btn-fetch-osm').disabled = true;
                             UI.updateFeatureCounts();
                             UI.toast('success', `Layer ${groupName.toUpperCase()} dihapus`, 2000);
-                                                    }
+                        }
                     });
                 });
             }
@@ -1066,7 +1042,6 @@
 
             App.state.measurePoints.push([e.latlng.lng, e.latlng.lat]);
 
-            // Add point marker
             L.circleMarker(e.latlng, {
                 radius: 4,
                 color: '#10b981',
@@ -1079,16 +1054,10 @@
                 const line = turf.lineString(App.state.measurePoints);
                 const length = turf.length(line, { units: 'meters' });
 
-                // Draw line
                 const latlngs = App.state.measurePoints.map(p => [p[1], p[0]]);
                 L.polyline(latlngs, { color: '#10b981', weight: 2, dashArray: '5, 10' }).addTo(App.groups.measure);
 
-                let text = '';
-                if (length >= 1000) {
-                    text = `${(length/1000).toFixed(2)} km`;
-                } else {
-                    text = `${length.toFixed(1)} m`;
-                }
+                let text = length >= 1000 ? `${(length/1000).toFixed(2)} km` : `${length.toFixed(1)} m`;
 
                 App.state.measureTooltip = L.tooltip({
                     permanent: true,
@@ -1105,16 +1074,10 @@
                 const polygon = turf.polygon([coords]);
                 const area = turf.area(polygon);
 
-                // Draw polygon
                 const latlngs = App.state.measurePoints.map(p => [p[1], p[0]]);
                 L.polygon(latlngs, { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.1, dashArray: '5, 10' }).addTo(App.groups.measure);
 
-                let text = '';
-                if (area >= 10000) {
-                    text = `${(area/10000).toFixed(2)} ha`;
-                } else {
-                    text = `${area.toFixed(1)} m²`;
-                }
+                let text = area >= 10000 ? `${(area/10000).toFixed(2)} ha` : `${area.toFixed(1)} m²`;
 
                 App.state.measureTooltip = L.tooltip({
                     permanent: true,
@@ -1134,7 +1097,6 @@
             const tempPoints = [...App.state.measurePoints, [e.latlng.lng, e.latlng.lat]];
             const latlngs = tempPoints.map(p => [p[1], p[0]]);
 
-            // Remove previous temp line
             App.groups.measure.eachLayer(layer => {
                 if (layer.options && layer.options._isTemp) {
                     App.groups.measure.removeLayer(layer);
@@ -1142,8 +1104,6 @@
             });
 
             if (App.state.measureType === 'distance') {
-                const line = turf.lineString(tempPoints);
-                const length = turf.length(line, { units: 'meters' });
                 const polyline = L.polyline(latlngs, { color: '#10b981', weight: 2, dashArray: '3, 7', opacity: 0.6, _isTemp: true });
                 polyline.addTo(App.groups.measure);
             } else if (App.state.measureType === 'area' && tempPoints.length >= 3) {
@@ -1219,24 +1179,21 @@
         App.map.on('pm:drawstart', ({ workingLayer, shape }) => {
             clearMeasurement();
 
-            // AUTO-FINISH POLYGON: Saat vertex terakhir snap ke vertex pertama, selesaikan gambar
             if (shape === 'Polygon' || shape === 'Rectangle') {
                 let firstLatLng = null;
 
                 workingLayer.on('pm:vertexadded', (e) => {
                     const latlngs = workingLayer.getLatLngs ? workingLayer.getLatLngs() : [];
                     if (latlngs && latlngs.length > 0 && latlngs[0].length > 0) {
-                        // Simpan vertex pertama
                         if (!firstLatLng) {
                             firstLatLng = latlngs[0][0];
                         }
-                        // Cek apakah vertex terakhir berada sangat dekat dengan vertex pertama
                         const ring = latlngs[0];
                         if (ring.length >= 3) {
                             const last = ring[ring.length - 1];
                             if (firstLatLng && last && firstLatLng !== last) {
                                 const dist = L.latLng(firstLatLng).distanceTo(L.latLng(last));
-                                if (dist < 2) { // threshold 2 meter
+                                if (dist < 2) {
                                     workingLayer.pm._finishShape();
                                 }
                             }
@@ -1244,7 +1201,6 @@
                     }
                 });
 
-                // Cek juga saat drag marker mendekati first vertex
                 workingLayer.on('pm:markerdrag', (e) => {
                     if (firstLatLng && e.latlng) {
                         const dist = L.latLng(firstLatLng).distanceTo(e.latlng);
@@ -1256,9 +1212,7 @@
             }
         });
 
-        App.map.on('click', () => {
-            // Drag and removal modes are preserved; edit/cut/rotate disabled
-        });
+        App.map.on('click', () => {});
 
         App.map.on('pm:create', (e) => {
             if (e.shape === 'Marker') {
@@ -1278,13 +1232,11 @@
             pushUndoAction({ type: 'add', group: App.groups.draw, layer: e.layer });
             UI.updateFeatureCounts();
 
-            // Matikan global draw mode setelah membuat objek agar tidak mengganggu
             if (App.map.pm.globalDrawModeEnabled()) {
                 App.map.pm.disableGlobalDrawMode();
             }
-                    });
+        });
 
-        // --- EDIT MODE RESTRICTION: Only allow editing for user-drawn layers, ONE AT A TIME ---
         let editWarningShown = false;
         let currentlyEditingLayer = null;
 
@@ -1293,7 +1245,6 @@
             App.groups.draw.eachLayer((l) => {
                 if (l === layer) found = true;
             });
-            // Also check nested layers
             if (!found) {
                 App.groups.draw.eachLayer((l) => {
                     if (l.getLayers) {
@@ -1306,12 +1257,9 @@
             return found;
         }
 
-        // When global edit mode is toggled on, disable editing for ALL layers first
-        // User harus KLIK objek yang ingin diedit
         App.map.on('pm:globaleditmodetoggled', (e) => {
             if (e.enabled) {
                 currentlyEditingLayer = null;
-                // Disable editing untuk SEMUA layer (termasuk draw group)
                 [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
                     processAllSubLayers(group, layer => {
                         if (layer.pm && layer.pm.enabled && layer.pm.enabled()) {
@@ -1321,7 +1269,6 @@
                 });
                 UI.toast('info', 'Klik objek yang ingin diedit', 3000);
             } else {
-                // Saat edit mode dimatikan, disable semua edit
                 currentlyEditingLayer = null;
                 [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
                     processAllSubLayers(group, layer => {
@@ -1333,12 +1280,10 @@
             }
         });
 
-        // Saat layer di-enable (edit), pastikan hanya 1 layer yang diedit dalam satu waktu
         App.map.on('pm:enable', (e) => {
             const layer = e.layer;
             if (!layer) return;
 
-            // Jika bukan dari draw group, disable langsung
             if (!isLayerFromDrawGroup(layer)) {
                 if (layer.pm && layer.pm.enabled && layer.pm.enabled()) {
                     layer.pm.disable();
@@ -1351,7 +1296,6 @@
                 return;
             }
 
-            // Jika dari draw group, disable layer lain yang sedang diedit
             if (currentlyEditingLayer && currentlyEditingLayer !== layer) {
                 if (currentlyEditingLayer.pm && currentlyEditingLayer.pm.enabled && currentlyEditingLayer.pm.enabled()) {
                     currentlyEditingLayer.pm.disable();
@@ -1360,7 +1304,6 @@
             currentlyEditingLayer = layer;
         });
 
-        // Reset currentlyEditingLayer saat edit di-disable
         App.map.on('pm:disable', (e) => {
             if (currentlyEditingLayer === e.layer) {
                 currentlyEditingLayer = null;
@@ -1374,25 +1317,21 @@
             const isOSMRoad = props.highway || (props.sourceGroup === 'osm' && !props.building);
             const isProtected = isOSMRoad || e.layer.options.allowRemoval === false || e.layer.options.pmIgnore === true;
 
-            // Jika layer jalan OSM, langsung batalkan penghapusan
             if (isOSMRoad) {
                 UI.toast('warning', 'Data OSM Jalan tidak diizinkan untuk dihapus!', 2500);
                 return;
             }
 
             if (isProtected) {
-                // Simpan geojson backup sebelum layer di-destroy
                 const geojsonBackup = e.layer._osmGeoJSON || (e.layer.toGeoJSON ? e.layer.toGeoJSON() : null);
                 const layerStyle = e.layer.options || {};
 
-                // Coba re-add layer asli dengan delay agar Geoman selesai proses
                 setTimeout(() => {
                     const layerStillExists = e.layer._map || App.groups.osm.hasLayer(e.layer);
                     if (!layerStillExists) {
                         try {
                             App.groups.osm.addLayer(e.layer);
                         } catch (err) {
-                            // Jika layer asli sudah invalid, re-create dari geojson backup
                             if (geojsonBackup) {
                                 const newLayer = L.geoJSON(geojsonBackup, {
                                     renderer: canvasRenderer,
@@ -1431,7 +1370,6 @@
                 return;
             }
 
-            // Tentukan grup asal untuk undo
             let sourceGroup = App.groups.draw;
             if (props.sourceGroup === 'kml' || e.layer.options.pmIgnore === true) {
                 sourceGroup = App.groups.kml;
@@ -1479,10 +1417,6 @@
                 delete layer._originalStyle;
             }
         }
-
-        
-
-        
 
         // ============================================================
         // 9. BASE LAYER SWITCHER
@@ -1576,12 +1510,11 @@
             newLayer.eachLayer(lyr => {
                 App.groups.draw.addLayer(lyr);
                 setSelectedLayer(lyr);
-                
                 pushUndoAction({ type: 'add', group: App.groups.draw, layer: lyr });
             });
 
             UI.updateFeatureCounts();
-                        UI.toast('success', 'Objek berhasil di-paste!', 2000);
+            UI.toast('success', 'Objek berhasil di-paste!', 2000);
         });
 
         // ============================================================
@@ -1641,7 +1574,7 @@
         document.getElementById('btn-help').addEventListener('click', showShortcutsModal);
 
         // ============================================================
-        // 12. INTERAKSI FEATURE & POPUP BINDING (dengan Attribute Editor)
+        // 12. INTERAKSI FEATURE & POPUP BINDING (dengan Edit Mode Fix)
         // ============================================================
 
         function bindNamePopup(layer) {
@@ -1656,20 +1589,35 @@
                     return;
                 }
 
-                const isRoad = layer.feature && layer.feature.properties && layer.feature.properties.highway;
-                const isBuilding = layer.feature && layer.feature.properties && layer.feature.properties.building;
-
-                
+                // PERBAIKAN: Aktifkan vertex titik edit saat objek diklik dalam mode Edit Layers
+                if (App.map.pm && App.map.pm.globalEditModeEnabled()) {
+                    if (isLayerFromDrawGroup(layer)) {
+                        if (currentlyEditingLayer && currentlyEditingLayer !== layer) {
+                            if (currentlyEditingLayer.pm && currentlyEditingLayer.pm.enabled && currentlyEditingLayer.pm.enabled()) {
+                                currentlyEditingLayer.pm.disable();
+                            }
+                        }
+                        if (layer.pm) {
+                            layer.pm.enable();
+                            currentlyEditingLayer = layer;
+                        }
+                    } else {
+                        if (!editWarningShown) {
+                            editWarningShown = true;
+                            UI.toast('info', 'Edit mode hanya tersedia untuk objek yang Anda gambar.', 2500);
+                            setTimeout(() => { editWarningShown = false; }, 3000);
+                        }
+                    }
+                    return; // Hindari membuka popup jika sedang dalam mode edit agar titik vertex jelas
+                }
 
                 setSelectedLayer(layer);
 
-                
                 // Normal click - show popup (Label + Deskripsi saja)
                 let props = layer.feature?.properties || {};
                 let name = props.name || props.Name || props.NAME || props.type || props.building || props.highway || 'Object';
                 let desc = props.description || props.Description || props.desc || '';
 
-                // Build popup content - sederhana, hanya label & deskripsi
                 let content = `<div style="min-width:200px;">`;
                 content += `<div style="font-weight:600;color:#10b981;font-size:14px;margin-bottom:4px;">${name}</div>`;
                 if (desc) {
@@ -1682,119 +1630,114 @@
                     className: 'custom-popup-readonly'
                 }).openPopup();
             });
-
-            
         }
 
         // ============================================================
-// 13. FILE UPLOAD (KML / KMZ) WITH SMART SYNC
-// ============================================================
+        // 13. FILE UPLOAD (KML / KMZ) WITH SMART SYNC
+        // ============================================================
 
-document.getElementById('fileInput').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
 
-    document.getElementById('file-info').classList.remove('hidden');
-    document.getElementById('filename').innerText = file.name;
+            document.getElementById('file-info').classList.remove('hidden');
+            document.getElementById('filename').innerText = file.name;
 
-    try {
-        if (file.name.toLowerCase().endsWith('.kmz')) {
-            const zip = new JSZip();
-            const contents = await zip.loadAsync(file);
-            let kmlFile = null;
-            for (let filename in contents.files) {
-                if (filename.toLowerCase().endsWith('.kml')) {
-                    kmlFile = contents.files[filename];
-                    break;
+            try {
+                if (file.name.toLowerCase().endsWith('.kmz')) {
+                    const zip = new JSZip();
+                    const contents = await zip.loadAsync(file);
+                    let kmlFile = null;
+                    for (let filename in contents.files) {
+                        if (filename.toLowerCase().endsWith('.kml')) {
+                            kmlFile = contents.files[filename];
+                            break;
+                        }
+                    }
+                    if (kmlFile) {
+                        const kmlText = await kmlFile.async('text');
+                        await parseKML(kmlText);
+                    } else {
+                        Swal.fire('Error', 'Tidak ada file KML di dalam paket KMZ ini.', 'error');
+                    }
+                } else if (file.name.toLowerCase().endsWith('.kml')) {
+                    const kmlText = await file.text();
+                    await parseKML(kmlText);
+                } else {
+                    Swal.fire('Error', 'Format file tidak valid. Upload file .kml atau .kmz', 'error');
                 }
+            } catch (err) {
+                Swal.fire('Error', 'Gagal membaca file: ' + err.message, 'error');
             }
-            if (kmlFile) {
-                const kmlText = await kmlFile.async('text');
-                await parseKML(kmlText);
-            } else {
-                Swal.fire('Error', 'Tidak ada file KML di dalam paket KMZ ini.', 'error');
-            }
-        } else if (file.name.toLowerCase().endsWith('.kml')) {
-            const kmlText = await file.text();
-            await parseKML(kmlText);
-        } else {
-            Swal.fire('Error', 'Format file tidak valid. Upload file .kml atau .kmz', 'error');
-        }
-    } catch (err) {
-        Swal.fire('Error', 'Gagal membaca file: ' + err.message, 'error');
-    }
-    e.target.value = '';
-});
-
-async function parseKML(kmlText) {
-    const hasExistingEdits = App.groups.draw.getLayers().length > 0;
-    let keepEdits = true;
-
-    // Jika ada hasil editing aktif (File B / User Drawn), tanyakan opsi sinkronisasi
-    if (hasExistingEdits) {
-        const result = await Swal.fire({
-            title: 'File A Diperbarui!',
-            text: 'Ditemukan objek hasil editing aktif di peta. Bagaimana Anda ingin memproses pembaruan ini?',
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Sinkronkan (Pertahankan Hasil Edit)',
-            cancelButtonText: 'Timpa Semua Data',
-            confirmButtonColor: '#10b981',
-            cancelButtonColor: '#ef4444'
+            e.target.value = '';
         });
-        keepEdits = result.isConfirmed;
-    }
 
-    // Selalu perbarui KML layer dasar
-    App.groups.kml.clearLayers();
+        async function parseKML(kmlText) {
+            const hasExistingEdits = App.groups.draw.getLayers().length > 0;
+            let keepEdits = true;
 
-    // Jika pengguna memilih timpa semua, bersihkan juga layer edit & OSM
-    if (!keepEdits) {
-        App.groups.draw.clearLayers();
-        App.groups.osm.clearLayers();
-    }
-
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(kmlText, 'text/xml');
-    const geojson = (typeof toGeoJSON !== 'undefined') ? toGeoJSON.kml(xmlDoc) : null;
-
-    if (!geojson || !geojson.features || geojson.features.length === 0) {
-        Swal.fire('Warning', 'Tidak ditemukan geometri pada file KML ini.', 'warning');
-        return;
-    }
-
-    App.state.uploadedKmlFeatures = geojson.features;
-
-    const layer = L.geoJSON(geojson, {
-        renderer: canvasRenderer,
-        style: function(feature) {
-            const geomType = feature.geometry ? feature.geometry.type : '';
-            if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
-                return { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.15 };
-            } else if (geomType === 'LineString' || geomType === 'MultiLineString') {
-                return { color: '#ef4444', weight: 3 };
+            if (hasExistingEdits) {
+                const result = await Swal.fire({
+                    title: 'File A Diperbarui!',
+                    text: 'Ditemukan objek hasil editing aktif di peta. Bagaimana Anda ingin memproses pembaruan ini?',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Sinkronkan (Pertahankan Hasil Edit)',
+                    cancelButtonText: 'Timpa Semua Data',
+                    confirmButtonColor: '#10b981',
+                    cancelButtonColor: '#ef4444'
+                });
+                keepEdits = result.isConfirmed;
             }
-            return { color: '#ef4444', weight: 2 };
-        },
-        pointToLayer: function(feature, latlng) {
-            return L.marker(latlng, { icon: blueDotIcon });
-        },
-        onEachFeature: function(feature, layer) {
-            layer.options.pmIgnore = true;
-            if (L.PM) L.PM.reInitLayer(layer);
-            bindNamePopup(layer);
+
+            App.groups.kml.clearLayers();
+
+            if (!keepEdits) {
+                App.groups.draw.clearLayers();
+                App.groups.osm.clearLayers();
+            }
+
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(kmlText, 'text/xml');
+            const geojson = (typeof toGeoJSON !== 'undefined') ? toGeoJSON.kml(xmlDoc) : null;
+
+            if (!geojson || !geojson.features || geojson.features.length === 0) {
+                Swal.fire('Warning', 'Tidak ditemukan geometri pada file KML ini.', 'warning');
+                return;
+            }
+
+            App.state.uploadedKmlFeatures = geojson.features;
+
+            const layer = L.geoJSON(geojson, {
+                renderer: canvasRenderer,
+                style: function(feature) {
+                    const geomType = feature.geometry ? feature.geometry.type : '';
+                    if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
+                        return { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.15 };
+                    } else if (geomType === 'LineString' || geomType === 'MultiLineString') {
+                        return { color: '#ef4444', weight: 3 };
+                    }
+                    return { color: '#ef4444', weight: 2 };
+                },
+                pointToLayer: function(feature, latlng) {
+                    return L.marker(latlng, { icon: blueDotIcon });
+                },
+                onEachFeature: function(feature, layer) {
+                    layer.options.pmIgnore = true;
+                    if (L.PM) L.PM.reInitLayer(layer);
+                    bindNamePopup(layer);
+                }
+            });
+
+            App.groups.kml.addLayer(layer);
+            App.map.fitBounds(layer.getBounds(), { padding: [50, 50] });
+
+            App.state.currentBbox = layer.getBounds();
+            document.getElementById('btn-fetch-osm').disabled = false;
+
+            UI.updateFeatureCounts();
+            UI.toast('success', hasExistingEdits && keepEdits ? 'File A Diperbarui & Hasil Edit Tersinkronkan!' : 'KML Berhasil Dimuat!', 3000);
         }
-    });
-
-    App.groups.kml.addLayer(layer);
-    App.map.fitBounds(layer.getBounds(), { padding: [50, 50] });
-
-    App.state.currentBbox = layer.getBounds();
-    document.getElementById('btn-fetch-osm').disabled = false;
-
-    UI.updateFeatureCounts();
-    UI.toast('success', hasExistingEdits && keepEdits ? 'File A Diperbarui & Hasil Edit Tersinkronkan!' : 'KML Berhasil Dimuat!', 3000);
-}
 
         // ============================================================
         // 14. FETCH OSM DATA (Improved with Loading States)
@@ -1902,8 +1845,6 @@ async function parseKML(kmlText) {
                             if (f.geometry && (f.geometry.type === 'LineString' || f.geometry.type === 'MultiLineString')) {
                                 const buffered = turf.buffer(f, bufferRadius, { units: 'meters' });
                                 if (buffered) {
-                                    // Validasi koordinat hasil buffer
-                                    let validBuffer = null;
                                     if (buffered.type === 'FeatureCollection') {
                                         const validFeatures = [];
                                         buffered.features.forEach(bf => {
@@ -1974,29 +1915,23 @@ async function parseKML(kmlText) {
                                 else if (feature.properties.highway) feature.properties.name = "Road";
                             }
 
-                            // Pastikan layer terikat kuat ke peta
                             layer.options.interactive = true;
                             layer.options.pmIgnore = false;
 
-                            // Simpan referensi feature properties ke layer
                             layer.feature = layer.feature || { type: 'Feature', properties: {} };
                             layer.feature.properties = { ...layer.feature.properties, ...feature.properties };
 
-                            // Simpan geojson asli untuk recovery jika dihapus
                             layer._osmGeoJSON = JSON.parse(JSON.stringify(feature));
 
-                            // Bangunan boleh diedit/dihapus, jalan TIDAK BOLEH dihapus sama sekali
                             if (feature.properties.building) {
                                 layer.options.pmIgnore = false;
                                 layer.options.allowRemoval = true;
                             } else if (feature.properties.highway) {
-                                // Jalan: pmIgnore=true agar Geoman tidak bisa mengelola (hapus/edit/drag)
                                 layer.options.pmIgnore = true;
                                 layer.options.allowRemoval = false;
-                                layer.options.interactive = true; // Tetap bisa diklik untuk popup
+                                layer.options.interactive = true;
                             }
 
-                            // INTERCEPTOR: Cegah klik pada jalan saat removal mode aktif
                             layer.on('click', function(e) {
                                 const props = layer.feature?.properties || {};
                                 const isRoad = props.highway || layer.options.allowRemoval === false;
@@ -2010,15 +1945,12 @@ async function parseKML(kmlText) {
                         }
                     });
 
-                    // Tambahkan ke grup OSM dan pastikan tetap ter-render saat zoom
                     osmGeoLayer.eachLayer(function(layer) {
                         App.groups.osm.addLayer(layer);
                     });
 
-                    
-
                     UI.updateFeatureCounts();
-                                        UI.toast('success', `Berhasil memuat ${filteredFeatures.length} objek dari OSM!`, 3000);
+                    UI.toast('success', `Berhasil memuat ${filteredFeatures.length} objek dari OSM!`, 3000);
                 } else {
                     UI.toast('info', 'Tidak ada gedung/jalan ditemukan pada area ini.', 3000);
                 }
@@ -2128,143 +2060,136 @@ async function parseKML(kmlText) {
         });
 
         // ============================================================
-// 16. LOAD PROJECT FILE (B.json) WITH MERGE SUPPORT
-// ============================================================
+        // 16. LOAD PROJECT FILE (B.json) WITH MERGE SUPPORT
+        // ============================================================
 
-document.getElementById('loadProjectInput').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+        document.getElementById('loadProjectInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async function(event) {
-        try {
-            const geojson = JSON.parse(event.target.result);
-            const hasActiveKML = App.groups.kml.getLayers().length > 0;
-            let mergeOnlyEdits = false;
+            const reader = new FileReader();
+            reader.onload = async function(event) {
+                try {
+                    const geojson = JSON.parse(event.target.result);
+                    const hasActiveKML = App.groups.kml.getLayers().length > 0;
+                    let mergeOnlyEdits = false;
 
-            // Jika File A sedang aktif di peta, berikan pilihan gabung edit
-            if (hasActiveKML) {
-                const result = await Swal.fire({
-                    title: 'Gabungkan File B.json?',
-                    text: 'File A (KML) terbaru sedang aktif di peta. Apakah Anda ingin mengimpor hasil editing dari B.json tanpa menimpa File A terbaru?',
-                    icon: 'question',
-                    showCancelButton: true,
-                    confirmButtonText: 'Gabungkan Edit Saja',
-                    cancelButtonText: 'Timpa Seluruh Peta',
-                    confirmButtonColor: '#10b981',
-                    cancelButtonColor: '#ef4444'
-                });
-                mergeOnlyEdits = result.isConfirmed;
-            }
-
-            if (!mergeOnlyEdits) {
-                App.groups.kml.clearLayers();
-                App.groups.osm.clearLayers();
-                App.groups.draw.clearLayers();
-            } else {
-                // Hanya bersihkan grup draw sebelum memuat objek suntingan baru
-                App.groups.draw.clearLayers();
-            }
-
-            const tempGeoLayer = L.geoJSON(geojson);
-            if (!hasActiveKML && tempGeoLayer.getBounds().isValid()) {
-                App.map.fitBounds(tempGeoLayer.getBounds(), { padding: [50, 50] });
-            }
-
-            L.geoJSON(geojson, {
-                renderer: canvasRenderer,
-                style: function(feature) {
-                    const props = feature.properties || {};
-                    const geomType = feature.geometry ? feature.geometry.type : '';
-
-                    if (props.sourceGroup === 'kml') {
-                        if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
-                            return { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.15 };
-                        } else {
-                            return { color: '#ef4444', weight: 3 };
-                        }
-                    } 
-                    else if (props.sourceGroup === 'osm') {
-                        if (props.building) {
-                            return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
-                        }
-                        if (props.highway) {
-                            return { color: '#06b6d4', weight: 1.5, fillColor: '#06b6d4', fillOpacity: 0.3 };
-                        }
-                        return { color: '#06b6d4', weight: 1.5, fillOpacity: 0.3 };
+                    if (hasActiveKML) {
+                        const result = await Swal.fire({
+                            title: 'Gabungkan File B.json?',
+                            text: 'File A (KML) terbaru sedang aktif di peta. Apakah Anda ingin mengimpor hasil editing dari B.json tanpa menimpa File A terbaru?',
+                            icon: 'question',
+                            showCancelButton: true,
+                            confirmButtonText: 'Gabungkan Edit Saja',
+                            cancelButtonText: 'Timpa Seluruh Peta',
+                            confirmButtonColor: '#10b981',
+                            cancelButtonColor: '#ef4444'
+                        });
+                        mergeOnlyEdits = result.isConfirmed;
                     }
 
-                    return { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 };
-                },
-                pointToLayer: function(feature, latlng) {
-                    return L.marker(latlng, { icon: blueDotIcon });
-                },
-                onEachFeature: function(feature, layer) {
-                    const props = feature.properties || {};
-
-                    if (props.sourceGroup === 'kml') {
-                        if (!mergeOnlyEdits) {
-                            layer.options.pmIgnore = true;
-                            if (L.PM) L.PM.reInitLayer(layer);
-                            App.groups.kml.addLayer(layer);
-                        }
-                    } else if (props.sourceGroup === 'osm') {
-                        if (!mergeOnlyEdits) {
-                            layer.options.pmIgnore = false;
-                            if (props.building) {
-                                layer.options.allowRemoval = true;
-                            } else if (props.highway) {
-                                layer.options.allowRemoval = false;
-                            }
-                            App.groups.osm.addLayer(layer);
-                        }
+                    if (!mergeOnlyEdits) {
+                        App.groups.kml.clearLayers();
+                        App.groups.osm.clearLayers();
+                        App.groups.draw.clearLayers();
                     } else {
-                        // Memasukkan hasil suntingan ke grup draw
-                        layer.options.pmIgnore = false;
-                        layer.options.allowRemoval = true;
-                        App.groups.draw.addLayer(layer);
+                        App.groups.draw.clearLayers();
                     }
-                    bindNamePopup(layer);
+
+                    const tempGeoLayer = L.geoJSON(geojson);
+                    if (!hasActiveKML && tempGeoLayer.getBounds().isValid()) {
+                        App.map.fitBounds(tempGeoLayer.getBounds(), { padding: [50, 50] });
+                    }
+
+                    L.geoJSON(geojson, {
+                        renderer: canvasRenderer,
+                        style: function(feature) {
+                            const props = feature.properties || {};
+                            const geomType = feature.geometry ? feature.geometry.type : '';
+
+                            if (props.sourceGroup === 'kml') {
+                                if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
+                                    return { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.15 };
+                                } else {
+                                    return { color: '#ef4444', weight: 3 };
+                                }
+                            } 
+                            else if (props.sourceGroup === 'osm') {
+                                if (props.building) {
+                                    return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
+                                }
+                                if (props.highway) {
+                                    return { color: '#06b6d4', weight: 1.5, fillColor: '#06b6d4', fillOpacity: 0.3 };
+                                }
+                                return { color: '#06b6d4', weight: 1.5, fillOpacity: 0.3 };
+                            }
+
+                            return { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 };
+                        },
+                        pointToLayer: function(feature, latlng) {
+                            return L.marker(latlng, { icon: blueDotIcon });
+                        },
+                        onEachFeature: function(feature, layer) {
+                            const props = feature.properties || {};
+
+                            if (props.sourceGroup === 'kml') {
+                                if (!mergeOnlyEdits) {
+                                    layer.options.pmIgnore = true;
+                                    if (L.PM) L.PM.reInitLayer(layer);
+                                    App.groups.kml.addLayer(layer);
+                                }
+                            } else if (props.sourceGroup === 'osm') {
+                                if (!mergeOnlyEdits) {
+                                    layer.options.pmIgnore = false;
+                                    if (props.building) {
+                                        layer.options.allowRemoval = true;
+                                    } else if (props.highway) {
+                                        layer.options.allowRemoval = false;
+                                    }
+                                    App.groups.osm.addLayer(layer);
+                                }
+                            } else {
+                                layer.options.pmIgnore = false;
+                                layer.options.allowRemoval = true;
+                                App.groups.draw.addLayer(layer);
+                            }
+                            bindNamePopup(layer);
+                        }
+                    });
+
+                    if (!mergeOnlyEdits) {
+                        const allLayers = [];
+                        extractFeaturesTo(App.groups.kml, 'kml', allLayers);
+                        App.state.uploadedKmlFeatures = allLayers.filter(f => f.properties?.sourceGroup === 'kml');
+
+                        if (App.groups.kml.getLayers().length > 0) {
+                            App.state.currentBbox = App.groups.kml.getBounds();
+                            document.getElementById('btn-fetch-osm').disabled = false;
+                        }
+                    }
+
+                    UI.updateFeatureCounts();
+                    
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Proyek Berhasil Dimuat!',
+                        text: mergeOnlyEdits 
+                            ? `Hasil editing dari "${file.name}" berhasil digabungkan di atas File A terbaru.`
+                            : `File "${file.name}" telah berhasil dimuat ke peta.`,
+                        confirmButtonColor: '#10b981'
+                    });
+
+                } catch (err) {
+                    Swal.fire('Error', 'Gagal membaca file proyek: Format JSON/GeoJSON tidak valid.', 'error');
                 }
-            });
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        });
 
-            if (!mergeOnlyEdits) {
-                const allLayers = [];
-                extractFeaturesTo(App.groups.kml, 'kml', allLayers);
-                App.state.uploadedKmlFeatures = allLayers.filter(f => f.properties?.sourceGroup === 'kml');
-
-                if (App.groups.kml.getLayers().length > 0) {
-                    App.state.currentBbox = App.groups.kml.getBounds();
-                    document.getElementById('btn-fetch-osm').disabled = false;
-                }
-            }
-
-            UI.updateFeatureCounts();
-            
-            Swal.fire({
-                icon: 'success',
-                title: 'Proyek Berhasil Dimuat!',
-                text: mergeOnlyEdits 
-                    ? `Hasil editing dari "${file.name}" berhasil digabungkan di atas File A terbaru.`
-                    : `File "${file.name}" telah berhasil dimuat ke peta.`,
-                confirmButtonColor: '#10b981'
-            });
-
-        } catch (err) {
-            Swal.fire('Error', 'Gagal membaca file proyek: Format JSON/GeoJSON tidak valid.', 'error');
-        }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-});
-        // --- 9. Export to DXF ---
-        function lonLatToMeters(lon, lat) {
-            lat = Math.max(-85.05112878, Math.min(85.05112878, lat));
-            const x = lon * 20037508.34 / 180;
-            let y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);
-            y = y * 20037508.34 / 180;
-            return [x, y];
-        }
+        // ============================================================
+        // 17. EXPORT TO DXF & PNG
+        // ============================================================
 
         document.getElementById('btn-export').addEventListener('click', () => {
             const allFeatures = [];
@@ -2323,7 +2248,6 @@ document.getElementById('loadProjectInput').addEventListener('change', (e) => {
             });
         });
 
-        // --- Generator DXF Standar Universal ---
         function generateDXF(featureCollection) {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
@@ -2347,7 +2271,7 @@ document.getElementById('loadProjectInput').addEventListener('change', (e) => {
 
             function addPointSymbol(coord, layerName, featureProps) {
                 if (!coord || coord.length < 2) return;
-                let [x, y] = lonLatToMeters(coord[0], coord[1]);
+                let [x, y] = CoordUtils.lonLatToMeters(coord[0], coord[1]);
                 updateExtents(x, y);
 
                 const radius = 1.5;
@@ -2393,7 +2317,7 @@ document.getElementById('loadProjectInput').addEventListener('change', (e) => {
 
                 coords.forEach(c => {
                     if (!c || c.length < 2) return;
-                    let [x, y] = lonLatToMeters(c[0], c[1]);
+                    let [x, y] = CoordUtils.lonLatToMeters(c[0], c[1]);
                     updateExtents(x, y);
 
                     entitiesDxf.push("  0", "VERTEX");
@@ -2492,39 +2416,35 @@ document.getElementById('loadProjectInput').addEventListener('change', (e) => {
 
             return fullDxf.join("\r\n") + "\r\n";
         }
-    // 17. EXPORT TO PNG
-        // ============================================================
 
         document.getElementById('btn-export-png').addEventListener('click', async () => {
-    UI.showLoading('Membuat gambar...', 'Menangkap tampilan peta');
-    try {
-        const mapContainer = document.getElementById('map');
-        const canvas = await html2canvas(mapContainer, {
-            useCORS: true,
-            allowTaint: true,
-            ignoreElements: (el) => el.classList.contains('leaflet-control-zoom')
+            UI.showLoading('Membuat gambar...', 'Menangkap tampilan peta');
+            try {
+                const mapContainer = document.getElementById('map');
+                const canvas = await html2canvas(mapContainer, {
+                    useCORS: true,
+                    allowTaint: true,
+                    ignoreElements: (el) => el.classList.contains('leaflet-control-zoom')
+                });
+                const link = document.createElement('a');
+                link.download = 'GeoConvert_Map.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                UI.toast('success', 'Gambar PNG berhasil diekspor!', 2000);
+            } catch (err) {
+                Swal.fire('Error', 'Gagal mengekspor gambar: ' + err.message, 'error');
+            } finally {
+                UI.hideLoading();
+            }
         });
-        const link = document.createElement('a');
-        link.download = 'GeoConvert_Map.png';
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-        UI.toast('success', 'Gambar PNG berhasil diekspor!', 2000);
-    } catch (err) {
-        Swal.fire('Error', 'Gagal mengekspor gambar: ' + err.message, 'error');
-    } finally {
-        UI.hideLoading();
-    }
-});
+
         // ============================================================
         // 18. INITIALIZATION
         // ============================================================
 
-        // Wait for everything to load
-
         window.addEventListener('load', () => {
             UI.updateFeatureCounts();
         });
-
     </script>
 </body>
 </html>

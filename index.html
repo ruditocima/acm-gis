@@ -1198,7 +1198,7 @@
             drawRectangle: true,
             removalMode: true,
             dragMode: true,
-            editMode: false,
+            editMode: true,
             cutPolygon: false,
             rotateMode: false
         });
@@ -1250,6 +1250,65 @@
                 App.map.pm.disableGlobalDrawMode();
             }
                     });
+
+        // --- EDIT MODE RESTRICTION: Only allow editing for user-drawn layers ---
+        let editWarningShown = false;
+
+        function isLayerFromDrawGroup(layer) {
+            let found = false;
+            App.groups.draw.eachLayer((l) => {
+                if (l === layer) found = true;
+            });
+            // Also check nested layers
+            if (!found) {
+                App.groups.draw.eachLayer((l) => {
+                    if (l.getLayers) {
+                        l.eachLayer((subL) => {
+                            if (subL === layer) found = true;
+                        });
+                    }
+                });
+            }
+            return found;
+        }
+
+        // When global edit mode is toggled on, immediately disable editing for non-draw layers
+        App.map.on('pm:globaleditmodetoggled', (e) => {
+            if (e.enabled) {
+                setTimeout(() => {
+                    let blockedAny = false;
+                    [App.groups.kml, App.groups.osm].forEach(group => {
+                        processAllSubLayers(group, layer => {
+                            if (layer.pm && layer.pm.enabled && layer.pm.enabled()) {
+                                layer.pm.disable();
+                                blockedAny = true;
+                            }
+                        });
+                    });
+                    if (blockedAny && !editWarningShown) {
+                        editWarningShown = true;
+                        UI.toast('info', 'Edit mode hanya tersedia untuk objek yang Anda gambar.', 2500);
+                        setTimeout(() => { editWarningShown = false; }, 3000);
+                    }
+                }, 50);
+            }
+        });
+
+        // Fallback: if any non-draw layer gets enabled, disable it immediately
+        App.map.on('pm:enable', (e) => {
+            const layer = e.layer;
+            if (!layer) return;
+            if (!isLayerFromDrawGroup(layer)) {
+                if (layer.pm && layer.pm.enabled && layer.pm.enabled()) {
+                    layer.pm.disable();
+                }
+                if (!editWarningShown) {
+                    editWarningShown = true;
+                    UI.toast('info', 'Edit mode hanya tersedia untuk objek yang Anda gambar.', 2500);
+                    setTimeout(() => { editWarningShown = false; }, 3000);
+                }
+            }
+        });
 
         App.map.on('pm:remove', (e) => {
             if (!e.layer) return;
@@ -2366,3 +2425,4 @@
     </script>
 </body>
 </html>
+

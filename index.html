@@ -347,6 +347,7 @@
 <base target="_blank">
 <base target="_blank">
 <base target="_blank">
+<base target="_blank">
 </head>
 <body class="flex flex-row bg-gray-900 text-gray-200">
 
@@ -1652,13 +1653,9 @@ const RotateHandler = {
             clearAllEdits();
 
             if (e.enabled) {
-                [App.groups.osm, App.groups.draw, App.groups.kml].forEach(group => {
-                    processAllSubLayers(group, l => {
-                        if (l.pm && typeof l.pm.disable === 'function') {
-                            l.pm.disable();
-                        }
-                    });
-                });
+                // PERBAIKAN: Hapus iterasi massal ribuan layer.
+                // Geoman global edit mode sudah mengelola sendiri layer mana yang editable.
+                // Hanya perlu memastikan tidak ada layer yang sedang dalam mode edit individual.
                 UI.toast('info', 'Silahkan Klik pada objek', 2500);
             }
         });
@@ -1676,17 +1673,9 @@ const RotateHandler = {
                 mapContainer.classList.remove('leaflet-drag-active');
             }
 
-            [App.groups.osm, App.groups.draw].forEach(group => {
-                processAllSubLayers(group, layer => {
-                    if (layer.pm) {
-                        if (isDragActive) {
-                            layer.pm.enableLayerDrag();
-                        } else {
-                            layer.pm.disableLayerDrag();
-                        }
-                    }
-                });
-            });
+            // PERBAIKAN: Hapus iterasi massal enable/disable drag pada ribuan layer OSM.
+            // Geoman global drag mode secara otomatis mengaktifkan drag pada layer yang memungkinkan.
+            // Jika ada layer individual yang perlu dikecualikan, atur saat pembuatan layer (options.allowDragging).
         });
 
         App.map.on('click', () => {
@@ -1701,11 +1690,9 @@ const RotateHandler = {
             }
             e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Drawn Object' } };
 
+            // PERBAIKAN: Hapus opsi redundan yang tidak perlu di-set manual.
+            // Geoman global mode sudah cukup untuk mengontrol edit/drag/remove.
             e.layer.options.pmIgnore = false;
-            e.layer.options.allowEditing = true;
-            e.layer.options.allowDragging = true;
-            e.layer.options.allowRemoval = true;
-            e.layer.options.allowRotation = true;
 
             App.groups.draw.addLayer(e.layer);
             bindNamePopup(e.layer);
@@ -1771,11 +1758,16 @@ const RotateHandler = {
 
         function clearAllEdits() {
             if (App.state.activeEditLayer) {
-                if (App.state.activeEditLayer.pm) {
-                    if (typeof App.state.activeEditLayer.pm.disable === 'function') App.state.activeEditLayer.pm.disable();
-                    if (typeof App.state.activeEditLayer.pm.disableRotate === 'function') App.state.activeEditLayer.pm.disableRotate();
-                }
-                RotateHandler.disable(App.state.activeEditLayer);
+                try {
+                    if (App.state.activeEditLayer.pm) {
+                        if (typeof App.state.activeEditLayer.pm.disable === 'function') {
+                            App.state.activeEditLayer.pm.disable();
+                        }
+                    }
+                } catch (err) { /* ignore */ }
+                try {
+                    RotateHandler.disable(App.state.activeEditLayer);
+                } catch (err) { /* ignore */ }
                 App.state.activeEditLayer = null;
             }
         }
@@ -1915,9 +1907,7 @@ const RotateHandler = {
             newLayer.eachLayer(lyr => {
                 App.groups.draw.addLayer(lyr);
                 setSelectedLayer(lyr);
-                if (App.map.pm.globalDragModeEnabled() && lyr.pm) {
-                    lyr.pm.enableLayerDrag();
-                }
+                // PERBAIKAN: Hapus enableLayerDrag manual. Global drag mode Geoman akan handle.
                 pushUndoAction({ type: 'add', group: App.groups.draw, layer: lyr });
             });
 
@@ -2017,26 +2007,19 @@ const RotateHandler = {
                         return;
                     }
 
-                    // Mirror Edit Mode: toggle off jika objek yang sama diklik
+                    // Toggle off jika objek yang sama diklik
                     if (App.state.activeEditLayer === layer) {
                         clearAllEdits();
                         return;
                     }
 
-                    // Mirror Edit Mode: matikan objek sebelumnya, aktifkan objek baru
                     clearAllEdits();
                     setSelectedLayer(layer);
 
                     if (layer.pm && layer.options.allowRotation !== false) {
-                        layer.pm.enable({
-                            allowEditing: true,
-                            allowDragging: true,
-                            allowRemoval: false,
-                            allowCutting: false,
-                            snappable: false
-                        });
+                        // PERBAIKAN: Gunakan pm.enable() tanpa opsi berlebihan, biarkan Geoman handle global mode
+                        layer.pm.enable({ snappable: false });
                         App.state.activeEditLayer = layer;
-                        // Aktifkan custom rotate handle
                         RotateHandler.enable(layer);
                     }
                     return;
@@ -2064,11 +2047,7 @@ const RotateHandler = {
                     if (App.state.activeEditLayer !== layer) {
                         clearAllEdits();
                         if (layer.pm && layer.options.allowEditing !== false) {
-                            layer.pm.enable({
-                                allowEditing: true,
-                                allowDragging: true,
-                                snappable: false
-                            });
+                            layer.pm.enable({ snappable: false });
                             App.state.activeEditLayer = layer;
                         }
                     }
@@ -2080,7 +2059,6 @@ const RotateHandler = {
                 let name = props.name || props.Name || props.NAME || props.type || props.building || props.highway || 'Object';
                 let desc = props.description || props.Description || props.desc || '';
 
-                // Build popup content - sederhana, hanya label & deskripsi
                 let content = `<div style="min-width:200px;">`;
                 content += `<div style="font-weight:600;color:#10b981;font-size:14px;margin-bottom:4px;">${name}</div>`;
                 if (desc) {
@@ -2349,11 +2327,7 @@ const RotateHandler = {
                         }
                     }).addTo(App.groups.osm);
 
-                    if (App.map.pm.globalDragModeEnabled()) {
-                        processAllSubLayers(App.groups.osm, layer => {
-                            if (layer.pm) layer.pm.enableLayerDrag();
-                        });
-                    }
+                    // PERBAIKAN: Hapus iterasi massal enableLayerDrag. Geoman global drag mode handle sendiri.
 
                     UI.updateFeatureCounts();
                                         if (fromCache) {

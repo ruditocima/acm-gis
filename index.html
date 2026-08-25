@@ -1144,7 +1144,7 @@
 
         document.getElementById('btn-measure-clear').addEventListener('click', clearMeasurement);
 
-        // ============================================================
+       // ============================================================
         // 7. LEAFLET GEOMAN CONTROLS
         // ============================================================
 
@@ -1167,7 +1167,6 @@
         App.map.pm.setGlobalOptions({
             snappable: true,
             snapDistance: 15,
-            finishOn: 'snap',
             snapSegment: true,
             allowSelfIntersection: false
         });
@@ -1197,6 +1196,7 @@
                                 const dist = L.latLng(firstLatLng).distanceTo(L.latLng(last));
                                 if (dist < 2) {
                                     workingLayer.pm._finishShape();
+                                    App.map.pm.disableDraw(); // Hentikan guide line & mode menggambar
                                 }
                             }
                         }
@@ -1208,13 +1208,12 @@
                         const dist = L.latLng(firstLatLng).distanceTo(e.latlng);
                         if (dist < 2) {
                             workingLayer.pm._finishShape();
+                            App.map.pm.disableDraw(); // Hentikan guide line & mode menggambar
                         }
                     }
                 });
             }
         });
-
-        App.map.on('click', () => {});
 
         App.map.on('pm:create', (e) => {
             if (e.shape === 'Marker') {
@@ -1234,9 +1233,8 @@
             pushUndoAction({ type: 'add', group: App.groups.draw, layer: e.layer });
             UI.updateFeatureCounts();
 
-            if (App.map.pm.globalDrawModeEnabled()) {
-                App.map.pm.disableGlobalDrawMode();
-            }
+            // Memastikan mode menggambar & bayangan garis dibersihkan sepenuhnya dari peta
+            App.map.pm.disableDraw();
         });
 
         let editWarningShown = false;

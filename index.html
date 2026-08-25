@@ -324,24 +324,7 @@
             margin-top: -4px !important;
         }
 
-    
-        /* Rotate Handle */
-        .rotate-handle-marker {
-            z-index: 1000 !important;
-        }
-        .rotate-handle-marker:hover {
-            transform: scale(1.15);
-            transition: transform 0.15s;
-        }
-        .rotate-connector {
-            stroke: #f59e0b;
-            stroke-width: 1.5;
-            stroke-dasharray: 4, 4;
-            opacity: 0.6;
-            pointer-events: none;
-        }
     </style>
-<base target="_blank">
 <base target="_blank">
 <base target="_blank">
 <base target="_blank">
@@ -628,431 +611,7 @@
             }
         };
 
-        
-// ============================================================
-// OSM CACHE & FETCHER MODULE (IndexedDB + Exponential Backoff)
-// ============================================================
-
-const OSMCache = {
-    db: null,
-    DB_NAME: 'GeoConvertCache',
-    STORE_NAME: 'osmQueries',
-    VERSION: 1,
-    CACHE_DURATION: 7 * 24 * 60 * 60 * 1000, // 7 hari
-
-    async init() {
-        if (this.db) return;
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open(this.DB_NAME, this.VERSION);
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-                this.db = request.result;
-                resolve();
-            };
-            request.onupgradeneeded = (event) => {
-                const db = event.target.result;
-                if (!db.objectStoreNames.contains(this.STORE_NAME)) {
-                    const store = db.createObjectStore(this.STORE_NAME, { keyPath: 'key' });
-                    store.createIndex('timestamp', 'timestamp', { unique: false });
-                }
-            };
-        });
-    },
-
-    generateKey(s, w, n, e) {
-        return `osm_${s.toFixed(6)}_${w.toFixed(6)}_${n.toFixed(6)}_${e.toFixed(6)}`;
-    },
-
-    async get(bbox) {
-        if (!this.db) await this.init();
-        const key = this.generateKey(bbox.getSouth(), bbox.getWest(), bbox.getNorth(), bbox.getEast());
-
-        return new Promise((resolve, reject) => {
-            const tx = this.db.transaction([this.STORE_NAME], 'readonly');
-            const store = tx.objectStore(this.STORE_NAME);
-            const request = store.get(key);
-
-            request.onsuccess = () => {
-                const result = request.result;
-                if (!result) return resolve(null);
-
-                const age = Date.now() - result.timestamp;
-                if (age > this.CACHE_DURATION) {
-                    this.delete(key);
-                    return resolve(null);
-                }
-
-                resolve(result.data);
-            };
-            request.onerror = () => reject(request.error);
-        });
-    },
-
-    async set(bbox, data) {
-        if (!this.db) await this.init();
-        const key = this.generateKey(bbox.getSouth(), bbox.getWest(), bbox.getNorth(), bbox.getEast());
-
-        return new Promise((resolve, reject) => {
-            const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
-            const store = tx.objectStore(this.STORE_NAME);
-            const request = store.put({
-                key: key,
-                data: data,
-                timestamp: Date.now(),
-                bbox: { s: bbox.getSouth(), w: bbox.getWest(), n: bbox.getNorth(), e: bbox.getEast() }
-            });
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
-        });
-    },
-
-    async delete(key) {
-        return new Promise((resolve, reject) => {
-            const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
-            const store = tx.objectStore(this.STORE_NAME);
-            const request = store.delete(key);
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
-        });
-    },
-
-    async clear() {
-        return new Promise((resolve, reject) => {
-            const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
-            const store = tx.objectStore(this.STORE_NAME);
-            const request = store.clear();
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
-        });
-    },
-
-    async getStats() {
-        if (!this.db) await this.init();
-        return new Promise((resolve, reject) => {
-            const tx = this.db.transaction([this.STORE_NAME], 'readonly');
-            const store = tx.objectStore(this.STORE_NAME);
-            const request = store.getAll();
-            request.onsuccess = () => {
-                const items = request.result;
-                let totalSize = 0;
-                items.forEach(item => {
-                    try { totalSize += JSON.stringify(item.data).length; } catch(e) {}
-                });
-                resolve({
-                    count: items.length,
-                    totalSizeKB: (totalSize / 1024).toFixed(2)
-                });
-            };
-            request.onerror = () => reject(request.error);
-        });
-    }
-};
-
-const OSMFetcher = {
-    config: {
-        maxRetries: 3,
-        baseDelay: 1000,
-        maxDelay: 10000,
-        timeout: 30000
-    },
-
-    sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    },
-
-    getJitter() {
-        return Math.random() * 1000;
-    },
-
-    async fetchWithRetry(url, options, attempt = 0) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
-
-            const response = await fetch(url, {
-                ...options,
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            return response;
-        } catch (error) {
-            if (attempt >= this.config.maxRetries) {
-                throw error;
-            }
-
-            const delay = Math.min(
-                this.config.baseDelay * Math.pow(2, attempt) + this.getJitter(),
-                this.config.maxDelay
-            );
-
-            console.warn(`[OSMFetcher] Attempt ${attempt + 1} failed for ${new URL(url).hostname}. Retrying in ${delay.toFixed(0)}ms...`);
-            await this.sleep(delay);
-
-            return this.fetchWithRetry(url, options, attempt + 1);
-        }
-    },
-
-    async fetchOSM(bbox, endpoints, query) {
-        const cached = await OSMCache.get(bbox);
-        if (cached) {
-            console.log('[OSMCache] Data ditemukan di cache');
-            return { data: cached, fromCache: true };
-        }
-
-        const body = "data=" + encodeURIComponent(query);
-
-        for (let i = 0; i < endpoints.length; i++) {
-            const targetUrl = endpoints[i];
-            const mirrorName = new URL(targetUrl).hostname;
-
-            try {
-                UI.showLoading('Mengambil data OSM...', `Mirror ${i+1}/${endpoints.length}: ${mirrorName}`);
-
-                const response = await this.fetchWithRetry(targetUrl, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'Accept': 'application/json'
-                    },
-                    body: body
-                });
-
-                const data = await response.json();
-
-                if (data && data.elements) {
-                    await OSMCache.set(bbox, data);
-                    return { data, fromCache: false };
-                }
-            } catch (error) {
-                console.warn(`[OSMFetcher] Mirror ${mirrorName} failed:`, error.message);
-                continue;
-            }
-        }
-
-        throw new Error('Semua mirror gagal setelah retry');
-    }
-};
-
-// Expose ke global untuk debugging (tidak mengubah UI)
-window.clearOSMCache = () => OSMCache.clear().then(() => UI.toast('success', 'Cache OSM dibersihkan!', 2000));
-window.getOSMCacheStats = () => OSMCache.getStats().then(s => console.table(s));
-
-
-// ============================================================
-// ROTATE HANDLER MODULE (Mirror Edit Mode Behavior)
-// ============================================================
-
-const RotateHandler = {
-    handles: new Map(),
-    connectors: new Map(),
-
-    getCentroid(layer) {
-        try {
-            const geojson = layer.toGeoJSON();
-            const centroid = turf.centroid(geojson);
-            return [centroid.geometry.coordinates[1], centroid.geometry.coordinates[0]];
-        } catch (e) {
-            const latlngs = layer.getLatLngs ? layer.getLatLngs() : (layer.getLatLng ? [layer.getLatLng()] : []);
-            if (latlngs.length === 0) return [0, 0];
-            let sumLat = 0, sumLng = 0, count = 0;
-            function processLatLngs(arr) {
-                arr.forEach(item => {
-                    if (Array.isArray(item)) {
-                        if (typeof item[0] === 'number') {
-                            sumLat += item[0];
-                            sumLng += item[1];
-                            count++;
-                        } else {
-                            processLatLngs(item);
-                        }
-                    } else if (item.lat !== undefined) {
-                        sumLat += item.lat;
-                        sumLng += item.lng;
-                        count++;
-                    }
-                });
-            }
-            processLatLngs(latlngs);
-            return count > 0 ? [sumLat / count, sumLng / count] : [0, 0];
-        }
-    },
-
-    enable(layer) {
-        this.disable(layer);
-
-        const centroidLatLng = this.getCentroid(layer);
-        const center = L.latLng(centroidLatLng[0], centroidLatLng[1]);
-
-        // Hitung radius awal (jarak dari centroid ke vertex terjauh)
-        let maxDist = 50; // default 50 meter
-        try {
-            const latlngs = layer.getLatLngs ? layer.getLatLngs() : [];
-            function findMaxDist(arr) {
-                arr.forEach(item => {
-                    if (Array.isArray(item)) {
-                        if (typeof item[0] === 'number') {
-                            const d = center.distanceTo(L.latLng(item[0], item[1]));
-                            if (d > maxDist) maxDist = d;
-                        } else {
-                            findMaxDist(item);
-                        }
-                    } else if (item.lat !== undefined) {
-                        const d = center.distanceTo(item);
-                        if (d > maxDist) maxDist = d;
-                    }
-                });
-            }
-            if (latlngs.length > 0) findMaxDist(latlngs);
-        } catch (e) {}
-
-        // Posisi awal handle: di atas centroid pada jarak maxDist + 30m
-        const handleDistance = maxDist + 30;
-        const handlePos = this._destinationPoint(center, handleDistance, -90); // 12 o'clock
-
-        const handleIcon = L.divIcon({
-            className: 'rotate-handle-marker',
-            html: '<div style="background:#f59e0b;width:18px;height:18px;border:2px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.5);cursor:grab;display:flex;align-items:center;justify-content:center;"><i class="fa-solid fa-rotate" style="font-size:10px;color:#fff;"></i></div>',
-            iconSize: [18, 18],
-            iconAnchor: [9, 9]
-        });
-
-        const handle = L.marker(handlePos, {
-            icon: handleIcon,
-            draggable: true,
-            zIndexOffset: 1000
-        }).addTo(App.map);
-
-        // Garis penghubung centroid-handle
-        const connector = L.polyline([center, handlePos], {
-            className: 'rotate-connector',
-            color: '#f59e0b',
-            weight: 1.5,
-            dashArray: '4, 4',
-            opacity: 0.6,
-            interactive: false
-        }).addTo(App.map);
-
-        // Simpan state rotasi
-        layer._rotateState = {
-            originalGeoJSON: JSON.parse(JSON.stringify(layer.toGeoJSON().geometry)),
-            centroid: [centroidLatLng[1], centroidLatLng[0]], // [lon, lat] untuk turf
-            center: center,
-            currentAngle: 0,
-            startAngle: 0,
-            handleDistance: handleDistance
-        };
-
-        handle.on('dragstart', () => {
-            const pos = handle.getLatLng();
-            layer._rotateState.startAngle = this._calculateAngle(center, pos);
-            handle.getElement().querySelector('div').style.cursor = 'grabbing';
-        });
-
-        handle.on('drag', (e) => {
-            const pos = e.latlng;
-            const currentMouseAngle = this._calculateAngle(center, pos);
-            const delta = currentMouseAngle - layer._rotateState.startAngle;
-            const totalAngle = layer._rotateState.currentAngle + delta;
-
-            const rotated = turf.transformRotate(
-                layer._rotateState.originalGeoJSON,
-                totalAngle,
-                { pivot: layer._rotateState.centroid }
-            );
-
-            if (rotated) {
-                this._applyGeometry(layer, rotated);
-
-                // Update connector
-                const newHandlePos = this._destinationPoint(center, layer._rotateState.handleDistance, currentMouseAngle);
-                handle.setLatLng(newHandlePos);
-                connector.setLatLngs([center, newHandlePos]);
-
-                layer._rotateState.startAngle = currentMouseAngle;
-                layer._rotateState.currentAngle = totalAngle;
-                layer._rotateState.originalGeoJSON = JSON.parse(JSON.stringify(layer.toGeoJSON().geometry));
-            }
-        });
-
-        handle.on('dragend', () => {
-            handle.getElement().querySelector('div').style.cursor = 'grab';
-            // Update original geometry setelah rotasi selesai
-            layer._rotateState.originalGeoJSON = JSON.parse(JSON.stringify(layer.toGeoJSON().geometry));
-        });
-
-        this.handles.set(layer, handle);
-        this.connectors.set(layer, connector);
-    },
-
-    disable(layer) {
-        if (this.handles.has(layer)) {
-            App.map.removeLayer(this.handles.get(layer));
-            this.handles.delete(layer);
-        }
-        if (this.connectors.has(layer)) {
-            App.map.removeLayer(this.connectors.get(layer));
-            this.connectors.delete(layer);
-        }
-        if (layer._rotateState) {
-            delete layer._rotateState;
-        }
-    },
-
-    clearAll() {
-        this.handles.forEach((handle, layer) => {
-            App.map.removeLayer(handle);
-            delete layer._rotateState;
-        });
-        this.handles.clear();
-        this.connectors.forEach(conn => App.map.removeLayer(conn));
-        this.connectors.clear();
-    },
-
-    _calculateAngle(center, point) {
-        const dy = point.lat - center.lat;
-        const dx = point.lng - center.lng;
-        return Math.atan2(dy, dx) * (180 / Math.PI);
-    },
-
-    _destinationPoint(center, distanceMeters, bearingDeg) {
-        const R = 6371000;
-        const lat1 = center.lat * Math.PI / 180;
-        const lon1 = center.lng * Math.PI / 180;
-        const bearing = bearingDeg * Math.PI / 180;
-        const d = distanceMeters;
-
-        const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d / R) +
-            Math.cos(lat1) * Math.sin(d / R) * Math.cos(bearing));
-        const lon2 = lon1 + Math.atan2(Math.sin(bearing) * Math.sin(d / R) * Math.cos(lat1),
-            Math.cos(d / R) - Math.sin(lat1) * Math.sin(lat2));
-
-        return L.latLng(lat2 * 180 / Math.PI, lon2 * 180 / Math.PI);
-    },
-
-    _applyGeometry(layer, geojson) {
-        if (!geojson || !layer.setLatLngs) return;
-        const coords = geojson.coordinates;
-        if (geojson.type === 'Polygon') {
-            layer.setLatLngs(coords[0].map(c => [c[1], c[0]]));
-        } else if (geojson.type === 'MultiPolygon') {
-            const newLatLngs = coords.map(poly => poly.map(ring => ring.map(c => [c[1], c[0]])));
-            layer.setLatLngs(newLatLngs);
-        } else if (geojson.type === 'LineString') {
-            layer.setLatLngs(coords.map(c => [c[1], c[0]]));
-        } else if (geojson.type === 'MultiLineString') {
-            layer.setLatLngs(coords.map(line => line.map(c => [c[1], c[0]])));
-        }
-    }
-};
-
-
-
-// --- Coordinate Utilities ---
+        // --- Coordinate Utilities ---
         const CoordUtils = {
             toDMS(deg, isLat) {
                 const absolute = Math.abs(deg);
@@ -1653,9 +1212,13 @@ const RotateHandler = {
             clearAllEdits();
 
             if (e.enabled) {
-                // PERBAIKAN: Hapus iterasi massal ribuan layer.
-                // Geoman global edit mode sudah mengelola sendiri layer mana yang editable.
-                // Hanya perlu memastikan tidak ada layer yang sedang dalam mode edit individual.
+                [App.groups.osm, App.groups.draw, App.groups.kml].forEach(group => {
+                    processAllSubLayers(group, l => {
+                        if (l.pm && typeof l.pm.disable === 'function') {
+                            l.pm.disable();
+                        }
+                    });
+                });
                 UI.toast('info', 'Silahkan Klik pada objek', 2500);
             }
         });
@@ -1673,9 +1236,17 @@ const RotateHandler = {
                 mapContainer.classList.remove('leaflet-drag-active');
             }
 
-            // PERBAIKAN: Hapus iterasi massal enable/disable drag pada ribuan layer OSM.
-            // Geoman global drag mode secara otomatis mengaktifkan drag pada layer yang memungkinkan.
-            // Jika ada layer individual yang perlu dikecualikan, atur saat pembuatan layer (options.allowDragging).
+            [App.groups.osm, App.groups.draw].forEach(group => {
+                processAllSubLayers(group, layer => {
+                    if (layer.pm) {
+                        if (isDragActive) {
+                            layer.pm.enableLayerDrag();
+                        } else {
+                            layer.pm.disableLayerDrag();
+                        }
+                    }
+                });
+            });
         });
 
         App.map.on('click', () => {
@@ -1690,9 +1261,11 @@ const RotateHandler = {
             }
             e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Drawn Object' } };
 
-            // PERBAIKAN: Hapus opsi redundan yang tidak perlu di-set manual.
-            // Geoman global mode sudah cukup untuk mengontrol edit/drag/remove.
             e.layer.options.pmIgnore = false;
+            e.layer.options.allowEditing = true;
+            e.layer.options.allowDragging = true;
+            e.layer.options.allowRemoval = true;
+            e.layer.options.allowRotation = true;
 
             App.groups.draw.addLayer(e.layer);
             bindNamePopup(e.layer);
@@ -1705,9 +1278,9 @@ const RotateHandler = {
         App.map.on('pm:remove', (e) => {
             if (e.layer) {
                 const props = e.layer.feature?.properties || {};
-                if (props.building || props.highway || props.sourceGroup === 'osm' || e.layer.options.allowRemoval === false) {
+                if (props.highway || (props.sourceGroup === 'osm' && !props.building) || e.layer.options.allowRemoval === false) {
                     App.groups.osm.addLayer(e.layer);
-                    UI.toast('warning', 'Data OSM tidak diizinkan untuk dihapus!', 2000);
+                    UI.toast('warning', 'Data OSM Jalan tidak diizinkan untuk dihapus!', 2000);
                     return;
                 }
                 pushUndoAction({ type: 'remove', group: App.groups.draw, layer: e.layer });
@@ -1758,16 +1331,10 @@ const RotateHandler = {
 
         function clearAllEdits() {
             if (App.state.activeEditLayer) {
-                try {
-                    if (App.state.activeEditLayer.pm) {
-                        if (typeof App.state.activeEditLayer.pm.disable === 'function') {
-                            App.state.activeEditLayer.pm.disable();
-                        }
-                    }
-                } catch (err) { /* ignore */ }
-                try {
-                    RotateHandler.disable(App.state.activeEditLayer);
-                } catch (err) { /* ignore */ }
+                if (App.state.activeEditLayer.pm) {
+                    if (typeof App.state.activeEditLayer.pm.disable === 'function') App.state.activeEditLayer.pm.disable();
+                    if (typeof App.state.activeEditLayer.pm.disableRotate === 'function') App.state.activeEditLayer.pm.disableRotate();
+                }
                 App.state.activeEditLayer = null;
             }
         }
@@ -1789,24 +1356,15 @@ const RotateHandler = {
             App.state.isRotateModeActive = !App.state.isRotateModeActive;
 
             if (App.state.isRotateModeActive) {
-                // Mirror Edit Mode: matikan semua mode lain
+                // Aktifkan mode rotate: matikan semua mode lain (sama seperti Edit Mode)
                 if (App.map.pm.globalEditEnabled()) App.map.pm.disableGlobalEditMode();
                 if (App.map.pm.globalDragModeEnabled()) App.map.pm.disableGlobalDragMode();
                 if (App.map.pm.globalDrawModeEnabled()) App.map.pm.disableGlobalDrawMode();
                 clearMeasurement();
                 clearAllEdits();
-
-                // Mirror Edit Mode: disable semua layer edits dulu
-                [App.groups.osm, App.groups.draw, App.groups.kml].forEach(group => {
-                    processAllSubLayers(group, l => {
-                        if (l.pm && typeof l.pm.disable === 'function') {
-                            l.pm.disable();
-                        }
-                    });
-                });
-
-                UI.toast('info', 'Silahkan Klik pada objek', 2500);
+                UI.toast('info', 'Mode Rotasi Aktif: Klik pada objek untuk memutarnya', 2500);
             } else {
+                // Nonaktifkan mode rotate (sama seperti Edit Mode)
                 clearAllEdits();
             }
             updateRotateButtonUI();
@@ -1907,7 +1465,9 @@ const RotateHandler = {
             newLayer.eachLayer(lyr => {
                 App.groups.draw.addLayer(lyr);
                 setSelectedLayer(lyr);
-                // PERBAIKAN: Hapus enableLayerDrag manual. Global drag mode Geoman akan handle.
+                if (App.map.pm.globalDragModeEnabled() && lyr.pm) {
+                    lyr.pm.enableLayerDrag();
+                }
                 pushUndoAction({ type: 'add', group: App.groups.draw, layer: lyr });
             });
 
@@ -1993,7 +1553,7 @@ const RotateHandler = {
                 const isRoad = layer.feature && layer.feature.properties && layer.feature.properties.highway;
                 const isBuilding = layer.feature && layer.feature.properties && layer.feature.properties.building;
 
-                // Mode Rotate (Mirror Edit Mode behavior)
+                // Mode Rotate
                 if (App.state.isRotateModeActive) {
                     if (e.originalEvent) L.DomEvent.stopPropagation(e);
 
@@ -2006,21 +1566,40 @@ const RotateHandler = {
                         UI.toast('warning', 'OSM Jalan hanya diperbolehkan Drag, tidak bisa di-rotate!', 2000);
                         return;
                     }
-
-                    // Toggle off jika objek yang sama diklik
-                    if (App.state.activeEditLayer === layer) {
-                        clearAllEdits();
+                    if (isBuilding) {
+                        UI.toast('warning', 'OSM Bangunan tidak diizinkan untuk di-rotate!', 2000);
                         return;
                     }
 
-                    clearAllEdits();
+                    // Mirror Edit Mode: toggle off jika objek yang sama diklik
+                    if (App.state.activeEditLayer === layer) {
+                        if (layer.pm && typeof layer.pm.disable === 'function') {
+                            layer.pm.disable();
+                        }
+                        App.state.activeEditLayer = null;
+                        return;
+                    }
+
+                    // Mirror Edit Mode: matikan objek sebelumnya, aktifkan objek baru
+                    if (App.state.activeEditLayer && App.state.activeEditLayer.pm) {
+                        if (typeof App.state.activeEditLayer.pm.disable === 'function') {
+                            App.state.activeEditLayer.pm.disable();
+                        }
+                    }
+
                     setSelectedLayer(layer);
 
                     if (layer.pm && layer.options.allowRotation !== false) {
-                        // PERBAIKAN: Gunakan pm.enable() tanpa opsi berlebihan, biarkan Geoman handle global mode
-                        layer.pm.enable({ snappable: false });
+                        // Gunakan allowEditing: true agar handle rotasi Geoman muncul
+                        // Vertex sudah dikecilkan via CSS sehingga tidak mengganggu
+                        layer.pm.enable({
+                            allowEditing: true,
+                            allowDragging: true,
+                            allowRemoval: false,
+                            allowCutting: false,
+                            snappable: false
+                        });
                         App.state.activeEditLayer = layer;
-                        RotateHandler.enable(layer);
                     }
                     return;
                 }
@@ -2043,11 +1622,20 @@ const RotateHandler = {
                         if (e.originalEvent) L.DomEvent.stopPropagation(e);
                         return;
                     }
+                    if (isBuilding) {
+                        UI.toast('warning', 'OSM Bangunan tidak diizinkan untuk di-edit!', 2000);
+                        if (e.originalEvent) L.DomEvent.stopPropagation(e);
+                        return;
+                    }
 
                     if (App.state.activeEditLayer !== layer) {
                         clearAllEdits();
                         if (layer.pm && layer.options.allowEditing !== false) {
-                            layer.pm.enable({ snappable: false });
+                            layer.pm.enable({
+                                allowEditing: true,
+                                allowDragging: true,
+                                snappable: false
+                            });
                             App.state.activeEditLayer = layer;
                         }
                     }
@@ -2059,6 +1647,7 @@ const RotateHandler = {
                 let name = props.name || props.Name || props.NAME || props.type || props.building || props.highway || 'Object';
                 let desc = props.description || props.Description || props.desc || '';
 
+                // Build popup content - sederhana, hanya label & deskripsi
                 let content = `<div style="min-width:200px;">`;
                 content += `<div style="font-weight:600;color:#10b981;font-size:14px;margin-bottom:4px;">${name}</div>`;
                 if (desc) {
@@ -2171,9 +1760,6 @@ const RotateHandler = {
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
-            // Inisialisasi cache
-            await OSMCache.init();
-
             const s = bbox.getSouth();
             const w = bbox.getWest();
             const n = bbox.getNorth();
@@ -2200,6 +1786,7 @@ const RotateHandler = {
             const btn = document.getElementById('btn-fetch-osm');
             const originalHTML = btn.innerHTML;
             btn.disabled = true;
+            UI.showLoading('Mengambil data OSM...', 'Menghubungkan ke server Overpass');
 
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
@@ -2216,19 +1803,37 @@ const RotateHandler = {
             out geom;`;
 
             let successData = null;
-            let fromCache = false;
 
-            try {
-                const result = await OSMFetcher.fetchOSM(bbox, endpoints, query);
-                successData = result.data;
-                fromCache = result.fromCache;
+            for (let i = 0; i < endpoints.length; i++) {
+                const targetUrl = endpoints[i];
+                const mirrorName = new URL(targetUrl).hostname;
+                document.getElementById('loadingSub').textContent = `Mirror ${i+1}/${endpoints.length}: ${mirrorName}`;
 
-                if (fromCache) {
-                    UI.showLoading('Memuat data dari cache...', 'Data ditemukan di penyimpanan lokal');
-                    await new Promise(r => setTimeout(r, 400));
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), App.config.osmTimeout);
+
+                    const response = await fetch(targetUrl, {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'Accept': 'application/json'
+                        },
+                        body: "data=" + encodeURIComponent(query),
+                        signal: controller.signal
+                    });
+                    clearTimeout(timeoutId);
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data && data.elements) {
+                            successData = data;
+                            break; 
+                        }
+                    }
+                } catch (error) {
+                    console.warn(`Mirror ${targetUrl} sibuk/timeout, beralih ke mirror berikutnya...`);
                 }
-            } catch (error) {
-                console.error('[OSMFetcher] Gagal:', error);
             }
 
             UI.hideLoading();
@@ -2312,29 +1917,31 @@ const RotateHandler = {
                             layer.options.pmIgnore = false;
 
                             if (feature.properties.building) {
-                                layer.options.allowEditing = true;
+                                layer.options.allowEditing = false;
                                 layer.options.allowDragging = true;
-                                layer.options.allowRemoval = false;
-                                layer.options.allowRotation = true;
+                                layer.options.allowRemoval = true;
+                                layer.options.allowRotation = false;
+                                layer.options.allowCutting = false;
                             } else if (feature.properties.highway) {
                                 layer.options.allowEditing = false;
                                 layer.options.allowDragging = true;
                                 layer.options.allowRemoval = false;
                                 layer.options.allowRotation = false;
+                                layer.options.allowCutting = false;
                             }
 
                             bindNamePopup(layer);
                         }
                     }).addTo(App.groups.osm);
 
-                    // PERBAIKAN: Hapus iterasi massal enableLayerDrag. Geoman global drag mode handle sendiri.
+                    if (App.map.pm.globalDragModeEnabled()) {
+                        processAllSubLayers(App.groups.osm, layer => {
+                            if (layer.pm) layer.pm.enableLayerDrag();
+                        });
+                    }
 
                     UI.updateFeatureCounts();
-                                        if (fromCache) {
-                    UI.toast('success', `Dimuat ${filteredFeatures.length} objek dari cache lokal`, 3000);
-                } else {
-                    UI.toast('success', `Berhasil memuat ${filteredFeatures.length} objek dari OSM!`, 3000);
-                }
+                                        UI.toast('success', `Berhasil memuat ${filteredFeatures.length} objek dari OSM!`, 3000);
                 } else {
                     UI.toast('info', 'Tidak ada gedung/jalan ditemukan pada area ini.', 3000);
                 }
@@ -2342,7 +1949,7 @@ const RotateHandler = {
                 Swal.fire({
                     icon: 'error',
                     title: 'Gagal Memuat Data OSM',
-                    html: 'Seluruh server OSM publik sedang sibuk. Silakan coba beberapa saat lagi.<br><br><b>Tips:</b> Jika Anda pernah memuat area ini sebelumnya, data tersimpan di cache browser selama 7 hari.',
+                    html: 'Seluruh server OSM publik sedang sibuk. Silakan coba beberapa saat lagi.',
                     confirmButtonText: 'OK',
                     confirmButtonColor: '#10b981'
                 });
@@ -2503,15 +2110,17 @@ const RotateHandler = {
                             } else if (props.sourceGroup === 'osm') {
                                 layer.options.pmIgnore = false;
                                 if (props.building) {
-                                    layer.options.allowEditing = true;
+                                    layer.options.allowEditing = false;
                                     layer.options.allowDragging = true;
-                                    layer.options.allowRemoval = false;
-                                    layer.options.allowRotation = true;
+                                    layer.options.allowRemoval = true;
+                                    layer.options.allowRotation = false;
+                                    layer.options.allowCutting = false;
                                 } else if (props.highway) {
                                     layer.options.allowEditing = false;
                                     layer.options.allowDragging = true;
                                     layer.options.allowRemoval = false;
                                     layer.options.allowRotation = false;
+                                    layer.options.allowCutting = false;
                                 }
                                 App.groups.osm.addLayer(layer);
                             } else {

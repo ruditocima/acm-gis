@@ -1169,7 +1169,8 @@
             snapDistance: 15,
             snapSegment: true,
             allowSelfIntersection: false,
-            preventMarkerPan: true
+            preventMarkerPan: true,
+            ortho: false
         });
 
         App.map.pm.setPathOptions({
@@ -1224,6 +1225,10 @@
         });
 
         App.map.on('pm:create', (e) => {
+            const { shape, layer } = e;
+            if (shape === 'Rectangle') {
+                console.log('Rectangle created successfully without ortho constraint.');
+            }
             if (e.shape === 'Marker') {
                 e.layer.setIcon(blueDotIcon);
             } else if (e.layer.setStyle) {

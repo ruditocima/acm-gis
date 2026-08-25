@@ -122,13 +122,7 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* Styling kursor khusus mode Drag */
-        .leaflet-drag-active .leaflet-interactive {
-            cursor: grab !important;
-        }
-        .leaflet-drag-active .leaflet-interactive:active {
-            cursor: grabbing !important;
-        }
+        
 
         /* Coordinate Display */
         .coord-display {
@@ -515,13 +509,8 @@
 
             <!-- Drawing Controls Note -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
-                <h2 class="text-sm font-semibold mb-1 text-gray-300 uppercase tracking-wider">Editing Tools</h2>
-                <p class="text-xs text-gray-400 mb-3">Gunakan toolbar di kanan atas peta untuk menggambar atau mengedit polygon/garis.</p>
-
-                <!-- Tombol Rotate Layers -->
-                <button id="btn-rotate" class="w-full mb-2 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
-                    <i class="fa-solid fa-rotate mr-1.5"></i> Rotate Layers
-                </button>
+                <h2 class="text-sm font-semibold mb-1 text-gray-300 uppercase tracking-wider">Drawing Tools</h2>
+                <p class="text-xs text-gray-400 mb-3">Gunakan toolbar di kanan atas peta untuk menggambar polygon, garis, atau marker. Klik tombol sampah untuk menghapus objek yang digambar.</p>
 
                 <div class="grid grid-cols-2 gap-2 mt-2">
                     <button id="btn-copy" class="py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
@@ -604,7 +593,6 @@
                 measurePoints: [],
                 measureLayer: null,
                 measureTooltip: null,
-                isRotateModeActive: false,
                 clipboardGeoJSON: null,
                 lastSelectedLayer: null,
                 activeEditLayer: null,
@@ -781,6 +769,22 @@
             UI.updateFeatureCounts();
             UI.toast('success', 'Aksi sebelumnya dibatalkan (Undo)!', 1500);
                     }
+
+        // --- Coordinate Validation Helper ---
+        function validateCoords(coords) {
+            if (!Array.isArray(coords)) return false;
+            for (let c of coords) {
+                if (!Array.isArray(c) || c.length < 2) return false;
+                if (typeof c[0] !== 'number' || typeof c[1] !== 'number') return false;
+                if (isNaN(c[0]) || isNaN(c[1])) return false;
+                if (c[0] < -180 || c[0] > 180 || c[1] < -90 || c[1] > 90) return false;
+            }
+            return true;
+        }
+
+        function cleanPolygonCoords(rings) {
+            return rings.filter(ring => validateCoords(ring) && ring.length >= 4);
+        }
 
         // --- Custom OSM to GeoJSON ---
         function customOSMToGeoJSON(data) {
@@ -1190,9 +1194,6 @@
             drawPolygon: true,
             drawPolyline: true,
             drawRectangle: true,
-            editMode: true,
-            dragMode: true,
-            cutPolygon: true,
             removalMode: true,
         });
 
@@ -1208,60 +1209,13 @@
         });
 
         App.map.on('pm:drawstart', (e) => {
-            // Matikan rotate mode saat mulai menggambar (mirror Edit Mode)
-            App.state.isRotateModeActive = false;
-            updateRotateButtonUI();
             clearAllEdits();
             clearMeasurement();
         });
 
-        App.map.on('pm:globaleditmodetoggled', (e) => {
-            // Matikan rotate mode saat Edit Mode aktif/nonaktif (mirror behavior)
-            App.state.isRotateModeActive = false;
-            updateRotateButtonUI();
-            clearAllEdits();
+        
 
-            if (e.enabled) {
-                // Pastikan semua layer dalam keadaan bersih sebelum edit mode global
-                [App.groups.osm, App.groups.draw, App.groups.kml].forEach(group => {
-                    processAllSubLayers(group, l => {
-                        if (l.pm && typeof l.pm.disable === 'function') {
-                            try { l.pm.disable(); } catch(err){}
-                        }
-                    });
-                });
-                UI.toast('info', 'Silahkan Klik pada objek untuk mengedit', 2500);
-            }
-        });
-
-        App.map.on('pm:globaldragmodetoggled', (e) => {
-            App.state.isRotateModeActive = false;
-            updateRotateButtonUI();
-            clearAllEdits();
-            const isDragActive = e.enabled;
-            const mapContainer = App.map.getContainer();
-
-            if (isDragActive) {
-                mapContainer.classList.add('leaflet-drag-active');
-            } else {
-                mapContainer.classList.remove('leaflet-drag-active');
-            }
-
-            // Hanya aktifkan drag pada layer yang diizinkan, jangan aktifkan edit vertex
-            [App.groups.osm, App.groups.draw].forEach(group => {
-                processAllSubLayers(group, layer => {
-                    if (layer.pm && isDragActive) {
-                        layer.pm.enableLayerDrag();
-                    } else if (layer.pm && !isDragActive) {
-                        layer.pm.disableLayerDrag();
-                        // Pastikan tidak ada sisa edit mode
-                        if (typeof layer.pm.disable === 'function') {
-                            try { layer.pm.disable(); } catch(err){}
-                        }
-                    }
-                });
-            });
-        });
+        
 
         App.map.on('click', () => {
             clearAllEdits();
@@ -1276,10 +1230,7 @@
             e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Drawn Object' } };
 
             e.layer.options.pmIgnore = false;
-            e.layer.options.allowEditing = true;
-            e.layer.options.allowDragging = true;
             e.layer.options.allowRemoval = true;
-            e.layer.options.allowRotation = true;
 
             App.groups.draw.addLayer(e.layer);
             bindNamePopup(e.layer);
@@ -1349,66 +1300,21 @@
         // ============================================================
 
         function clearAllEdits() {
-            // Matikan layer yang sedang aktif di edit/rotate
             if (App.state.activeEditLayer) {
                 if (App.state.activeEditLayer.pm) {
                     if (typeof App.state.activeEditLayer.pm.disable === 'function') App.state.activeEditLayer.pm.disable();
-                    if (typeof App.state.activeEditLayer.pm.disableRotate === 'function') App.state.activeEditLayer.pm.disableRotate();
                 }
                 App.state.activeEditLayer = null;
             }
-
-            // PENTING: Matikan semua pm state di seluruh layer di semua grup
-            // agar vertex tidak tampil saat mode rotate baru diaktifkan
-            [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
-                processAllSubLayers(group, l => {
-                    if (l.pm && typeof l.pm.disable === 'function') {
-                        try { l.pm.disable(); } catch(e){}
-                    }
-                });
-            });
         }
 
-        function updateRotateButtonUI() {
-            const btnRotate = document.getElementById('btn-rotate');
-            if (App.state.isRotateModeActive) {
-                btnRotate.className = "w-full mb-2 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-xs transition-colors flex items-center justify-center shadow-md";
-            } else {
-                btnRotate.className = "w-full mb-2 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center";
-            }
-        }
+        
 
         // ============================================================
         // 10. MODE ROTATE LAYERS
         // ============================================================
 
-        document.getElementById('btn-rotate').addEventListener('click', () => {
-            App.state.isRotateModeActive = !App.state.isRotateModeActive;
-
-            if (App.state.isRotateModeActive) {
-                // Matikan SEMUA mode Geoman global
-                if (App.map.pm.globalEditEnabled()) App.map.pm.disableGlobalEditMode();
-                if (App.map.pm.globalDragModeEnabled()) App.map.pm.disableGlobalDragMode();
-                if (App.map.pm.globalDrawModeEnabled()) App.map.pm.disableGlobalDrawMode();
-                clearMeasurement();
-                clearAllEdits();
-
-                // Hapus seleksi agar tidak ada highlight yang mengganggu
-                if (App.state.lastSelectedLayer) {
-                    unhighlightLayer(App.state.lastSelectedLayer);
-                    App.state.lastSelectedLayer = null;
-                }
-
-                UI.toast('info', 'Mode Rotasi Aktif: Klik pada objek untuk memutarnya', 2500);
-            } else {
-                clearAllEdits();
-                if (App.state.lastSelectedLayer) {
-                    unhighlightLayer(App.state.lastSelectedLayer);
-                    App.state.lastSelectedLayer = null;
-                }
-            }
-            updateRotateButtonUI();
-        });
+        
 
         // ============================================================
         // 11. BASE LAYER SWITCHER
@@ -1494,10 +1400,7 @@
                 },
                 onEachFeature: function(feature, layer) {
                     layer.options.pmIgnore = false;
-                    layer.options.allowEditing = true;
-                    layer.options.allowDragging = true;
                     layer.options.allowRemoval = true;
-                    layer.options.allowRotation = true;
                     bindNamePopup(layer);
                 }
             });
@@ -1505,9 +1408,7 @@
             newLayer.eachLayer(lyr => {
                 App.groups.draw.addLayer(lyr);
                 setSelectedLayer(lyr);
-                if (App.map.pm.globalDragModeEnabled() && lyr.pm) {
-                    lyr.pm.enableLayerDrag();
-                }
+                
                 pushUndoAction({ type: 'add', group: App.groups.draw, layer: lyr });
             });
 
@@ -1548,8 +1449,6 @@
             if (e.key === 'Escape') {
                 clearMeasurement();
                 clearAllEdits();
-                App.state.isRotateModeActive = false;
-                updateRotateButtonUI();
             }
         });
 
@@ -1593,99 +1492,11 @@
                 const isRoad = layer.feature && layer.feature.properties && layer.feature.properties.highway;
                 const isBuilding = layer.feature && layer.feature.properties && layer.feature.properties.building;
 
-                // Mode Rotate
-                if (App.state.isRotateModeActive) {
-                    if (e.originalEvent) L.DomEvent.stopPropagation(e);
-
-                    if (isKmlLayer) {
-                        UI.toast('warning', 'Layer KML terkunci dan tidak dapat diputar!', 2000);
-                        return;
-                    }
-
-                    if (isRoad) {
-                        UI.toast('warning', 'OSM Jalan hanya diperbolehkan Drag, tidak bisa di-rotate!', 2000);
-                        return;
-                    }
-                    if (isBuilding) {
-                        UI.toast('warning', 'OSM Bangunan tidak diizinkan untuk di-rotate!', 2000);
-                        return;
-                    }
-
-                    // Toggle off jika objek yang sama diklik lagi
-                    if (App.state.activeEditLayer === layer) {
-                        if (layer.pm && typeof layer.pm.disable === 'function') {
-                            layer.pm.disable();
-                        }
-                        App.state.activeEditLayer = null;
-                        unhighlightLayer(layer);
-                        return;
-                    }
-
-                    // Matikan objek sebelumnya secara eksplisit
-                    if (App.state.activeEditLayer && App.state.activeEditLayer.pm) {
-                        if (typeof App.state.activeEditLayer.pm.disable === 'function') {
-                            App.state.activeEditLayer.pm.disable();
-                        }
-                        unhighlightLayer(App.state.activeEditLayer);
-                    }
-
-                    setSelectedLayer(layer);
-
-                    if (layer.pm && layer.options.allowRotation !== false) {
-                        // Hanya aktifkan rotate pada objek yang diklik
-                        // Jangan gunakan allowEditing: true karena akan menampilkan semua vertex
-                        // Gunakan konfigurasi minimal untuk rotate only
-                        layer.pm.enable({
-                            allowEditing: false,  // PENTING: jangan tampilkan vertex edit
-                            allowDragging: false,
-                            allowRemoval: false,
-                            allowCutting: false,
-                            allowRotation: true,
-                            snappable: false
-                        });
-                        App.state.activeEditLayer = layer;
-                    }
-                    return;
-                }
+                
 
                 setSelectedLayer(layer);
 
-                if (App.map.pm.globalDragModeEnabled()) {
-                    if (e.originalEvent) L.DomEvent.stopPropagation(e);
-                    return;
-                }
-
-                if (App.map.pm.globalEditEnabled()) {
-                    if (isKmlLayer) {
-                        if (e.originalEvent) L.DomEvent.stopPropagation(e);
-                        return;
-                    }
-
-                    if (isRoad) {
-                        UI.toast('warning', 'OSM Jalan hanya diperbolehkan Drag Layer!', 2000);
-                        if (e.originalEvent) L.DomEvent.stopPropagation(e);
-                        return;
-                    }
-                    if (isBuilding) {
-                        UI.toast('warning', 'OSM Bangunan tidak diizinkan untuk di-edit!', 2000);
-                        if (e.originalEvent) L.DomEvent.stopPropagation(e);
-                        return;
-                    }
-
-                    if (App.state.activeEditLayer !== layer) {
-                        clearAllEdits();
-                        if (layer.pm && layer.options.allowEditing !== false) {
-                            layer.pm.enable({
-                                allowEditing: true,
-                                allowDragging: true,
-                                snappable: false
-                            });
-                            App.state.activeEditLayer = layer;
-                        }
-                    }
-                    if (e.originalEvent) L.DomEvent.stopPropagation(e);
-                    return; 
-                }
+                
                 // Normal click - show popup (Label + Deskripsi saja)
                 let props = layer.feature?.properties || {};
                 let name = props.name || props.Name || props.NAME || props.type || props.building || props.highway || 'Object';
@@ -1705,11 +1516,7 @@
                 }).openPopup();
             });
 
-            if (layer.pm && !isKmlLayer) {
-                layer.on('pm:dragstart pm:edit', () => {
-                    setSelectedLayer(layer);
-                                    });
-            }
+            
         }
 
         // ============================================================
@@ -1903,15 +1710,29 @@
                             if (f.geometry && (f.geometry.type === 'LineString' || f.geometry.type === 'MultiLineString')) {
                                 const buffered = turf.buffer(f, bufferRadius, { units: 'meters' });
                                 if (buffered) {
+                                    // Validasi koordinat hasil buffer
+                                    let validBuffer = null;
                                     if (buffered.type === 'FeatureCollection') {
+                                        const validFeatures = [];
                                         buffered.features.forEach(bf => {
-                                            bf.properties = { ...f.properties };
-                                            processedFeatures.push(bf);
+                                            if (bf.geometry && bf.geometry.type === 'Polygon') {
+                                                bf.geometry.coordinates = cleanPolygonCoords(bf.geometry.coordinates);
+                                                if (bf.geometry.coordinates.length > 0 && bf.geometry.coordinates[0].length >= 4) {
+                                                    bf.properties = { ...f.properties };
+                                                    validFeatures.push(bf);
+                                                }
+                                            }
                                         });
-                                        return;
-                                    } else {
-                                        buffered.properties = { ...f.properties };
-                                        targetFeature = buffered;
+                                        if (validFeatures.length > 0) {
+                                            validFeatures.forEach(bf => processedFeatures.push(bf));
+                                            return;
+                                        }
+                                    } else if (buffered.geometry && buffered.geometry.type === 'Polygon') {
+                                        buffered.geometry.coordinates = cleanPolygonCoords(buffered.geometry.coordinates);
+                                        if (buffered.geometry.coordinates.length > 0 && buffered.geometry.coordinates[0].length >= 4) {
+                                            buffered.properties = { ...f.properties };
+                                            targetFeature = buffered;
+                                        }
                                     }
                                 }
                             }
@@ -1970,17 +1791,9 @@
                             layer.feature.properties = { ...layer.feature.properties, ...feature.properties };
 
                             if (feature.properties.building) {
-                                layer.options.allowEditing = false;
-                                layer.options.allowDragging = true;
                                 layer.options.allowRemoval = true;
-                                layer.options.allowRotation = false;
-                                layer.options.allowCutting = false;
                             } else if (feature.properties.highway) {
-                                layer.options.allowEditing = false;
-                                layer.options.allowDragging = true;
                                 layer.options.allowRemoval = false;
-                                layer.options.allowRotation = false;
-                                layer.options.allowCutting = false;
                             }
 
                             bindNamePopup(layer);
@@ -1992,11 +1805,7 @@
                         App.groups.osm.addLayer(layer);
                     });
 
-                    if (App.map.pm.globalDragModeEnabled()) {
-                        processAllSubLayers(App.groups.osm, layer => {
-                            if (layer.pm) layer.pm.enableLayerDrag();
-                        });
-                    }
+                    
 
                     UI.updateFeatureCounts();
                                         UI.toast('success', `Berhasil memuat ${filteredFeatures.length} objek dari OSM!`, 3000);
@@ -2168,25 +1977,14 @@
                             } else if (props.sourceGroup === 'osm') {
                                 layer.options.pmIgnore = false;
                                 if (props.building) {
-                                    layer.options.allowEditing = false;
-                                    layer.options.allowDragging = true;
                                     layer.options.allowRemoval = true;
-                                    layer.options.allowRotation = false;
-                                    layer.options.allowCutting = false;
                                 } else if (props.highway) {
-                                    layer.options.allowEditing = false;
-                                    layer.options.allowDragging = true;
                                     layer.options.allowRemoval = false;
-                                    layer.options.allowRotation = false;
-                                    layer.options.allowCutting = false;
                                 }
                                 App.groups.osm.addLayer(layer);
                             } else {
                                 layer.options.pmIgnore = false;
-                                layer.options.allowEditing = true;
-                                layer.options.allowDragging = true;
                                 layer.options.allowRemoval = true;
-                                layer.options.allowRotation = true;
                                 App.groups.draw.addLayer(layer);
                             }
                             bindNamePopup(layer);

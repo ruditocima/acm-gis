@@ -324,7 +324,17 @@
             margin-top: -4px !important;
         }
 
+        /* Pastikan OSM layer tetap solid saat zoom */
+        .osm-building-layer, .osm-road-layer {
+            vector-effect: non-scaling-stroke;
+        }
+        .leaflet-overlay-pane svg g path.osm-building-layer,
+        .leaflet-overlay-pane svg g path.osm-road-layer {
+            transition: none !important;
+        }
+
     </style>
+<base target="_blank">
 <base target="_blank">
 <base target="_blank">
 <base target="_blank">
@@ -1212,14 +1222,15 @@
             clearAllEdits();
 
             if (e.enabled) {
+                // Pastikan semua layer dalam keadaan bersih sebelum edit mode global
                 [App.groups.osm, App.groups.draw, App.groups.kml].forEach(group => {
                     processAllSubLayers(group, l => {
                         if (l.pm && typeof l.pm.disable === 'function') {
-                            l.pm.disable();
+                            try { l.pm.disable(); } catch(err){}
                         }
                     });
                 });
-                UI.toast('info', 'Silahkan Klik pada objek', 2500);
+                UI.toast('info', 'Silahkan Klik pada objek untuk mengedit', 2500);
             }
         });
 
@@ -1236,13 +1247,16 @@
                 mapContainer.classList.remove('leaflet-drag-active');
             }
 
+            // Hanya aktifkan drag pada layer yang diizinkan, jangan aktifkan edit vertex
             [App.groups.osm, App.groups.draw].forEach(group => {
                 processAllSubLayers(group, layer => {
-                    if (layer.pm) {
-                        if (isDragActive) {
-                            layer.pm.enableLayerDrag();
-                        } else {
-                            layer.pm.disableLayerDrag();
+                    if (layer.pm && isDragActive) {
+                        layer.pm.enableLayerDrag();
+                    } else if (layer.pm && !isDragActive) {
+                        layer.pm.disableLayerDrag();
+                        // Pastikan tidak ada sisa edit mode
+                        if (typeof layer.pm.disable === 'function') {
+                            try { layer.pm.disable(); } catch(err){}
                         }
                     }
                 });
@@ -1273,6 +1287,11 @@
 
             pushUndoAction({ type: 'add', group: App.groups.draw, layer: e.layer });
             UI.updateFeatureCounts();
+
+            // Matikan global draw mode setelah membuat objek agar tidak mengganggu
+            if (App.map.pm.globalDrawModeEnabled()) {
+                App.map.pm.disableGlobalDrawMode();
+            }
                     });
 
         App.map.on('pm:remove', (e) => {
@@ -1330,6 +1349,7 @@
         // ============================================================
 
         function clearAllEdits() {
+            // Matikan layer yang sedang aktif di edit/rotate
             if (App.state.activeEditLayer) {
                 if (App.state.activeEditLayer.pm) {
                     if (typeof App.state.activeEditLayer.pm.disable === 'function') App.state.activeEditLayer.pm.disable();
@@ -1337,6 +1357,16 @@
                 }
                 App.state.activeEditLayer = null;
             }
+
+            // PENTING: Matikan semua pm state di seluruh layer di semua grup
+            // agar vertex tidak tampil saat mode rotate baru diaktifkan
+            [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
+                processAllSubLayers(group, l => {
+                    if (l.pm && typeof l.pm.disable === 'function') {
+                        try { l.pm.disable(); } catch(e){}
+                    }
+                });
+            });
         }
 
         function updateRotateButtonUI() {
@@ -1356,16 +1386,26 @@
             App.state.isRotateModeActive = !App.state.isRotateModeActive;
 
             if (App.state.isRotateModeActive) {
-                // Aktifkan mode rotate: matikan semua mode lain (sama seperti Edit Mode)
+                // Matikan SEMUA mode Geoman global
                 if (App.map.pm.globalEditEnabled()) App.map.pm.disableGlobalEditMode();
                 if (App.map.pm.globalDragModeEnabled()) App.map.pm.disableGlobalDragMode();
                 if (App.map.pm.globalDrawModeEnabled()) App.map.pm.disableGlobalDrawMode();
                 clearMeasurement();
                 clearAllEdits();
+
+                // Hapus seleksi agar tidak ada highlight yang mengganggu
+                if (App.state.lastSelectedLayer) {
+                    unhighlightLayer(App.state.lastSelectedLayer);
+                    App.state.lastSelectedLayer = null;
+                }
+
                 UI.toast('info', 'Mode Rotasi Aktif: Klik pada objek untuk memutarnya', 2500);
             } else {
-                // Nonaktifkan mode rotate (sama seperti Edit Mode)
                 clearAllEdits();
+                if (App.state.lastSelectedLayer) {
+                    unhighlightLayer(App.state.lastSelectedLayer);
+                    App.state.lastSelectedLayer = null;
+                }
             }
             updateRotateButtonUI();
         });
@@ -1571,32 +1611,36 @@
                         return;
                     }
 
-                    // Mirror Edit Mode: toggle off jika objek yang sama diklik
+                    // Toggle off jika objek yang sama diklik lagi
                     if (App.state.activeEditLayer === layer) {
                         if (layer.pm && typeof layer.pm.disable === 'function') {
                             layer.pm.disable();
                         }
                         App.state.activeEditLayer = null;
+                        unhighlightLayer(layer);
                         return;
                     }
 
-                    // Mirror Edit Mode: matikan objek sebelumnya, aktifkan objek baru
+                    // Matikan objek sebelumnya secara eksplisit
                     if (App.state.activeEditLayer && App.state.activeEditLayer.pm) {
                         if (typeof App.state.activeEditLayer.pm.disable === 'function') {
                             App.state.activeEditLayer.pm.disable();
                         }
+                        unhighlightLayer(App.state.activeEditLayer);
                     }
 
                     setSelectedLayer(layer);
 
                     if (layer.pm && layer.options.allowRotation !== false) {
-                        // Gunakan allowEditing: true agar handle rotasi Geoman muncul
-                        // Vertex sudah dikecilkan via CSS sehingga tidak mengganggu
+                        // Hanya aktifkan rotate pada objek yang diklik
+                        // Jangan gunakan allowEditing: true karena akan menampilkan semua vertex
+                        // Gunakan konfigurasi minimal untuk rotate only
                         layer.pm.enable({
-                            allowEditing: true,
-                            allowDragging: true,
+                            allowEditing: false,  // PENTING: jangan tampilkan vertex edit
+                            allowDragging: false,
                             allowRemoval: false,
                             allowCutting: false,
+                            allowRotation: true,
                             snappable: false
                         });
                         App.state.activeEditLayer = layer;
@@ -1897,16 +1941,19 @@
                 });
 
                 if (filteredFeatures.length > 0) {
-                    L.geoJSON({ type: "FeatureCollection", features: filteredFeatures }, {
+                    const osmGeoLayer = L.geoJSON({ type: "FeatureCollection", features: filteredFeatures }, {
                         renderer: canvasRenderer,
                         style: function(feature) {
                             if (feature.properties.building) {
-                                return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
+                                return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4, className: 'osm-building-layer' };
                             }
                             if (feature.properties.highway) {
-                                return { color: '#06b6d4', weight: 1.5, fillColor: '#06b6d4', fillOpacity: 0.3 };
+                                return { color: '#06b6d4', weight: 1.5, fillColor: '#06b6d4', fillOpacity: 0.3, className: 'osm-road-layer' };
                             }
                             return { color: '#ffffff', weight: 1 };
+                        },
+                        pointToLayer: function(feature, latlng) {
+                            return L.marker(latlng, { icon: blueDotIcon });
                         },
                         onEachFeature: function(feature, layer) {
                             if (!feature.properties.name) {
@@ -1914,7 +1961,13 @@
                                 else if (feature.properties.highway) feature.properties.name = "Road";
                             }
 
+                            // Pastikan layer terikat kuat ke peta
+                            layer.options.interactive = true;
                             layer.options.pmIgnore = false;
+
+                            // Simpan referensi feature properties ke layer
+                            layer.feature = layer.feature || { type: 'Feature', properties: {} };
+                            layer.feature.properties = { ...layer.feature.properties, ...feature.properties };
 
                             if (feature.properties.building) {
                                 layer.options.allowEditing = false;
@@ -1932,7 +1985,12 @@
 
                             bindNamePopup(layer);
                         }
-                    }).addTo(App.groups.osm);
+                    });
+
+                    // Tambahkan ke grup OSM dan pastikan tetap ter-render saat zoom
+                    osmGeoLayer.eachLayer(function(layer) {
+                        App.groups.osm.addLayer(layer);
+                    });
 
                     if (App.map.pm.globalDragModeEnabled()) {
                         processAllSubLayers(App.groups.osm, layer => {

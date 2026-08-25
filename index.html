@@ -1204,8 +1204,9 @@
         });
 
         App.map.pm.setGlobalOptions({
-            snappable: false,
-            snapDistance: 0
+            snappable: true,
+            snapDistance: 15,
+            finishOn: 'snap'
         });
 
         App.map.pm.setPathOptions({
@@ -1259,7 +1260,7 @@
 
             // Jika layer jalan OSM, langsung batalkan penghapusan
             if (isOSMRoad) {
-                UI.toast('warning', 'tidak boleh dihapus!', 2500);
+                UI.toast('warning', 'Data OSM Jalan tidak diizinkan untuk dihapus!', 2500);
                 return;
             }
 

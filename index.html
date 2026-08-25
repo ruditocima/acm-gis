@@ -329,6 +329,10 @@
         .leaflet-overlay-pane svg g path.osm-building-layer,
         .leaflet-overlay-pane svg g path.osm-road-layer {
             transition: none !important;
+        .leaflet-container canvas {
+            will-change: transform;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
         }
     </style>
 </head>
@@ -818,10 +822,10 @@
             attribution: '© OpenStreetMap contributors'
         });
 
-        App.layers.earth = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+            App.layers.earth = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
             maxZoom: 22,
-            maxNativeZoom: 20, 
-            attribution: '© Google Maps'
+            maxNativeZoom: 19,
+            attribution: 'Tiles © Esri'
         });
 
         App.map = L.map('map', {
@@ -829,7 +833,9 @@
             zoom: 5,
             layers: [App.layers.osm],
             zoomControl: false,
-            renderer: canvasRenderer
+            renderer: canvasRenderer,
+            zoomAnimation: false,
+            fadeAnimation: false
         });
 
         L.control.zoom({ position: 'topright' }).addTo(App.map);

@@ -1169,7 +1169,8 @@
             snapDistance: 15,
             snapSegment: true,
             allowSelfIntersection: false,
-            preventMarkerPan: true
+            preventMarkerPan: true,
+            ortho: false
         });
 
         App.map.pm.setPathOptions({
@@ -1181,8 +1182,13 @@
         App.map.on('pm:drawstart', ({ workingLayer, shape }) => {
             clearMeasurement();
 
-            if (shape === 'Polygon' || shape === 'Rectangle') {
-                let firstLatLng = null;
+            if (shape === 'Rectangle') {
+            App.map.pm.enableDraw('Rectangle', { ortho: false });
+            }
+
+            // Penanganan snapping titik awal khusus Polygon
+            if (shape === 'Polygon') {
+            let firstLatLng = null;
 
                 workingLayer.on('pm:vertexadded', (e) => {
                     const latlngs = workingLayer.getLatLngs ? workingLayer.getLatLngs() : [];

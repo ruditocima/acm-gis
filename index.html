@@ -1168,7 +1168,8 @@
             snappable: true,
             snapDistance: 15,
             snapSegment: true,
-            allowSelfIntersection: false
+            allowSelfIntersection: false,
+            preventMarkerPan: true
         });
 
         App.map.pm.setPathOptions({
@@ -1627,7 +1628,8 @@
 
                 layer.bindPopup(content, {
                     maxWidth: 280,
-                    className: 'custom-popup-readonly'
+                    className: 'custom-popup-readonly',
+                    autoPan: false
                 }).openPopup();
             });
         }

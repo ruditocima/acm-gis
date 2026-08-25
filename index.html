@@ -330,6 +330,7 @@
 <base target="_blank">
 <base target="_blank">
 <base target="_blank">
+<base target="_blank">
 </head>
 <body class="flex flex-row bg-gray-900 text-gray-200">
 
@@ -610,7 +611,221 @@
             }
         };
 
-        // --- Coordinate Utilities ---
+        
+// ============================================================
+// OSM CACHE & FETCHER MODULE (IndexedDB + Exponential Backoff)
+// ============================================================
+
+const OSMCache = {
+    db: null,
+    DB_NAME: 'GeoConvertCache',
+    STORE_NAME: 'osmQueries',
+    VERSION: 1,
+    CACHE_DURATION: 7 * 24 * 60 * 60 * 1000, // 7 hari
+
+    async init() {
+        if (this.db) return;
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(this.DB_NAME, this.VERSION);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+                this.db = request.result;
+                resolve();
+            };
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+                    const store = db.createObjectStore(this.STORE_NAME, { keyPath: 'key' });
+                    store.createIndex('timestamp', 'timestamp', { unique: false });
+                }
+            };
+        });
+    },
+
+    generateKey(s, w, n, e) {
+        return `osm_${s.toFixed(6)}_${w.toFixed(6)}_${n.toFixed(6)}_${e.toFixed(6)}`;
+    },
+
+    async get(bbox) {
+        if (!this.db) await this.init();
+        const key = this.generateKey(bbox.getSouth(), bbox.getWest(), bbox.getNorth(), bbox.getEast());
+
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction([this.STORE_NAME], 'readonly');
+            const store = tx.objectStore(this.STORE_NAME);
+            const request = store.get(key);
+
+            request.onsuccess = () => {
+                const result = request.result;
+                if (!result) return resolve(null);
+
+                const age = Date.now() - result.timestamp;
+                if (age > this.CACHE_DURATION) {
+                    this.delete(key);
+                    return resolve(null);
+                }
+
+                resolve(result.data);
+            };
+            request.onerror = () => reject(request.error);
+        });
+    },
+
+    async set(bbox, data) {
+        if (!this.db) await this.init();
+        const key = this.generateKey(bbox.getSouth(), bbox.getWest(), bbox.getNorth(), bbox.getEast());
+
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
+            const store = tx.objectStore(this.STORE_NAME);
+            const request = store.put({
+                key: key,
+                data: data,
+                timestamp: Date.now(),
+                bbox: { s: bbox.getSouth(), w: bbox.getWest(), n: bbox.getNorth(), e: bbox.getEast() }
+            });
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    },
+
+    async delete(key) {
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
+            const store = tx.objectStore(this.STORE_NAME);
+            const request = store.delete(key);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    },
+
+    async clear() {
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction([this.STORE_NAME], 'readwrite');
+            const store = tx.objectStore(this.STORE_NAME);
+            const request = store.clear();
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    },
+
+    async getStats() {
+        if (!this.db) await this.init();
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction([this.STORE_NAME], 'readonly');
+            const store = tx.objectStore(this.STORE_NAME);
+            const request = store.getAll();
+            request.onsuccess = () => {
+                const items = request.result;
+                let totalSize = 0;
+                items.forEach(item => {
+                    try { totalSize += JSON.stringify(item.data).length; } catch(e) {}
+                });
+                resolve({
+                    count: items.length,
+                    totalSizeKB: (totalSize / 1024).toFixed(2)
+                });
+            };
+            request.onerror = () => reject(request.error);
+        });
+    }
+};
+
+const OSMFetcher = {
+    config: {
+        maxRetries: 3,
+        baseDelay: 1000,
+        maxDelay: 10000,
+        timeout: 30000
+    },
+
+    sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    },
+
+    getJitter() {
+        return Math.random() * 1000;
+    },
+
+    async fetchWithRetry(url, options, attempt = 0) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+
+            const response = await fetch(url, {
+                ...options,
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            return response;
+        } catch (error) {
+            if (attempt >= this.config.maxRetries) {
+                throw error;
+            }
+
+            const delay = Math.min(
+                this.config.baseDelay * Math.pow(2, attempt) + this.getJitter(),
+                this.config.maxDelay
+            );
+
+            console.warn(`[OSMFetcher] Attempt ${attempt + 1} failed for ${new URL(url).hostname}. Retrying in ${delay.toFixed(0)}ms...`);
+            await this.sleep(delay);
+
+            return this.fetchWithRetry(url, options, attempt + 1);
+        }
+    },
+
+    async fetchOSM(bbox, endpoints, query) {
+        const cached = await OSMCache.get(bbox);
+        if (cached) {
+            console.log('[OSMCache] Data ditemukan di cache');
+            return { data: cached, fromCache: true };
+        }
+
+        const body = "data=" + encodeURIComponent(query);
+
+        for (let i = 0; i < endpoints.length; i++) {
+            const targetUrl = endpoints[i];
+            const mirrorName = new URL(targetUrl).hostname;
+
+            try {
+                UI.showLoading('Mengambil data OSM...', `Mirror ${i+1}/${endpoints.length}: ${mirrorName}`);
+
+                const response = await this.fetchWithRetry(targetUrl, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Accept': 'application/json'
+                    },
+                    body: body
+                });
+
+                const data = await response.json();
+
+                if (data && data.elements) {
+                    await OSMCache.set(bbox, data);
+                    return { data, fromCache: false };
+                }
+            } catch (error) {
+                console.warn(`[OSMFetcher] Mirror ${mirrorName} failed:`, error.message);
+                continue;
+            }
+        }
+
+        throw new Error('Semua mirror gagal setelah retry');
+    }
+};
+
+// Expose ke global untuk debugging (tidak mengubah UI)
+window.clearOSMCache = () => OSMCache.clear().then(() => UI.toast('success', 'Cache OSM dibersihkan!', 2000));
+window.getOSMCacheStats = () => OSMCache.getStats().then(s => console.table(s));
+
+// --- Coordinate Utilities ---
         const CoordUtils = {
             toDMS(deg, isLat) {
                 const absolute = Math.abs(deg);
@@ -1750,6 +1965,9 @@
         async function fetchOSMData(bbox) {
             if (!bbox) return;
 
+            // Inisialisasi cache
+            await OSMCache.init();
+
             const s = bbox.getSouth();
             const w = bbox.getWest();
             const n = bbox.getNorth();
@@ -1776,7 +1994,6 @@
             const btn = document.getElementById('btn-fetch-osm');
             const originalHTML = btn.innerHTML;
             btn.disabled = true;
-            UI.showLoading('Mengambil data OSM...', 'Menghubungkan ke server Overpass');
 
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
@@ -1793,37 +2010,19 @@
             out geom;`;
 
             let successData = null;
+            let fromCache = false;
 
-            for (let i = 0; i < endpoints.length; i++) {
-                const targetUrl = endpoints[i];
-                const mirrorName = new URL(targetUrl).hostname;
-                document.getElementById('loadingSub').textContent = `Mirror ${i+1}/${endpoints.length}: ${mirrorName}`;
+            try {
+                const result = await OSMFetcher.fetchOSM(bbox, endpoints, query);
+                successData = result.data;
+                fromCache = result.fromCache;
 
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), App.config.osmTimeout);
-
-                    const response = await fetch(targetUrl, {
-                        method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'Accept': 'application/json'
-                        },
-                        body: "data=" + encodeURIComponent(query),
-                        signal: controller.signal
-                    });
-                    clearTimeout(timeoutId);
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data && data.elements) {
-                            successData = data;
-                            break; 
-                        }
-                    }
-                } catch (error) {
-                    console.warn(`Mirror ${targetUrl} sibuk/timeout, beralih ke mirror berikutnya...`);
+                if (fromCache) {
+                    UI.showLoading('Memuat data dari cache...', 'Data ditemukan di penyimpanan lokal');
+                    await new Promise(r => setTimeout(r, 400));
                 }
+            } catch (error) {
+                console.error('[OSMFetcher] Gagal:', error);
             }
 
             UI.hideLoading();
@@ -1929,7 +2128,11 @@
                     }
 
                     UI.updateFeatureCounts();
-                                        UI.toast('success', `Berhasil memuat ${filteredFeatures.length} objek dari OSM!`, 3000);
+                                        if (fromCache) {
+                    UI.toast('success', `Dimuat ${filteredFeatures.length} objek dari cache lokal`, 3000);
+                } else {
+                    UI.toast('success', `Berhasil memuat ${filteredFeatures.length} objek dari OSM!`, 3000);
+                }
                 } else {
                     UI.toast('info', 'Tidak ada gedung/jalan ditemukan pada area ini.', 3000);
                 }
@@ -1937,7 +2140,7 @@
                 Swal.fire({
                     icon: 'error',
                     title: 'Gagal Memuat Data OSM',
-                    html: 'Seluruh server OSM publik sedang sibuk. Silakan coba beberapa saat lagi.',
+                    html: 'Seluruh server OSM publik sedang sibuk. Silakan coba beberapa saat lagi.<br><br><b>Tips:</b> Jika Anda pernah memuat area ini sebelumnya, data tersimpan di cache browser selama 7 hari.',
                     confirmButtonText: 'OK',
                     confirmButtonColor: '#10b981'
                 });

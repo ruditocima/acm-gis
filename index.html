@@ -1165,10 +1165,10 @@
         });
 
         App.map.pm.setGlobalOptions({
-            snappable: true,
+            snappable: false,
             snapDistance: 15,
-            snapSegment: true,
-            allowSelfIntersection: false,
+            snapSegment: false,
+            allowSelfIntersection: true,
             preventMarkerPan: true,
             ortho: false,
             allowRotation: true
@@ -1182,7 +1182,11 @@
 
         App.map.on('pm:drawstart', ({ workingLayer, shape }) => {
             clearMeasurement();
-
+        App.map.pm.setGlobalOptions({ 
+        snappable: false, 
+        snapSegment: false,
+        allowSelfIntersection: true 
+        });
             if (shape === 'Rectangle') {
             App.map.pm.setGlobalOptions({ ortho: false });
             if (workingLayer && workingLayer.options) {

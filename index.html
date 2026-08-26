@@ -1168,7 +1168,7 @@
             snappable: true,
             snapDistance: 15,
             snapSegment: true,
-            allowSelfIntersection: true,
+            allowSelfIntersection: false,
             preventMarkerPan: true,
             ortho: false,
             allowRotation: true
@@ -1182,24 +1182,13 @@
 
         App.map.on('pm:drawstart', ({ workingLayer, shape }) => {
             clearMeasurement();
-        App.map.pm.setGlobalOptions({ 
-        snappable: false, 
-        snapSegment: false,
-        allowSelfIntersection: true 
-        });
+
             if (shape === 'Rectangle') {
             App.map.pm.setGlobalOptions({ ortho: false });
             if (workingLayer && workingLayer.options) {
             workingLayer.options.ortho = false;
                 }
             } 
-            });
-         App.map.on('pm:drawend', () => {
-         App.map.pm.setGlobalOptions({ 
-        snappable: true, 
-        snapSegment: true 
-    });
-});
             
             if (shape === 'Polygon' || shape === 'Rectangle') {
                 let firstLatLng = null;
@@ -1235,7 +1224,7 @@
                 });
             }
         });
-        
+
         App.map.on('pm:create', (e) => {
             const { shape, layer } = e;
             if (shape === 'Rectangle') {
@@ -1250,10 +1239,6 @@
 
             e.layer.options.pmIgnore = false;
             e.layer.options.allowRemoval = true;
-            if (e.layer.pm) {
-        e.layer.pm.enable();
-        e.layer.pm.disable();
-    }
 
             App.groups.draw.addLayer(e.layer);
             bindNamePopup(e.layer);

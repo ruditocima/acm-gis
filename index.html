@@ -1201,7 +1201,7 @@
             } else if (e.layer.setStyle) {
                 e.layer.setStyle({ weight: 1.5 });
             }
-            e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Drawn Object' } };
+            e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Object' } };
 
             e.layer.options.pmIgnore = false;
             e.layer.options.allowRemoval = true;
@@ -1471,7 +1471,7 @@
             }
 
             if (pastedGeo.properties) {
-                pastedGeo.properties.name = (pastedGeo.properties.name || 'Object') + ' (Copy)';
+                pastedGeo.properties.name = pastedGeo.properties.name || 'User Object';
             }
 
             const newLayer = L.geoJSON(pastedGeo, {

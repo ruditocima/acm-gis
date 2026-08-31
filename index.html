@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GIS | ACM - GeoConvert Production Ready v3.1</title>
+    <title>GIS | ACM - GeoConvert Production Ready v3.2</title>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -64,7 +64,7 @@
                 <h1 class="text-xl font-bold text-emerald-400 tracking-wide">
                     <i class="fa-solid fa-layer-group text-emerald-400 mr-2"></i> GeoConvert
                 </h1>
-                <p class="text-xs text-gray-400 mt-1">GIS Production System v3.1</p>
+                <p class="text-xs text-gray-400 mt-1">GIS Production System v3.2</p>
             </div>
         </div>
 
@@ -322,7 +322,7 @@
             searchTimeout = setTimeout(async () => {
                 try {
                     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`, {
-                        headers: { 'User-Agent': 'GeoConvertProductionGIS/3.1' }
+                        headers: { 'User-Agent': 'GeoConvertProductionGIS/3.2' }
                     });
                     if (!res.ok) throw new Error('Gagal mengambil data pencarian lokasi.');
                     const data = await res.json();
@@ -355,7 +355,7 @@
             }
         });
 
-        // OSM Overpass Fetcher (Completed & Fixed)
+        // OSM Overpass Fetcher with Safe Buffer Handling
         document.getElementById('btn-fetch-osm').addEventListener('click', async () => {
             const bounds = App.map.getBounds();
             const spanDist = bounds.getSouthWest().distanceTo(bounds.getNorthEast());
@@ -405,15 +405,19 @@
                                     App.groups.osm.addLayer(poly);
                                 }
                             } else if (el.tags && el.tags.highway) {
-                                const line = turf.lineString(coords);
-                                const buffered = turf.buffer(line, roadWidth / 2, { units: 'meters' });
-                                if (buffered && buffered.geometry) {
-                                    const bCoords = buffered.geometry.coordinates[0].map(c => [c[1], c[0]]);
-                                    const roadPoly = L.polygon(bCoords, {
-                                        color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.5
-                                    });
-                                    roadPoly.bindPopup(`<b>Jalan OSM</b><br>Tipe: ${el.tags.highway}<br>Lebar: ${roadWidth}m`);
-                                    App.groups.osm.addLayer(roadPoly);
+                                try {
+                                    const line = turf.lineString(coords);
+                                    const buffered = turf.buffer(line, roadWidth / 2, { units: 'meters' });
+                                    if (buffered && buffered.geometry) {
+                                        const bCoords = buffered.geometry.coordinates[0].map(c => [c[1], c[0]]);
+                                        const roadPoly = L.polygon(bCoords, {
+                                            color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.5
+                                        });
+                                        roadPoly.bindPopup(`<b>Jalan OSM</b><br>Tipe: ${el.tags.highway}<br>Lebar: ${roadWidth}m`);
+                                        App.groups.osm.addLayer(roadPoly);
+                                    }
+                                } catch (bufErr) {
+                                    console.warn('Skipping malformed road buffer:', bufErr);
                                 }
                             }
                         }
@@ -497,7 +501,7 @@
             }
         }
 
-        // Layer Manager Controls (Toggle & Opacity)
+        // Layer Manager Controls with Enhanced Opacity Support
         ['kml', 'osm', 'draw'].forEach(key => {
             document.getElementById(`toggle-${key}`).addEventListener('change', e => {
                 if (e.target.checked) {
@@ -511,7 +515,8 @@
                 App.groups[key].eachLayer(layer => {
                     if (typeof layer.setStyle === 'function') {
                         layer.setStyle({ opacity: opacity, fillOpacity: opacity * 0.4 });
-                    } else if (typeof layer.setOpacity === 'function') {
+                    }
+                    if (typeof layer.setOpacity === 'function') {
                         layer.setOpacity(opacity);
                     }
                 });

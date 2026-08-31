@@ -575,7 +575,6 @@
          */
         (function() {
             function initFreePolygonOverride() {
-                // Menunggu hingga instansi App.map terinisialisasi sempurna (menghindari error DOM map.getPane)
                 if (typeof App === 'undefined' || !App.map) {
                     setTimeout(initFreePolygonOverride, 300);
                     return;
@@ -583,19 +582,16 @@
 
                 const mapInstance = App.map;
 
-                // 1. Pastikan container peta / pane untuk drawing berada di layer z-index paling atas
                 if (mapInstance.getPane('overlayPane')) {
                     mapInstance.getPane('overlayPane').style.zIndex = '600';
                 }
                 
-                // Buat pane khusus drawing jika belum ada agar interaksi pointer selalu di atas
                 if (!mapInstance.getPane('freeDrawPane')) {
                     var freePane = mapInstance.createPane('freeDrawPane');
                     freePane.style.zIndex = 650;
                     freePane.style.pointerEvents = 'none';
                 }
 
-                // 2. Intersep event klik pada map saat mode draw polygon aktif
                 mapInstance.on('mousedown', function(e) {
                     let isPolygonDrawing = false;
 
@@ -613,7 +609,6 @@
                     }
                 }, true);
 
-                // 3. Patch khusus untuk Leaflet.Draw Polygon Handler
                 if (typeof L !== 'undefined' && L.Draw && L.Draw.Polygon) {
                     var originalAddVertex = L.Draw.Polygon.prototype._addVertex;
                     if (originalAddVertex && !L.Draw.Polygon.prototype._freeDrawPatched) {
@@ -1861,14 +1856,18 @@
             btn.disabled = true;
             UI.showLoading('Mengambil data OSM...', 'Menghubungkan ke server Overpass');
 
+            // Mirror endpoints yang diperluas dengan per-mirror timeout yang responsif
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
-                'https://overpass.openstreetmap.fr/api/interpreter',
+                'https://lz4.overpass-api.de/api/interpreter',
+                'https://z.overpass-api.de/api/interpreter',
                 'https://overpass.kumi.systems/api/interpreter',
-                'https://overpass.private.coffee/api/interpreter'
+                'https://overpass.nchc.org.tw/api/interpreter',
+                'https://overpass.private.coffee/api/interpreter',
+                'https://overpass.openstreetmap.fr/api/interpreter'
             ];
 
-            const query = `[out:json][timeout:60];
+            const query = `[out:json][timeout:25];
             (
               way["building"](${s},${w},${n},${e});
               way["highway"](${s},${w},${n},${e});
@@ -1880,11 +1879,13 @@
             for (let i = 0; i < endpoints.length; i++) {
                 const targetUrl = endpoints[i];
                 const mirrorName = new URL(targetUrl).hostname;
-                document.getElementById('loadingSub').textContent = `Mirror ${i+1}/${endpoints.length}: ${mirrorName}`;
+                document.getElementById('loadingSub').textContent = `Mencoba Mirror ${i+1}/${endpoints.length}: ${mirrorName}`;
 
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), App.config.osmTimeout);
+                    // Limit 12 detik per mirror agar saat server hang 504 langsung melompat ke mirror berikutnya
+                    const perMirrorTimeout = 12000;
+                    const timeoutId = setTimeout(() => controller.abort(), perMirrorTimeout);
 
                     const response = await fetch(targetUrl, {
                         method: 'POST',
@@ -1904,7 +1905,7 @@
                             break; 
                         }
                     } else {
-                        console.warn(`Mirror ${mirrorName} merespons dengan status HTTP ${response.status}`);
+                        console.warn(`Mirror ${mirrorName} merespons status HTTP ${response.status}`);
                     }
                 } catch (error) {
                     console.warn(`Mirror ${targetUrl} sibuk/timeout, beralih ke mirror berikutnya...`);
@@ -2066,7 +2067,7 @@
                 Swal.fire({
                     icon: 'error',
                     title: 'Gagal Memuat Data OSM',
-                    html: 'Seluruh server OSM publik sedang sibuk (Gateway Timeout). Silakan coba beberapa saat lagi.',
+                    html: 'Seluruh server Overpass publik sedang sibuk (Gateway Timeout). Silakan coba beberapa saat lagi.',
                     confirmButtonText: 'OK',
                     confirmButtonColor: '#10b981'
                 });
@@ -2538,29 +2539,31 @@
                 const geom = f.geometry;
                 const props = f.properties || {};
                 const layerName = props.layer ? props.layer.toString().replace(/[^a-zA-Z0-9_-]/g, '_') : "User_Drawn";
-                const nameText = props.name || props.Name || props.NAME || "";
+                let name = props.name || props.Name || props.NAME || "";
 
                 if (geom.type === 'Point') {
                     addPointSymbol(geom.coordinates);
-                    if (nameText) addTextLabel(geom.coordinates, nameText);
+                    if (name) addTextLabel(geom.coordinates, name);
+                } else if (geom.type === 'MultiPoint') {
+                    geom.coordinates.forEach(c => {
+                        addPointSymbol(c);
+                        if (name) addTextLabel(c, name);
+                    });
                 } else if (geom.type === 'LineString') {
                     addPolyline(geom.coordinates, false, layerName);
-                    if (nameText && geom.coordinates.length > 0) {
-                        addTextLabel(geom.coordinates[0], nameText);
-                    }
-                } else if (geom.type === 'Polygon') {
-                    geom.coordinates.forEach(ring => {
-                        addPolyline(ring, true, layerName);
-                    });
-                    if (nameText && geom.coordinates[0] && geom.coordinates[0].length > 0) {
-                        addTextLabel(geom.coordinates[0][0], nameText);
+                    if (name && geom.coordinates.length > 0) {
+                        addTextLabel(geom.coordinates[0], name);
                     }
                 } else if (geom.type === 'MultiLineString') {
                     geom.coordinates.forEach(line => {
                         addPolyline(line, false, layerName);
                     });
-                    if (nameText && geom.coordinates[0] && geom.coordinates[0].length > 0) {
-                        addTextLabel(geom.coordinates[0][0], nameText);
+                } else if (geom.type === 'Polygon') {
+                    geom.coordinates.forEach(ring => {
+                        addPolyline(ring, true, layerName);
+                    });
+                    if (name && geom.coordinates.length > 0 && geom.coordinates[0].length > 0) {
+                        addTextLabel(geom.coordinates[0][0], name);
                     }
                 } else if (geom.type === 'MultiPolygon') {
                     geom.coordinates.forEach(poly => {
@@ -2568,49 +2571,53 @@
                             addPolyline(ring, true, layerName);
                         });
                     });
-                    if (nameText && geom.coordinates[0] && geom.coordinates[0][0] && geom.coordinates[0][0].length > 0) {
-                        addTextLabel(geom.coordinates[0][0][0], nameText);
-                    }
                 }
             });
 
-            if (minX === Infinity) {
-                minX = 0; minY = 0; maxX = 100; maxY = 100;
-            }
+            if (minX === Infinity) { minX = 0; minY = 0; maxX = 100; maxY = 100; }
 
-            let dxf = [];
-            dxf.push("  0", "SECTION");
-            dxf.push("  2", "HEADER");
-            dxf.push("  9", "$EXTMIN");
-            dxf.push(" 10", minX.toFixed(4), " 20", minY.toFixed(4), " 30", "0.0");
-            dxf.push("  9", "$EXTMAX");
-            dxf.push(" 10", maxX.toFixed(4), " 20", maxY.toFixed(4), " 30", "0.0");
-            dxf.push("  0", "ENDSEC");
+            let headerDxf = [
+                "  0", "SECTION",
+                "  2", "HEADER",
+                "  9", "$EXTMIN",
+                " 10", minX.toFixed(4),
+                " 20", minY.toFixed(4),
+                " 30", "0.0",
+                "  9", "$EXTMAX",
+                " 10", maxX.toFixed(4),
+                " 20", maxY.toFixed(4),
+                " 30", "0.0",
+                "  0", "ENDSEC",
+                "  0", "SECTION",
+                "  2", "TABLES",
+                "  0", "TABLE",
+                "  2", "LAYER",
+                " 70", layerNames.size.toString()
+            ];
 
-            dxf.push("  0", "SECTION");
-            dxf.push("  2", "TABLES");
-            dxf.push("  0", "TABLE");
-            dxf.push("  2", "LAYER");
-            dxf.push(" 70", layerNames.size.toString());
-
-            layerNames.forEach(name => {
-                dxf.push("  0", "LAYER");
-                dxf.push("  2", name);
-                dxf.push(" 70", "0");
-                dxf.push(" 62", layerColors[name] || "7");
-                dxf.push("  6", "CONTINUOUS");
+            layerNames.forEach(lName => {
+                headerDxf.push(
+                    "  0", "LAYER",
+                    "  2", lName,
+                    " 70", "0",
+                    " 62", layerColors[lName] || "7",
+                    "  6", "CONTINUOUS"
+                );
             });
 
-            dxf.push("  0", "ENDTAB");
-            dxf.push("  0", "ENDSEC");
+            headerDxf.push(
+                "  0", "ENDTAB",
+                "  0", "ENDSEC",
+                "  0", "SECTION",
+                "  2", "ENTITIES"
+            );
 
-            dxf.push("  0", "SECTION");
-            dxf.push("  2", "ENTITIES");
-            dxf = dxf.concat(entitiesDxf);
-            dxf.push("  0", "ENDSEC");
-            dxf.push("  0", "EOF");
+            let footerDxf = [
+                "  0", "ENDSEC",
+                "  0", "EOF"
+            ];
 
-            return dxf.join("\n");
+            return headerDxf.concat(entitiesDxf, footerDxf).join("\n");
         }
     </script>
 </body>

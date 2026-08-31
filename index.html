@@ -619,6 +619,7 @@
                     }
                 }
 
+                console.info("Free-Draw Polygon Override berhasil dimuat tanpa mengubah template utama.");
             }
 
             if (document.readyState === 'complete') {
@@ -1821,7 +1822,7 @@
         }
 
         // ============================================================
-        // 15. FETCH OSM DATA WITH ROBUST FALLBACK MIRRORS (Fixed 504)
+        // 15. FETCH OSM DATA WITH ROBUST FALLBACK MIRRORS
         // ============================================================
 
         async function fetchOSMData(bbox) {
@@ -1855,7 +1856,7 @@
             btn.disabled = true;
             UI.showLoading('Mengambil data OSM...', 'Menghubungkan ke server Overpass');
 
-            // Mirror endpoints yang diperluas dengan urutan stabil
+            // Mirror endpoints yang diperluas dengan per-mirror timeout yang responsif
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
                 'https://lz4.overpass-api.de/api/interpreter',
@@ -1866,8 +1867,7 @@
                 'https://overpass.openstreetmap.fr/api/interpreter'
             ];
 
-            // Mengurangi timeout Overpass dari 25 ke 15 detik agar server merespons cepat sebelum gateway 504
-            const query = `[out:json][timeout:15];
+            const query = `[out:json][timeout:25];
             (
               way["building"](${s},${w},${n},${e});
               way["highway"](${s},${w},${n},${e});
@@ -1883,8 +1883,8 @@
 
                 try {
                     const controller = new AbortController();
-                    // Timeout lokal 10 detik per mirror untuk perpindahan cepat jika terjadi 504/hang
-                    const perMirrorTimeout = 10000;
+                    // Limit 12 detik per mirror agar saat server hang 504 langsung melompat ke mirror berikutnya
+                    const perMirrorTimeout = 12000;
                     const timeoutId = setTimeout(() => controller.abort(), perMirrorTimeout);
 
                     const response = await fetch(targetUrl, {
@@ -2434,7 +2434,7 @@
         });
 
         // ============================================================
-        // 20. GENERATE DXF FILE (Lengkap & Layer AutoCAD)
+        // 20. GENERATE DXF FILE (Lengkap & Lengkap Layer AutoCAD)
         // ============================================================
         function generateDXF(featureCollection) {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -2449,6 +2449,8 @@
 
             const layerColors = {
                 "0": "7",
+                "House": "2",
+                "Label": "3",
                 "KML_Boundary": "1",
                 "OSM_Buildings": "6",
                 "OSM_Roads": "4",
@@ -2471,85 +2473,66 @@
 
             function addPointSymbol(coord) {
                 if (!coord || coord.length < 2) return;
-                let [mx, my] = CoordUtils.lonLatToMeters(coord[0], coord[1]);
-                updateExtents(mx, my);
-                // Hanya entitas POINT geometri murni tanpa teks label
-                entitiesDxf.push(
-                    `0\nPOINT\n8\n0\n10\n${mx}\n20\n${my}\n30\n0.0`
-                );
+                let [x, y] = CoordUtils.lonLatToMeters(coord[0], coord[1]);
+                updateExtents(x, y);
+
+                const radius = 1.5;
+
+                entitiesDxf.push("  0", "CIRCLE");
+                entitiesDxf.push("  8", "House");
+                entitiesDxf.push(" 62", layerColors["House"]);
+                entitiesDxf.push(" 10", x.toFixed(4));
+                entitiesDxf.push(" 20", y.toFixed(4));
+                entitiesDxf.push(" 30", "0.0");
+                entitiesDxf.push(" 40", radius.toFixed(4));
             }
 
-            function addLineString(coords, layerName) {
-                if (!coords || coords.length === 0) return;
-                let points = [];
+            function addTextLabel(coord, text) {
+                if (!coord || coord.length < 2 || text === undefined || text === null) return;
+                let [x, y] = CoordUtils.lonLatToMeters(coord[0], coord[1]);
+                updateExtents(x, y);
+
+                let labelText = String(text).replace(/[\r\n]+/g, " ").trim();
+                if (!labelText) return;
+
+                entitiesDxf.push("  0", "TEXT");
+                entitiesDxf.push("  8", "Label");
+                entitiesDxf.push(" 62", layerColors["Label"]);
+                entitiesDxf.push(" 10", (x + 1.8).toFixed(4));
+                entitiesDxf.push(" 20", y.toFixed(4));
+                entitiesDxf.push(" 30", "0.0");
+                entitiesDxf.push(" 40", "1.25");
+                entitiesDxf.push("  1", labelText);
+            }
+
+            function addPolyline(coords, isClosed, layerName) {
+                if (!coords || coords.length < 2) return;
+
+                const colorCode = layerColors[layerName] || "7";
+
+                entitiesDxf.push("  0", "POLYLINE");
+                entitiesDxf.push("  8", layerName);
+                entitiesDxf.push(" 62", colorCode);
+                entitiesDxf.push(" 66", "1");
+                entitiesDxf.push(" 70", isClosed ? "1" : "0");
+                entitiesDxf.push(" 10", "0.0");
+                entitiesDxf.push(" 20", "0.0");
+                entitiesDxf.push(" 30", "0.0");
+
                 coords.forEach(c => {
-                    let [mx, my] = CoordUtils.lonLatToMeters(c[0], c[1]);
-                    updateExtents(mx, my);
-                    points.push({x: mx, y: my});
+                    if (!c || c.length < 2) return;
+                    let [x, y] = CoordUtils.lonLatToMeters(c[0], c[1]);
+                    updateExtents(x, y);
+                    entitiesDxf.push("  0", "VERTEX");
+                    entitiesDxf.push("  8", layerName);
+                    entitiesDxf.push(" 10", x.toFixed(4));
+                    entitiesDxf.push(" 20", y.toFixed(4));
+                    entitiesDxf.push(" 30", "0.0");
                 });
 
-                let dxfCode = `0\nLWPOLYLINE\n8\n${layerName}\n90\n${points.length}\n70\n0`;
-                points.forEach(p => {
-                    dxfCode += `\n10\n${p.x}\n20\n${p.y}`;
-                });
-                entitiesDxf.push(dxfCode);
+                entitiesDxf.push("  0", "SEQEND");
+                entitiesDxf.push("  8", layerName);
             }
-
-            function addPolygon(rings, layerName) {
-                if (!rings || rings.length === 0) return;
-                rings.forEach((ring) => {
-                    let points = [];
-                    ring.forEach(c => {
-                        let [mx, my] = CoordUtils.lonLatToMeters(c[0], c[1]);
-                        updateExtents(mx, my);
-                        points.push({x: mx, y: my});
-                    });
-
-                    let dxfCode = `0\nLWPOLYLINE\n8\n${layerName}\n90\n${points.length}\n70\n1`;
-                    points.forEach(p => {
-                        dxfCode += `\n10\n${p.x}\n20\n${p.y}`;
-                    });
-                    entitiesDxf.push(dxfCode);
-                });
-            }
-
-            featureCollection.features.forEach(f => {
-                if (!f.geometry) return;
-                let geom = f.geometry;
-                let layerName = f.properties?.layer || "0";
-                layerName = layerName.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
-
-                if (geom.type === 'Point') {
-                    addPointSymbol(geom.coordinates);
-                } else if (geom.type === 'LineString') {
-                    addLineString(geom.coordinates, layerName);
-                } else if (geom.type === 'MultiLineString') {
-                    geom.coordinates.forEach(coords => addLineString(coords, layerName));
-                } else if (geom.type === 'Polygon') {
-                    addPolygon(geom.coordinates, layerName);
-                } else if (geom.type === 'MultiPolygon') {
-                    geom.coordinates.forEach(polygonRings => addPolygon(polygonRings, layerName));
-                }
-            });
-
-            // Konstruksi Header DXF
-            let dxf = `0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1015\n0\nENDSEC\n`;
-
-            // Bagian Tables (Layer Definitions)
-            dxf += `0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n`;
-            layerNames.forEach(name => {
-                let color = layerColors[name] || "7";
-                dxf += `0\nLAYER\n2\n${name}\n70\n0\n62\n${color}\n6\nCONTINUOUS\n`;
-            });
-            dxf += `0\nENDTAB\n0\nENDSEC\n`;
-
-            // Bagian Entities (Tanpa menyertakan entitas teks label)
-            dxf += `0\nSECTION\n2\nENTITIES\n`;
-            dxf += entitiesDxf.join('\n');
-            dxf += `\n0\nENDSEC\n0\nEOF`;
-
-            return dxf;
-        }
 
             featureCollection.features.forEach(f => {
                 if (!f.geometry) return;

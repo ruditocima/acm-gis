@@ -54,7 +54,6 @@
             z-index: 1;
         }
 
-        /* Glassmorphism Panel */
         .glass-panel {
             background: rgba(23, 25, 35, 0.92);
             backdrop-filter: blur(16px);
@@ -63,13 +62,11 @@
             z-index: 1000;
         }
 
-        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: rgba(0,0,0,0.15); }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
 
-        /* Fancy file input */
         .file-upload-wrapper {
             position: relative;
             overflow: hidden;
@@ -86,7 +83,6 @@
             height: 100%;
         }
 
-        /* Custom Popup styling */
         .leaflet-popup-content-wrapper {
             background: #1f2937;
             color: #f3f4f6;
@@ -95,9 +91,7 @@
             font-family: 'Inter', sans-serif;
             border: 1px solid rgba(255,255,255,0.05);
         }
-        .leaflet-popup-tip {
-            background: #1f2937;
-        }
+        .leaflet-popup-tip { background: #1f2937; }
         .leaflet-popup-content b {
             color: #10b981;
             font-size: 1.1em;
@@ -122,7 +116,6 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* Coordinate Display */
         .coord-display {
             background: rgba(17, 24, 39, 0.9);
             backdrop-filter: blur(8px);
@@ -134,11 +127,6 @@
             color: #e5e7eb;
             pointer-events: auto;
             user-select: text;
-            transition: all 0.2s;
-        }
-        .coord-display:hover {
-            background: rgba(17, 24, 39, 0.98);
-            border-color: rgba(16, 185, 129, 0.4);
         }
         .coord-label {
             color: #6b7280;
@@ -147,7 +135,6 @@
             letter-spacing: 0.5px;
         }
 
-        /* Loading Overlay */
         .loading-overlay {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
@@ -167,7 +154,6 @@
             pointer-events: auto;
         }
 
-        /* Search Box */
         .search-box {
             background: rgba(31, 41, 55, 0.95);
             backdrop-filter: blur(12px);
@@ -175,34 +161,7 @@
             border-radius: 10px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.4);
         }
-        .search-result-item {
-            padding: 8px 12px;
-            cursor: pointer;
-            border-bottom: 1px solid rgba(255,255,255,0.04);
-            transition: background 0.15s;
-        }
-        .search-result-item:hover {
-            background: rgba(16, 185, 129, 0.1);
-        }
-        .search-result-item:last-child {
-            border-bottom: none;
-        }
 
-        /* Measurement Tooltip */
-        .measure-tooltip {
-            background: rgba(17, 24, 39, 0.95);
-            border: 1px solid #10b981;
-            color: #10b981;
-            font-weight: 600;
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-size: 12px;
-            pointer-events: none;
-            white-space: nowrap;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        }
-
-        /* Layer item in sidebar */
         .layer-item {
             display: flex;
             align-items: center;
@@ -212,13 +171,8 @@
             margin-bottom: 4px;
             background: rgba(255,255,255,0.02);
             border: 1px solid rgba(255,255,255,0.04);
-            transition: all 0.15s;
-        }
-        .layer-item:hover {
-            background: rgba(255,255,255,0.05);
         }
 
-        /* Range slider styling */
         input[type=range] {
             -webkit-appearance: none;
             width: 100%;
@@ -232,103 +186,23 @@
             background: #10b981;
             cursor: pointer;
             margin-top: -5px;
-            box-shadow: 0 2px 6px rgba(16,185,129,0.4);
         }
         input[type=range]::-webkit-slider-runnable-track {
             width: 100%;
             height: 4px;
-            cursor: pointer;
             background: rgba(255,255,255,0.1);
             border-radius: 2px;
         }
 
-        /* Shortcut modal */
-        .shortcut-key {
-            display: inline-block;
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.15);
-            border-radius: 4px;
-            padding: 2px 8px;
-            font-size: 11px;
-            font-family: monospace;
-            color: #10b981;
-            margin-right: 8px;
-            min-width: 60px;
-            text-align: center;
-        }
-
-        /* Toast notification custom */
         .custom-toast {
             background: rgba(31, 41, 55, 0.98) !important;
             border: 1px solid rgba(255,255,255,0.08) !important;
             color: #f3f4f6 !important;
-            backdrop-filter: blur(10px) !important;
         }
 
-        /* Mini map custom */
         .leaflet-control-minimap {
             border: 2px solid rgba(255,255,255,0.1) !important;
             border-radius: 8px !important;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.4) !important;
-        }
-
-        /* Attribute editor form */
-        .attr-input {
-            background: rgba(0,0,0,0.3);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 6px;
-            padding: 6px 10px;
-            color: #f3f4f6;
-            font-size: 12px;
-            width: 100%;
-            margin-bottom: 8px;
-            transition: border-color 0.2s;
-        }
-        .attr-input:focus {
-            outline: none;
-            border-color: #10b981;
-        }
-        .attr-label {
-            font-size: 10px;
-            color: #9ca3af;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 4px;
-            display: block;
-        }
-        
-        /* Styling Vertex Marker Leaflet Geoman */
-        .leaflet-pm-edit-marker,
-        .leaflet-marker-icon.pm-edit-marker,
-        .leaflet-div-icon.leaflet-pm-edit-marker,
-        .leaflet-marker-icon.leaflet-pm-draggable,
-        .leaflet-pm-marker {
-            width: 10px !important;
-            height: 10px !important;
-            margin-left: -5px !important;
-            margin-top: -5px !important;
-            background-color: #3b82f6 !important;
-            border: 2px solid #ffffff !important;
-            border-radius: 50% !important;
-            box-shadow: 0 0 4px rgba(0,0,0,0.5) !important;
-            z-index: 2000 !important;
-        }
-        .leaflet-pm-edit-marker:hover,
-        .leaflet-marker-icon.pm-edit-marker:hover {
-            width: 14px !important;
-            height: 14px !important;
-            margin-left: -7px !important;
-            margin-top: -7px !important;
-            background-color: #f59e0b !important;
-        }
-
-        /* Pastikan OSM layer tetap solid saat zoom */
-        .osm-building-layer, .osm-road-layer {
-            vector-effect: non-scaling-stroke;
-        }
-        .leaflet-overlay-pane svg g path.osm-building-layer,
-        .leaflet-overlay-pane svg g path.osm-road-layer {
-            transition: none !important;
         }
     </style>
 </head>
@@ -343,7 +217,6 @@
 
     <!-- Sidebar / Main Menu -->
     <div id="sidebar" class="glass-panel w-80 h-screen flex flex-col shadow-2xl absolute left-0 top-0 transition-transform duration-300">
-        <!-- Header -->
         <div class="p-5 border-b border-gray-700 border-opacity-50 flex items-center justify-between">
             <div>
                 <h1 class="text-xl font-bold text-emerald-400 tracking-wide">
@@ -351,43 +224,10 @@
                 </h1>
                 <p class="text-xs text-gray-400 mt-1">by: Rudi (Div YOFC)</p>
             </div>
-            <button id="btn-help" class="text-gray-400 hover:text-emerald-400 transition-colors" title="Keyboard Shortcuts">
-                <i class="fa-regular fa-circle-question text-lg"></i>
-            </button>
         </div>
 
-        <!-- Scrollable Content -->
         <div class="p-5 flex-1 overflow-y-auto space-y-5">
-
-            <!-- Search Box -->
-            <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
-                <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Cari Lokasi</h2>
-                <div class="relative">
-                    <input type="text" id="searchInput" placeholder="Ketik nama lokasi..." 
-                        class="w-full bg-gray-900 border border-gray-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors">
-                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-gray-500 text-xs"></i>
-                    <button id="btn-search" class="absolute right-2 top-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1 rounded-md transition-colors">
-                        Cari
-                    </button>
-                </div>
-                <div id="searchResults" class="search-box mt-2 hidden max-h-40 overflow-y-auto"></div>
-            </div>
-
-            <!-- Go To Coordinate -->
-            <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
-                <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Masukkan Koordinat</h2>
-                <div class="grid grid-cols-2 gap-2 mb-2">
-                    <input type="number" id="gotoLat" placeholder="Latitude" step="any"
-                        class="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
-                    <input type="number" id="gotoLng" placeholder="Longitude" step="any"
-                        class="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
-                </div>
-                <button id="btn-goto" class="w-full py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-xs font-medium transition-colors">
-                    <i class="fa-solid fa-location-crosshairs mr-1"></i> Pindahkan Peta
-                </button>
-            </div>
-
-            <!-- Layer Control (Map vs Earth) -->
+            <!-- Base Layer -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Base Layer</h2>
                 <div class="flex bg-gray-900 rounded-lg p-1">
@@ -415,24 +255,9 @@
                 </div>
             </div>
 
-            <!-- Fetch OSM Data -->
-            <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
-                <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Environment Data</h2>
-
-                <div class="mb-3">
-                    <label for="roadWidthInput" class="text-xs font-medium text-gray-300 block mb-1">Lebar Jalan OSM (Meter)</label>
-                    <input type="number" id="roadWidthInput" value="6" min="1" max="50" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
-                </div>
-
-                <button id="btn-fetch-osm" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium text-sm transition-colors shadow-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                    <i class="fa-solid fa-city mr-2"></i> Refresh Buildings & Roads
-                </button>
-            </div>
-
             <!-- Layer Manager -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Layer Manager</h2>
-
                 <div class="space-y-3">
                     <div>
                         <div class="flex items-center justify-between mb-1">
@@ -450,96 +275,14 @@
                             </button>
                         </div>
                     </div>
-
-                    <div>
-                        <div class="flex items-center justify-between mb-1">
-                            <span class="text-xs text-gray-400 font-medium">OSM Data</span>
-                            <span id="count-osm" class="text-xs text-blue-400 bg-blue-400 bg-opacity-10 px-2 py-0.5 rounded-full">0</span>
-                        </div>
-                        <div class="layer-item">
-                            <label class="flex items-center gap-2 cursor-pointer flex-1">
-                                <input type="checkbox" id="toggle-osm" checked class="accent-blue-500 w-4 h-4 rounded">
-                                <span class="text-xs text-gray-300">Visibility</span>
-                            </label>
-                            <input type="range" id="opacity-osm" min="0" max="1" step="0.1" value="1" class="w-16">
-                            <button id="clear-osm" class="text-red-400 hover:text-red-300 text-xs ml-2" title="Hapus Layer">
-                                <i class="fa-solid fa-trash"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div>
-                        <div class="flex items-center justify-between mb-1">
-                            <span class="text-xs text-gray-400 font-medium">User Drawn</span>
-                            <span id="count-draw" class="text-xs text-purple-400 bg-purple-400 bg-opacity-10 px-2 py-0.5 rounded-full">0</span>
-                        </div>
-                        <div class="layer-item">
-                            <label class="flex items-center gap-2 cursor-pointer flex-1">
-                                <input type="checkbox" id="toggle-draw" checked class="accent-purple-500 w-4 h-4 rounded">
-                                <span class="text-xs text-gray-300">Visibility</span>
-                            </label>
-                            <input type="range" id="opacity-draw" min="0" max="1" step="0.1" value="1" class="w-16">
-                            <button id="clear-draw" class="text-red-400 hover:text-red-300 text-xs ml-2" title="Hapus Layer">
-                                <i class="fa-solid fa-trash"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Measurement Tools -->
-            <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
-                <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Measurement</h2>
-                <div class="grid grid-cols-2 gap-2">
-                    <button id="btn-measure-distance" class="py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-xs font-medium transition-colors flex items-center justify-center">
-                        <i class="fa-solid fa-ruler mr-1.5"></i> Jarak
-                    </button>
-                    <button id="btn-measure-area" class="py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-xs font-medium transition-colors flex items-center justify-center">
-                        <i class="fa-solid fa-vector-square mr-1.5"></i> Luas
-                    </button>
-                </div>
-                <button id="btn-measure-clear" class="w-full mt-2 py-1.5 bg-red-900 bg-opacity-30 hover:bg-opacity-50 text-red-400 rounded-lg text-xs transition-colors hidden">
-                    <i class="fa-solid fa-eraser mr-1"></i> Hapus Pengukuran
-                </button>
-            </div>
-
-            <!-- Drawing Controls Note -->
-            <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
-                <h2 class="text-sm font-semibold mb-1 text-gray-300 uppercase tracking-wider">Drawing Tools</h2>
-                <p class="text-xs text-gray-400 mb-3">Gunakan toolbar di kanan atas peta untuk menggambar polygon, garis, atau marker. Klik tombol sampah untuk menghapus objek yang digambar.</p>
-
-                <div class="grid grid-cols-2 gap-2 mt-2">
-                    <button id="btn-copy" class="py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
-                        <i class="fa-solid fa-copy mr-1"></i> Copy Selected
-                    </button>
-                    <button id="btn-paste" class="py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
-                        <i class="fa-solid fa-paste mr-1"></i> Paste
-                    </button>
                 </div>
             </div>
         </div>
 
         <!-- Footer Actions -->
         <div class="p-5 border-t border-gray-700 border-opacity-50 flex flex-col gap-3 bg-gray-800 bg-opacity-30">
-            <div class="grid grid-cols-2 gap-2">
-                <button id="btn-save" class="py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
-                    <i class="fa-solid fa-floppy-disk mr-1.5"></i> Save
-                </button>
-
-                <div class="file-upload-wrapper">
-                    <button class="w-full py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
-                        <i class="fa-solid fa-folder-open mr-1.5"></i> Load
-                    </button>
-                    <input type="file" id="loadProjectInput" accept=".json,.geojson" />
-                </div>
-            </div>
-
             <button id="btn-export" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg transition-all shadow-lg flex items-center justify-center">
                 <i class="fa-solid fa-file-export mr-2"></i> Export to DXF
-            </button>
-
-            <button id="btn-export-png" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg transition-all shadow-lg flex items-center justify-center">
-                <i class="fa-solid fa-image mr-2"></i> Export to PNG
             </button>
         </div>
     </div>
@@ -547,59 +290,22 @@
     <!-- Map Container -->
     <div id="map"></div>
 
-    <!-- Coordinate Display (Bottom Right) -->
+    <!-- Coordinate Display -->
     <div id="coordDisplay" class="coord-display absolute bottom-4 right-4 z-[1000] flex flex-col gap-1">
         <div class="flex items-center gap-2">
             <span class="coord-label">Mouse</span>
             <span id="mouseCoord" class="font-mono text-emerald-400">0.0000, 0.0000</span>
-        </div>
-        <div class="flex items-center gap-2">
-            <span class="coord-label">Format</span>
-            <select id="coordFormat" class="bg-transparent text-xs text-gray-400 focus:outline-none cursor-pointer border-none">
-                <option value="dd" class="bg-gray-800">Decimal Degrees</option>
-                <option value="dms" class="bg-gray-800">DMS</option>
-                <option value="utm" class="bg-gray-800">UTM</option>
-            </select>
-        </div>
-        <div class="flex items-center gap-2">
-            <span class="coord-label">Zoom</span>
-            <span id="zoomLevel" class="font-mono text-blue-400">5</span>
         </div>
     </div>
 
     <!-- Application Logic -->
     <script>
         const App = {
-            config: {
-                maxUndoStack: 50,
-                osmTimeout: 30000,
-                defaultRoadWidth: 6,
-                coordinatePrecision: 6,
-                version: '2.0.0'
-            },
-            state: {
-                isMeasureMode: false,
-                measureType: null,
-                measurePoints: [],
-                measureLayer: null,
-                measureTooltip: null,
-                clipboardGeoJSON: null,
-                lastSelectedLayer: null,
-                currentBbox: null,
-                uploadedKmlFeatures: [],
-                coordFormat: 'dd',
-                deletedOSM: [] 
-            },
-            groups: {},
-            undoStack: [],
             map: null,
-            layers: {
-                osm: null,
-                earth: null
-            }
+            layers: { osm: null, earth: null },
+            groups: {}
         };
 
-        // --- Map Initialization ---
         App.layers.osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 22,
             maxNativeZoom: 19,
@@ -608,119 +314,22 @@
 
         App.layers.earth = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
             maxZoom: 22,
-            maxNativeZoom: 20, 
+            maxNativeZoom: 20,
             attribution: '© Google Maps'
         });
-
-        const canvasRenderer = L.canvas({ padding: 0.5, tolerance: 10 });
 
         App.map = L.map('map', {
             center: [-0.7893, 113.9213],
             zoom: 5,
             layers: [App.layers.osm],
-            zoomControl: false,
-            renderer: canvasRenderer
+            zoomControl: false
         });
 
         L.control.zoom({ position: 'topright' }).addTo(App.map);
         L.control.scale({ position: 'bottomright', metric: true, imperial: false }).addTo(App.map);
 
-        const miniMapLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18,
-            attribution: '© OSM'
-        });
-        new L.Control.MiniMap(miniMapLayer, {
-            position: 'bottomleft',
-            width: 150,
-            height: 150,
-            collapsedWidth: 20,
-            collapsedHeight: 20,
-            zoomLevelOffset: -5,
-            toggleDisplay: true
-        }).addTo(App.map);
-
         App.groups.kml = L.featureGroup().addTo(App.map);
-        App.groups.osm = L.featureGroup().addTo(App.map);
         App.groups.draw = L.featureGroup().addTo(App.map);
-        App.groups.measure = L.featureGroup().addTo(App.map);
-
-        /**
-         * Modul Independent Free-Draw Polygon Override (Fixed to use App.map)
-         */
-        (function() {
-            function initFreePolygonOverride() {
-                if (typeof App === 'undefined' || !App.map) {
-                    setTimeout(initFreePolygonOverride, 500);
-                    return;
-                }
-                const mapInstance = App.map;
-
-                if (mapInstance.getPane('overlayPane')) {
-                    mapInstance.getPane('overlayPane').style.zIndex = '600';
-                }
-                
-                if (!mapInstance.getPane('freeDrawPane')) {
-                    var freePane = mapInstance.createPane('freeDrawPane');
-                    freePane.style.zIndex = 650;
-                    freePane.style.pointerEvents = 'none';
-                }
-
-                mapInstance.on('mousedown', function(e) {
-                    let isPolygonDrawing = false;
-                    if (mapInstance._toolbars && mapInstance._toolbars.draw) {
-                        let activeHandler = mapInstance._toolbars.draw._activeMode;
-                        if (activeHandler && activeHandler.handler && activeHandler.handler.type === 'polygon') {
-                            isPolygonDrawing = true;
-                        }
-                    }
-                    if (isPolygonDrawing && e.originalEvent) {
-                        e.originalEvent.stopPropagation();
-                    }
-                }, true);
-
-                if (typeof L !== 'undefined' && L.Draw && L.Draw.Polygon) {
-                    var originalAddVertex = L.Draw.Polygon.prototype._addVertex;
-                    if (originalAddVertex && !L.Draw.Polygon.prototype._freeDrawPatched) {
-                        L.Draw.Polygon.prototype._addVertex = function(e) {
-                            return originalAddVertex.call(this, e);
-                        };
-                        L.Draw.Polygon.prototype._freeDrawPatched = true;
-                    }
-                }
-            }
-
-            if (document.readyState === 'complete') {
-                initFreePolygonOverride();
-            } else {
-                window.addEventListener('load', initFreePolygonOverride);
-            }
-        })();
-
-        // --- Coordinate Utilities ---
-        const CoordUtils = {
-            toDMS(deg, isLat) {
-                const absolute = Math.abs(deg);
-                const degrees = Math.floor(absolute);
-                const minutesFloat = (absolute - degrees) * 60;
-                const minutes = Math.floor(minutesFloat);
-                const seconds = ((minutesFloat - minutes) * 60).toFixed(2);
-                const direction = isLat ? (deg >= 0 ? 'N' : 'S') : (deg >= 0 ? 'E' : 'W');
-                return `${degrees}° ${minutes}' ${seconds}" ${direction}`;
-            },
-            toUTM(lon, lat) {
-                const zone = Math.floor((lon + 180) / 6) + 1;
-                const hemisphere = lat >= 0 ? 'N' : 'S';
-                return `Zone ${zone}${hemisphere} | Lon: ${lon.toFixed(4)} | Lat: ${lat.toFixed(4)}`;
-            },
-            format(lon, lat, format) {
-                if (format === 'dms') {
-                    return `${this.toDMS(lat, true)} | ${this.toDMS(lon, false)}`;
-                } else if (format === 'utm') {
-                    return this.toUTM(lon, lat);
-                }
-                return `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-            }
-        };
 
         const UI = {
             showLoading(text, subtext) {
@@ -733,19 +342,9 @@
                 document.getElementById('loadingOverlay').classList.remove('active');
             },
             updateFeatureCounts() {
-                let kmlCount = 0, osmCount = 0, drawCount = 0;
-                function countLayers(group) {
-                    let count = 0;
-                    group.eachLayer(() => count++);
-                    return count;
-                }
-                if (App.groups.kml) kmlCount = countLayers(App.groups.kml);
-                if (App.groups.osm) osmCount = countLayers(App.groups.osm);
-                if (App.groups.draw) drawCount = countLayers(App.groups.draw);
-
-                document.getElementById('count-kml').textContent = kmlCount;
-                document.getElementById('count-osm').textContent = osmCount;
-                document.getElementById('count-draw').textContent = drawCount;
+                let count = 0;
+                App.groups.kml.eachLayer(() => count++);
+                document.getElementById('count-kml').textContent = count;
             },
             toast(icon, title, timer = 2000) {
                 Swal.fire({
@@ -759,96 +358,6 @@
                 });
             }
         };
-
-        function processAllSubLayers(group, callback) {
-            if (!group) return;
-            if (group.eachLayer) {
-                group.eachLayer(child => processAllSubLayers(child, callback));
-            } else {
-                callback(group);
-            }
-        }
-
-        const blueDotIcon = L.divIcon({
-            className: 'custom-blue-dot-symbol',
-            html: '<div style="background-color: #38bdf8; width: 10px; height: 10px; border: 2px solid #ffffff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></div>',
-            iconSize: [10, 10],
-            iconAnchor: [5, 5]
-        });
-
-        function pushUndoAction(action) {
-            App.undoStack.push(action);
-            if (App.undoStack.length > App.config.maxUndoStack) App.undoStack.shift();
-        }
-
-        function performUndo() {
-            if (App.undoStack.length === 0) {
-                UI.toast('info', 'Tidak ada riwayat aksi untuk di-undo!', 2000);
-                return;
-            }
-            const lastAction = App.undoStack.pop();
-            if (lastAction.type === 'add') {
-                if (lastAction.group && lastAction.layer) lastAction.group.removeLayer(lastAction.layer);
-            } else if (lastAction.type === 'remove') {
-                if (lastAction.group && lastAction.layer) lastAction.group.addLayer(lastAction.layer);
-            }
-            UI.updateFeatureCounts();
-            UI.toast('success', 'Aksi sebelumnya dibatalkan (Undo)!', 1500);
-        }
-
-        function markAsEdited(e) {
-            const layer = e.layer || e.target;
-            if (layer) {
-                layer.isEditedByUser = true;
-                if (layer.feature) {
-                    layer.feature.properties = layer.feature.properties || {};
-                    layer.feature.properties.isEditedByUser = true;
-                }
-            }
-        }
-
-        App.map.on('pm:update', markAsEdited);
-        App.map.on('pm:dragend', markAsEdited);
-        App.map.on('pm:edit', markAsEdited);
-
-        // --- Mouse & Zoom tracking ---
-        App.map.on('mousemove', (e) => {
-            document.getElementById('mouseCoord').textContent = CoordUtils.format(e.latlng.lng, e.latlng.lat, App.state.coordFormat);
-        });
-        App.map.on('zoomend', () => {
-            document.getElementById('zoomLevel').textContent = App.map.getZoom();
-        });
-
-        // --- Layer Manager ---
-        function setupLayerManager(groupName, group) {
-            const toggle = document.getElementById(`toggle-${groupName}`);
-            const opacity = document.getElementById(`opacity-${groupName}`);
-            const clearBtn = document.getElementById(`clear-${groupName}`);
-
-            if (toggle) {
-                toggle.addEventListener('change', (e) => {
-                    if (e.target.checked) { if (!App.map.hasLayer(group)) App.map.addLayer(group); }
-                    else { if (App.map.hasLayer(group)) App.map.removeLayer(group); }
-                });
-            }
-            if (opacity) {
-                opacity.addEventListener('input', (e) => {
-                    processAllSubLayers(group, layer => {
-                        if (layer.setStyle) layer.setStyle({ opacity: parseFloat(e.target.value), fillOpacity: parseFloat(e.target.value) * 0.3 });
-                    });
-                });
-            }
-            if (clearBtn) {
-                clearBtn.addEventListener('click', () => {
-                    group.clearLayers();
-                    UI.updateFeatureCounts();
-                    UI.toast('success', `Layer ${groupName.toUpperCase()} dihapus`, 2000);
-                });
-            }
-        }
-        setupLayerManager('kml', App.groups.kml);
-        setupLayerManager('osm', App.groups.osm);
-        setupLayerManager('draw', App.groups.draw);
 
         // --- Base Layer Switcher ---
         document.getElementById('btn-map').addEventListener('click', () => {
@@ -864,78 +373,72 @@
             document.getElementById('btn-map').className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
         });
 
-        // --- Geoman Drawing Controls ---
-        App.map.pm.addControls({
-            position: 'topright',
-            drawCircle: false, drawCircleMarker: false, drawText: false,
-            drawMarker: true, drawPolygon: true, drawPolyline: true, drawRectangle: true,
-            removalMode: true, dragMode: true, editMode: true, cutPolygon: false, rotateMode: false
-        });
+        // --- Handler Import File KML / KMZ (Diperbaiki) ---
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
 
-        App.map.on('pm:create', (e) => {
-            if (e.shape === 'Marker') e.layer.setIcon(blueDotIcon);
-            App.groups.draw.addLayer(e.layer);
-            pushUndoAction({ type: 'add', group: App.groups.draw, layer: e.layer });
-            UI.updateFeatureCounts();
-        });
+            UI.showLoading('Membaca file...', file.name);
+            try {
+                let kmlText = '';
+                const fileNameLower = file.name.toLowerCase();
 
-        // --- Export to DXF (Completed) ---
-        document.getElementById('btn-export').addEventListener('click', () => {
-            const allFeatures = [];
-            [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
-                processAllSubLayers(group, layer => {
-                    if (typeof layer.toGeoJSON === 'function') {
-                        let geo = layer.toGeoJSON();
-                        if (geo.features) {
-                            geo.features.forEach(f => allFeatures.push(f));
-                        } else {
-                            allFeatures.push(geo);
-                        }
+                if (fileNameLower.endsWith('.kmz')) {
+                    const zip = new JSZip();
+                    const zipContent = await zip.loadAsync(file);
+                    const kmlFileName = Object.keys(zipContent.files).find(filename => filename.toLowerCase().endsWith('.kml'));
+                    
+                    if (!kmlFileName) {
+                        throw new Error('File KML tidak ditemukan di dalam arsip KMZ.');
                     }
-                });
-            });
-
-            if (allFeatures.length === 0) {
-                Swal.fire('Warning', 'Peta masih kosong.', 'warning');
-                return;
-            }
-
-            let dxf = "0\nSECTION\n2\nENTITIES\n";
-            allFeatures.forEach(f => {
-                if (!f.geometry) return;
-                const geom = f.geometry;
-                const layerName = f.properties && f.properties.layer ? f.properties.layer : "0";
-                if (geom.type === "Point") {
-                    const c = geom.coordinates;
-                    dxf += `0\nPOINT\n8\n${layerName}\n10\n${c[0]}\n20\n${c[1]}\n30\n0.0\n`;
-                } else if (geom.type === "LineString") {
-                    geom.coordinates.forEach((pt, idx, arr) => {
-                        if (idx < arr.length - 1) {
-                            dxf += `0\nLINE\n8\n${layerName}\n10\n${pt[0]}\n20\n${pt[1]}\n30\n0.0\n11\n${arr[idx+1][0]}\n21\n${arr[idx+1][1]}\n31\n0.0\n`;
-                        }
-                    });
-                } else if (geom.type === "Polygon") {
-                    geom.coordinates.forEach(ring => {
-                        ring.forEach((pt, idx, arr) => {
-                            if (idx < arr.length - 1) {
-                                dxf += `0\nLINE\n8\n${layerName}\n10\n${pt[0]}\n20\n${pt[1]}\n30\n0.0\n11\n${arr[idx+1][0]}\n21\n${arr[idx+1][1]}\n31\n0.0\n`;
-                            }
-                        });
-                    });
+                    kmlText = await zipContent.files[kmlFileName].async('text');
+                } else if (fileNameLower.endsWith('.kml')) {
+                    kmlText = await file.text();
+                } else {
+                    throw new Error('Format file tidak didukung. Harap gunakan .kml atau .kmz');
                 }
-            });
-            dxf += "0\nENDSEC\n0\nEOF\n";
 
-            const blob = new Blob([dxf], { type: 'application/dxf' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'Convert_Export.dxf';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            UI.toast('success', 'DXF Berhasil Di-export!', 2500);
+                const dom = new DOMParser().parseFromString(kmlText, 'text/xml');
+                const converted = toGeoJSON.kml(dom);
+
+                App.groups.kml.clearLayers();
+                
+                const geoJsonLayer = L.geoJSON(converted, {
+                    onEachFeature: (feature, layer) => {
+                        if (feature.properties && (feature.properties.name || feature.properties.description)) {
+                            layer.bindPopup(`<b>${feature.properties.name || 'Objek'}</b><br>${feature.properties.description || ''}`);
+                        }
+                    },
+                    pointToLayer: (feature, latlng) => {
+                        return L.circleMarker(latlng, { radius: 6, fillColor: '#10b981', color: '#fff', weight: 1, fillOpacity: 0.9 });
+                    },
+                    style: { color: '#10b981', weight: 3, fillOpacity: 0.2 }
+                });
+
+                geoJsonLayer.eachLayer(layer => {
+                    App.groups.kml.addLayer(layer);
+                });
+
+                if (App.groups.kml.getLayers().length > 0) {
+                    App.map.fitBounds(App.groups.kml.getBounds());
+                }
+
+                UI.updateFeatureCounts();
+                document.getElementById('filename').textContent = file.name;
+                document.getElementById('file-info').classList.remove('hidden');
+                UI.toast('success', 'File KML/KMZ berhasil di-import!', 2500);
+            } catch (err) {
+                console.error(err);
+                Swal.fire('Error', 'Gagal memproses file KML/KMZ: ' + err.message, 'error');
+            } finally {
+                UI.hideLoading();
+                e.target.value = '';
+            }
+        });
+
+        // --- Mouse Coordinate Tracking ---
+        App.map.on('mousemove', (e) => {
+            document.getElementById('mouseCoord').textContent = `${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`;
         });
     </script>
 </body>

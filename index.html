@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GIS | ACM - GeoConvert Production Ready v2.6</title>
+    <title>GIS | ACM - GeoConvert Production Ready v2.8</title>
 
     <!-- Tailwind CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
@@ -77,7 +77,7 @@
                 <h1 class="text-xl font-bold text-emerald-400 tracking-wide">
                     <i class="fa-solid fa-layer-group text-emerald-400 mr-2"></i> GeoConvert
                 </h1>
-                <p class="text-xs text-gray-400 mt-1">GIS Production System v2.6</p>
+                <p class="text-xs text-gray-400 mt-1">GIS Production System v2.8</p>
             </div>
         </div>
 
@@ -102,7 +102,7 @@
                 </div>
             </div>
 
-            <!-- Import KML / KMZ (Support Drag & Drop) -->
+            <!-- Import KML / KMZ -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Import KML / KMZ</h2>
                 <div class="file-upload-wrapper" id="dropZoneKml">
@@ -294,7 +294,7 @@
         document.getElementById('btn-map').addEventListener('click', () => { App.map.removeLayer(App.layers.earth); App.map.addLayer(App.layers.osm); });
         document.getElementById('btn-earth').addEventListener('click', () => { App.map.removeLayer(App.layers.osm); App.map.addLayer(App.layers.earth); });
 
-        // Geoman Drawing Tools (Disabled markers to protect style runtime errors)
+        // Geoman Drawing Tools
         App.map.pm.addControls({ position: 'topright', drawMarker: false, drawCircleMarker: false, drawCircle: false, drawText: false, cutPolygon: false });
         App.map.on('pm:create', e => {
             App.groups.draw.addLayer(e.layer);
@@ -302,7 +302,7 @@
         });
         App.map.on('pm:remove', () => UI.updateCounts());
 
-        // Search Location (Nominatim Geocoder with Custom Contact Header Consideration)
+        // Search Location (Nominatim Geocoder)
         let searchTimeout;
         document.getElementById('searchInput').addEventListener('input', e => {
             clearTimeout(searchTimeout);
@@ -311,7 +311,9 @@
             if (query.length < 3) { resultsBox.classList.add('hidden'); return; }
             searchTimeout = setTimeout(async () => {
                 try {
-                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&email=support@geoconvert.internal`);
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`, {
+                        headers: { 'User-Agent': 'GeoConvertProductionGIS/2.8' }
+                    });
                     if (!res.ok) throw new Error('Gagal mengambil data pencarian lokasi.');
                     const data = await res.json();
                     resultsBox.innerHTML = '';
@@ -343,7 +345,7 @@
             }
         });
 
-        // OSM Overpass Fetcher (Menyertakan Relation Multipolygon untuk Kompleks Gedung)
+        // OSM Overpass Fetcher (Robust Node & Way Processing)
         document.getElementById('btn-fetch-osm').addEventListener('click', async () => {
             const bounds = App.map.getBounds();
             const spanDist = bounds.getSouthWest().distanceTo(bounds.getNorthEast());
@@ -356,36 +358,31 @@
             const roadWidth = parseFloat(document.getElementById('roadWidthInput').value) || 6;
             UI.showLoading('Mengambil data OSM...', 'Menghubungkan ke Overpass API');
             try {
-                const query = `[out:json][timeout:25];(way["building"](${bbox});relation["building"](${bbox});way["highway"](${bbox}););out geom;`;
+                const query = `[out:json][timeout:30];(way["building"](${bbox});way["highway"](${bbox}););out body; >; out skel qt;`;
                 const response = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: query });
                 if (!response.ok) {
                     throw new Error(`Overpass API merespons dengan kode HTTP ${response.status}. Server sibuk atau batas limit terlampaui.`);
                 }
                 const data = await response.json();
                 
+                const nodes = {};
+                if (data && data.elements) {
+                    data.elements.forEach(el => {
+                        if (el.type === 'node') nodes[el.id] = { lon: el.lon, lat: el.lat };
+                    });
+                }
+
                 const features = [];
                 if (data && data.elements) {
                     data.elements.forEach(el => {
-                        if (el.geometry && el.tags) {
-                            if (el.type === 'way') {
-                                const coords = el.geometry.map(pt => [pt.lon, pt.lat]);
-                                if (coords.length >= 2) {
-                                    let isPoly = el.tags.building || el.tags.landuse;
-                                    if (isPoly && (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1])) {
-                                        coords.push(coords[0]);
-                                    }
-                                    features.push({ type: "Feature", geometry: { type: isPoly ? "Polygon" : "LineString", coordinates: isPoly ? [coords] : coords }, properties: el.tags });
+                        if (el.tags && el.type === 'way' && el.nodes) {
+                            const coords = el.nodes.map(nid => nodes[nid] ? [nodes[nid].lon, nodes[nid].lat] : null).filter(c => c !== null);
+                            if (coords.length >= 2) {
+                                const isPoly = el.tags.building || el.tags.landuse;
+                                if (isPoly && (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1])) {
+                                    coords.push(coords[0]);
                                 }
-                            } else if (el.type === 'relation' && el.members) {
-                                let polyRings = [];
-                                el.members.forEach(member => {
-                                    if (member.geometry && member.role === 'outer') {
-                                        polyRings.push(member.geometry.map(pt => [pt.lon, pt.lat]));
-                                    }
-                                });
-                                if (polyRings.length > 0) {
-                                    features.push({ type: "Feature", geometry: { type: "Polygon", coordinates: polyRings }, properties: el.tags });
-                                }
+                                features.push({ type: "Feature", geometry: { type: isPoly ? "Polygon" : "LineString", coordinates: isPoly ? [coords] : coords }, properties: el.tags });
                             }
                         }
                     });
@@ -403,21 +400,25 @@
             }
         });
 
-        // Proses Handler Impor File (KML/KMZ dengan Drag & Drop)
+        // Proses Handler Impor File
         async function handleFileImport(file) {
             if (!file) return;
             UI.showLoading('Membaca file...', file.name);
             try {
                 let kmlText = '';
-                if (file.name.toLowerCase().endswith('.kmz')) {
+                const fileNameLower = file.name.toLowerCase();
+                if (fileNameLower.endsWith('.kmz')) {
                     const zip = new JSZip();
                     const zipContent = await zip.loadAsync(file);
-                    const kmlFileObj = Object.values(zipContent.files).find(f => f.name.toLowerCase().endswith('.kml') && !f.dir);
+                    const kmlFileObj = Object.values(zipContent.files).find(f => f.name.toLowerCase().endsWith('.kml') && !f.dir);
                     if (!kmlFileObj) throw new Error('File KML tidak ditemukan di dalam arsip KMZ.');
                     kmlText = await kmlFileObj.async('text');
-                } else {
+                } else if (fileNameLower.endsWith('.kml')) {
                     kmlText = await file.text();
+                } else {
+                    throw new Error('Format file tidak didukung. Harap gunakan format .kml atau .kmz');
                 }
+
                 const dom = new DOMParser().parseFromString(kmlText, 'text/xml');
                 const parserError = dom.getElementsByTagName('parsererror');
                 if (parserError.length > 0) {
@@ -502,7 +503,7 @@
             }
         });
 
-        // Layer Toggles & Opacity (Aman terhadap marker non-path)
+        // Layer Toggles & Opacity
         ['kml', 'osm', 'draw'].forEach(key => {
             document.getElementById(`toggle-${key}`).addEventListener('change', e => {
                 if (e.target.checked) App.map.addLayer(App.groups[key]);
@@ -549,7 +550,7 @@
             }
         });
 
-        // Robust DXF Export
+        // DXF Export
         document.getElementById('btn-export').addEventListener('click', () => {
             let originX = null, originY = null;
 
@@ -670,7 +671,7 @@
             UI.toast('success', 'File DXF terstruktur berhasil diexport!');
         });
 
-        // Export PNG
+        // Export PNG (with robust OSM fallback for CORS safety)
         document.getElementById('btn-export-png').addEventListener('click', async () => {
             UI.showLoading('Merender gambar...', 'Menangkap tampilan peta');
             try {
@@ -678,7 +679,7 @@
                 if (wasEarth) {
                     App.map.removeLayer(App.layers.earth);
                     App.map.addLayer(App.layers.osm);
-                    await new Promise(r => setTimeout(r, 800));
+                    await new Promise(r => setTimeout(r, 1500)); // Increased delay for complete tile loading
                 }
                 const canvas = await html2canvas(document.getElementById('map'), { useCORS: true, allowTaint: false });
                 const link = document.createElement('a');

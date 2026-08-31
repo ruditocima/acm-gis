@@ -2437,17 +2437,35 @@
                 if (y > maxY) maxY = y;
             }
 
-            const layerNames = new Set(["0", "KML_Boundary", "OSM_Buildings", "OSM_Roads", "User_Drawn"]);
+            // Pemetaan Warna Layer DXF (AutoCAD Color Index / ACI)
+            // 1: Red, 2: Yellow, 3: Green, 4: Cyan, 5: Blue, 6: Magenta, 7: White/Black
+            const layerColors = {
+                "0": "7",
+                "House": "2",          // Layer Simbol / Titik (Kuning)
+                "Label": "3",          // Layer Teks Label (NN, NP, RK, dll.) (Hijau)
+                "KML_Boundary": "1",   // Merah
+                "OSM_Buildings": "6",  // Magenta
+                "OSM_Roads": "4",      // Cyan
+                "User_Drawn": "5"      // Biru
+            };
+
+            const layerNames = new Set(Object.keys(layerColors));
+            
+            // Daftarkan layer kustom jika ada dari GeoJSON/KML
             featureCollection.features.forEach(f => {
                 if (f.properties && f.properties.layer) {
                     let name = f.properties.layer.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
                     layerNames.add(name);
+                    if (!layerColors[name]) {
+                        layerColors[name] = "7"; // Default warna jika ada layer baru
+                    }
                 }
             });
 
             let entitiesDxf = [];
 
-            function addPointSymbol(coord, layerName, featureProps) {
+            // 1. Fungsi Tambah Simbol (Titik) -> Wajib Layer 'House'
+            function addPointSymbol(coord) {
                 if (!coord || coord.length < 2) return;
                 let [x, y] = CoordUtils.lonLatToMeters(coord[0], coord[1]);
                 updateExtents(x, y);
@@ -2455,38 +2473,42 @@
                 const radius = 1.5;
 
                 entitiesDxf.push("  0", "CIRCLE");
-                entitiesDxf.push("  8", layerName);
+                entitiesDxf.push("  8", "House");
+                entitiesDxf.push(" 62", layerColors["House"]);
                 entitiesDxf.push(" 10", x.toFixed(4));
                 entitiesDxf.push(" 20", y.toFixed(4));
                 entitiesDxf.push(" 30", "0.0");
                 entitiesDxf.push(" 40", radius.toFixed(4));
+            }
 
-                let labelText = "Point";
-                if (featureProps) {
-                    labelText = featureProps.name || featureProps.Name || featureProps.title || featureProps.id || "Point";
-                }
-                labelText = String(labelText).replace(/[\r\n]+/g, " ");
+            // 2. Fungsi Tambah Teks (NN, NP, RK, dll) -> Wajib Layer 'Label'
+            function addTextLabel(coord, text) {
+                if (!coord || coord.length < 2 || text === undefined || text === null) return;
+                let [x, y] = CoordUtils.lonLatToMeters(coord[0], coord[1]);
+                updateExtents(x, y);
+
+                let labelText = String(text).replace(/[\r\n]+/g, " ").trim();
+                if (!labelText) return;
 
                 entitiesDxf.push("  0", "TEXT");
-                entitiesDxf.push("  8", layerName);
-                entitiesDxf.push(" 10", (x + radius * 1.3).toFixed(4));
+                entitiesDxf.push("  8", "Label");
+                entitiesDxf.push(" 62", layerColors["Label"]);
+                entitiesDxf.push(" 10", (x + 1.8).toFixed(4)); // Offset posisi dari simbol
                 entitiesDxf.push(" 20", y.toFixed(4));
                 entitiesDxf.push(" 30", "0.0");
-                entitiesDxf.push(" 40", "1.25");
+                entitiesDxf.push(" 40", "1.25"); // Tinggi teks
                 entitiesDxf.push("  1", labelText);
             }
 
+            // 3. Fungsi Tambah Polylines/Garis -> Sesuai Layer Fiturnya (Boundary, Roads, Buildings, dll)
             function addPolyline(coords, isClosed, layerName) {
                 if (!coords || coords.length < 2) return;
 
+                const colorCode = layerColors[layerName] || "7";
+
                 entitiesDxf.push("  0", "POLYLINE");
                 entitiesDxf.push("  8", layerName);
-                
-                if (!isClosed) {
-                    const colorCode = (layerName === "OSM_Roads") ? "4" : "1";
-                    entitiesDxf.push(" 62", colorCode); 
-                }
-
+                entitiesDxf.push(" 62", colorCode);
                 entitiesDxf.push(" 66", "1");
                 entitiesDxf.push(" 70", isClosed ? "1" : "0");
                 entitiesDxf.push(" 10", "0.0");
@@ -2500,10 +2522,7 @@
 
                     entitiesDxf.push("  0", "VERTEX");
                     entitiesDxf.push("  8", layerName);
-                    if (!isClosed) {
-                        const colorCode = (layerName === "OSM_Roads") ? "4" : "1";
-                        entitiesDxf.push(" 62", colorCode);
-                    }
+                    entitiesDxf.push(" 62", colorCode);
                     entitiesDxf.push(" 10", x.toFixed(4));
                     entitiesDxf.push(" 20", y.toFixed(4));
                     entitiesDxf.push(" 30", "0.0");
@@ -2513,36 +2532,63 @@
                 entitiesDxf.push("  8", layerName);
             }
 
+            // Extractor Properti Teks (Mencari prioritas NN, NP, RK, Nama, Title, dll)
+            function extractLabelText(props) {
+                if (!props) return null;
+                return props.NN || props.NP || props.RK || props.nn || props.np || props.rk ||
+                       props.label || props.LABEL || props.name || props.Name || props.title || props.id || null;
+            }
+
+            // Proses Geometri Fitur
             function processGeometry(gem, layerName, featureProps) {
                 if (!gem) return;
 
+                const labelText = extractLabelText(featureProps);
+
                 if (gem.type === "Point") {
-                    addPointSymbol(gem.coordinates, layerName, featureProps);
+                    addPointSymbol(gem.coordinates);
+                    if (labelText) addTextLabel(gem.coordinates, labelText);
                 } else if (gem.type === "MultiPoint") {
-                    gem.coordinates.forEach(pt => addPointSymbol(pt, layerName, featureProps));
+                    gem.coordinates.forEach(pt => {
+                        addPointSymbol(pt);
+                        if (labelText) addTextLabel(pt, labelText);
+                    });
                 } else if (gem.type === "LineString") {
                     addPolyline(gem.coordinates, false, layerName);
+                    if (labelText && gem.coordinates.length > 0) {
+                        let midIdx = Math.floor(gem.coordinates.length / 2);
+                        addTextLabel(gem.coordinates[midIdx], labelText);
+                    }
                 } else if (gem.type === "MultiLineString") {
-                    gem.coordinates.forEach(line => addPolyline(line, false, layerName));
+                    gem.coordinates.forEach(line => {
+                        addPolyline(line, false, layerName);
+                        if (labelText && line.length > 0) addTextLabel(line[0], labelText);
+                    });
                 } else if (gem.type === "Polygon") {
                     gem.coordinates.forEach(ring => addPolyline(ring, true, layerName));
+                    if (labelText && gem.coordinates[0] && gem.coordinates[0].length > 0) {
+                        addTextLabel(gem.coordinates[0][0], labelText);
+                    }
                 } else if (gem.type === "MultiPolygon") {
                     gem.coordinates.forEach(poly => poly.forEach(ring => addPolyline(ring, true, layerName)));
+                    if (labelText && gem.coordinates[0] && gem.coordinates[0][0] && gem.coordinates[0][0].length > 0) {
+                        addTextLabel(gem.coordinates[0][0][0], labelText);
+                    }
                 } else if (gem.type === "GeometryCollection") {
                     gem.geometries.forEach(g => processGeometry(g, layerName, featureProps));
                 }
             }
 
-            // Eksekusi pemrosesan semua fitur
+            // Pemrosesan Semua Fitur GeoJSON
             featureCollection.features.forEach(f => {
-                let layerName = "0";
+                let layerName = "User_Drawn";
                 if (f.properties && f.properties.layer) {
                     layerName = f.properties.layer.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
                 }
                 processGeometry(f.geometry, layerName, f.properties);
             });
 
-            // Bangun struktur file DXF
+            // Menyusun Struktur File DXF
             let dxfParts = [];
             
             // 1. HEADER
@@ -2551,18 +2597,19 @@
             dxfParts.push("  9", "$EXTMAX", " 10", maxX === -Infinity ? "0.0" : maxX.toFixed(4), " 20", maxY === -Infinity ? "0.0" : maxY.toFixed(4), " 30", "0.0");
             dxfParts.push("  0", "ENDSEC");
             
-            // 2. TABLES (Layers)
+            // 2. TABLES (Definisi Layer & Warna Baku AutoCAD)
             dxfParts.push("  0", "SECTION", "  2", "TABLES");
             dxfParts.push("  0", "TABLE", "  2", "LAYER", " 70", layerNames.size.toString());
             layerNames.forEach(ln => {
-                dxfParts.push("  0", "LAYER", "  2", ln, " 70", "0", " 62", "7", "  6", "CONTINUOUS");
+                let color = layerColors[ln] || "7";
+                dxfParts.push("  0", "LAYER", "  2", ln, " 70", "0", " 62", color, "  6", "CONTINUOUS");
             });
             dxfParts.push("  0", "ENDTAB", "  0", "ENDSEC");
             
             // 3. BLOCKS
             dxfParts.push("  0", "SECTION", "  2", "BLOCKS", "  0", "ENDSEC");
             
-            // 4. ENTITIES (Data geometrinya)
+            // 4. ENTITIES
             dxfParts.push("  0", "SECTION", "  2", "ENTITIES");
             dxfParts = dxfParts.concat(entitiesDxf);
             dxfParts.push("  0", "ENDSEC");
@@ -2582,12 +2629,10 @@
             try {
                 const mapContainer = document.getElementById('map');
                 
-                // Konfigurasi html2canvas untuk menghindari error CORS pada tile map
                 const canvas = await html2canvas(mapContainer, {
                     useCORS: true,
                     allowTaint: false,
                     ignoreElements: (element) => {
-                        // Sembunyikan tombol zoom dan kontrol UI bawaan saat diekspor
                         return element.classList.contains('leaflet-control-zoom') || 
                                element.classList.contains('leaflet-control-minimap');
                     }

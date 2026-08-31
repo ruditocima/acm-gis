@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GIS | ACM - GeoConvert Production Ready v3.2</title>
+    <title>GIS | ACM - GeoConvert Production Ready v3.4</title>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -64,7 +64,7 @@
                 <h1 class="text-xl font-bold text-emerald-400 tracking-wide">
                     <i class="fa-solid fa-layer-group text-emerald-400 mr-2"></i> GeoConvert
                 </h1>
-                <p class="text-xs text-gray-400 mt-1">GIS Production System v3.2</p>
+                <p class="text-xs text-gray-400 mt-1">GIS Production System v3.4</p>
             </div>
         </div>
 
@@ -240,6 +240,7 @@
                 return { type: "Feature", geometry: { type: "Polygon", coordinates: [coords] }, properties: layer.feature?.properties || {} };
             } else if (layer instanceof L.Polyline) {
                 const latlngs = layer.getLatLngs();
+                if (!latlngs || latlngs.length === 0) return null;
                 const coords = latlngs.map(pt => [pt.lng, pt.lat]);
                 return { type: "Feature", geometry: { type: "LineString", coordinates: coords }, properties: layer.feature?.properties || {} };
             }
@@ -322,7 +323,7 @@
             searchTimeout = setTimeout(async () => {
                 try {
                     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`, {
-                        headers: { 'User-Agent': 'GeoConvertProductionGIS/3.2' }
+                        headers: { 'User-Agent': 'GeoConvertProductionGIS/3.4' }
                     });
                     if (!res.ok) throw new Error('Gagal mengambil data pencarian lokasi.');
                     const data = await res.json();
@@ -373,7 +374,7 @@
                 
                 const contentType = response.headers.get("content-type");
                 if (!response.ok || !contentType || !contentType.includes("application/json")) {
-                    throw new Error(`Overpass API gagal merespons dengan benar (Status ${response.status}). Server sedang sibuk atau batas kuota terlampaui.`);
+                    throw new Error(`Overpass API gagal merespons dengan benar (Status ${response.status}). Server sibuk atau batas kuota terlampaui.`);
                 }
 
                 const data = await response.json();
@@ -433,7 +434,7 @@
             }
         });
 
-        // KML / KMZ File Import Parser Handler
+        // KML / KMZ File Import Parser with Robust Auto-Center (Autocenter)
         const fileInput = document.getElementById('fileInput');
         const dropZone = document.getElementById('dropZoneKml');
 
@@ -454,7 +455,7 @@
             UI.showLoading('Membaca file KML/KMZ...', file.name);
             try {
                 let kmlText = '';
-                if (file.name.endsWith('.kmz')) {
+                if (file.name.toLowerCase().endsWith('.kmz')) {
                     const zip = new JSZip();
                     const zipContent = await zip.loadAsync(file);
                     let kmlFileEntry = null;
@@ -484,8 +485,13 @@
                 });
 
                 geoJsonLayer.eachLayer(l => App.groups.kml.addLayer(l));
+                
+                // Robust Autocenter implementation
                 if (App.groups.kml.getLayers().length > 0) {
-                    App.map.fitBounds(App.groups.kml.getBounds());
+                    const groupBounds = App.groups.kml.getBounds();
+                    if (groupBounds.isValid()) {
+                        App.map.fitBounds(groupBounds, { padding: [50, 50], maxZoom: 18 });
+                    }
                 }
 
                 document.getElementById('file-info').classList.remove('hidden');
@@ -493,7 +499,7 @@
 
                 UI.hideLoading();
                 UI.updateCounts();
-                UI.toast('success', 'File KML/KMZ Berhasil Dimuat!');
+                UI.toast('success', 'File KML/KMZ Berhasil Dimuat & Dipusatkan!');
             } catch (err) {
                 UI.hideLoading();
                 console.error(err);
@@ -603,7 +609,7 @@
                 App.groups.osm.clearLayers();
                 App.groups.draw.clearLayers();
 
-                L.geoJSON(fc, {
+                const loadedLayer = L.geoJSON(fc, {
                     onEachFeature: (feature, layer) => {
                         const src = feature.properties?.layerSource || 'draw';
                         if (App.groups[src]) {
@@ -613,8 +619,14 @@
                         }
                     }
                 });
+
+                const loadedBounds = loadedLayer.getBounds();
+                if (loadedBounds.isValid()) {
+                    App.map.fitBounds(loadedBounds, { padding: [50, 50], maxZoom: 18 });
+                }
+
                 UI.updateCounts();
-                UI.toast('success', 'Proyek Berhasil Dimuat!');
+                UI.toast('success', 'Proyek Berhasil Dimuat & Dipusatkan!');
             } catch (err) {
                 Swal.fire('Gagal Load Proyek', err.message, 'error');
             }
@@ -660,12 +672,16 @@
             UI.toast('success', 'Export DXF Berhasil!');
         });
 
-        // Export KMZ
+        // Export KMZ with Standard Styling Definitions
         document.getElementById('btn-export-kmz').addEventListener('click', async () => {
-            let kmlData = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>GeoConvert Export</name>\n`;
+            let kmlData = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>GeoConvert Export v3.4</name>\n`;
+            kmlData += `<Style id="kmlStyle"><LineStyle><color>ff00b910</color><width>2</width></LineStyle><PolyStyle><color>5500b910</color></PolyStyle></Style>\n`;
+            kmlData += `<Style id="osmStyle"><LineStyle><color>ff0bf59e</color><width>2</width></LineStyle><PolyStyle><color>550bf59e</color></PolyStyle></Style>\n`;
+            kmlData += `<Style id="drawStyle"><LineStyle><color>ff8b5cf6</color><width>2</width></LineStyle><PolyStyle><color>558b5cf6</color></PolyStyle></Style>\n`;
 
             let count = 0;
             ['kml', 'osm', 'draw'].forEach(key => {
+                const styleId = key === 'kml' ? '#kmlStyle' : key === 'osm' ? '#osmStyle' : '#drawStyle';
                 App.groups[key].eachLayer(layer => {
                     const gj = layerToGeoJSON(layer);
                     if (!gj) return;
@@ -673,13 +689,13 @@
                     const name = gj.properties?.name || `${key.toUpperCase()}_${count}`;
                     if (gj.geometry.type === 'Point') {
                         const [lng, lat] = gj.geometry.coordinates;
-                        kmlData += `<Placemark><name>${name}</name><Point><coordinates>${lng},${lat},0</coordinates></Point></Placemark>\n`;
+                        kmlData += `<Placemark><name>${name}</name><styleUrl>${styleId}</styleUrl><Point><coordinates>${lng},${lat},0</coordinates></Point></Placemark>\n`;
                     } else if (gj.geometry.type === 'LineString') {
                         const coordStr = gj.geometry.coordinates.map(c => `${c[0]},${c[1]},0`).join(' ');
-                        kmlData += `<Placemark><name>${name}</name><LineString><coordinates>${coordStr}</coordinates></LineString></Placemark>\n`;
+                        kmlData += `<Placemark><name>${name}</name><styleUrl>${styleId}</styleUrl><LineString><coordinates>${coordStr}</coordinates></LineString></Placemark>\n`;
                     } else if (gj.geometry.type === 'Polygon') {
                         const coordStr = gj.geometry.coordinates[0].map(c => `${c[0]},${c[1]},0`).join(' ');
-                        kmlData += `<Placemark><name>${name}</name><Polygon><outerBoundaryIs><LinearRing><coordinates>${coordStr}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>\n`;
+                        kmlData += `<Placemark><name>${name}</name><styleUrl>${styleId}</styleUrl><Polygon><outerBoundaryIs><LinearRing><coordinates>${coordStr}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>\n`;
                     }
                 });
             });

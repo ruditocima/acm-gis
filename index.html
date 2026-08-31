@@ -2447,35 +2447,114 @@
 
             let entitiesDxf = [];
 
-            function addPointSymbol(coord, layerName, featureProps) {
+            function addPointSymbol(coord, layerName) {
                 if (!coord || coord.length < 2) return;
                 let [x, y] = CoordUtils.lonLatToMeters(coord[0], coord[1]);
                 updateExtents(x, y);
-
-                const radius = 1.5;
 
                 entitiesDxf.push("  0", "CIRCLE");
                 entitiesDxf.push("  8", layerName);
                 entitiesDxf.push(" 10", x.toFixed(4));
                 entitiesDxf.push(" 20", y.toFixed(4));
                 entitiesDxf.push(" 30", "0.0");
-                entitiesDxf.push(" 40", radius.toFixed(4));
-
-                let labelText = "Point";
-                if (featureProps) {
-                    labelText = featureProps.name || featureProps.Name || featureProps.title || featureProps.id || "Point";
-                }
-                labelText = String(labelText).replace(/[\r\n]+/g, " ");
-
-                entitiesDxf.push("  0", "TEXT");
-                entitiesDxf.push("  8", layerName);
-                entitiesDxf.push(" 10", (x + radius * 1.3).toFixed(4));
-                entitiesDxf.push(" 20", y.toFixed(4));
-                entitiesDxf.push(" 30", "0.0");
-                entitiesDxf.push(" 40", "1.25");
-                entitiesDxf.push("  1", labelText);
+                entitiesDxf.push(" 40", "1.5");
             }
 
+            function addLineString(coords, layerName, closed = false) {
+                if (!coords || coords.length < 2) return;
+                let converted = coords.map(c => CoordUtils.lonLatToMeters(c[0], c[1]));
+                converted.forEach(([x, y]) => updateExtents(x, y));
+
+                if (closed && (converted[0][0] !== converted[converted.length-1][0] || converted[0][1] !== converted[converted.length-1][1])) {
+                    converted.push(converted[0]);
+                }
+
+                entitiesDxf.push("  0", "POLYLINE");
+                entitiesDxf.push("  8", layerName);
+                entitiesDxf.push(" 66", "1");
+                entitiesDxf.push(" 70", closed ? "1" : "0");
+
+                converted.forEach(([x, y]) => {
+                    entitiesDxf.push("  0", "VERTEX");
+                    entitiesDxf.push("  8", layerName);
+                    entitiesDxf.push(" 10", x.toFixed(4));
+                    entitiesDxf.push(" 20", y.toFixed(4));
+                    entitiesDxf.push(" 30", "0.0");
+                });
+
+                entitiesDxf.push("  0", "SEQEND");
+                entitiesDxf.push("  8", layerName);
+            }
+
+            featureCollection.features.forEach(f => {
+                if (!f.geometry) return;
+                let layerName = f.properties?.layer || "User_Drawn";
+                let geomType = f.geometry.type;
+                let coords = f.geometry.coordinates;
+
+                if (geomType === 'Point') {
+                    addPointSymbol(coords, layerName);
+                } else if (geomType === 'MultiPoint') {
+                    coords.forEach(pt => addPointSymbol(pt, layerName));
+                } else if (geomType === 'LineString') {
+                    addLineString(coords, layerName, false);
+                } else if (geomType === 'MultiLineString') {
+                    coords.forEach(line => addLineString(line, layerName, false));
+                } else if (geomType === 'Polygon') {
+                    coords.forEach((ring, idx) => {
+                        addLineString(ring, layerName, true);
+                    });
+                } else if (geomType === 'MultiPolygon') {
+                    coords.forEach(polygon => {
+                        polygon.forEach(ring => {
+                            addLineString(ring, layerName, true);
+                        });
+                    });
+                }
+            });
+
+            if (minX === Infinity) {
+                minX = 0; minY = 0; maxX = 100; maxY = 100;
+            }
+
+            let dxfHeader = [
+                "  0", "SECTION",
+                "  2", "HEADER",
+                "  9", "$ACADVER", "  1", "AC1015",
+                "  9", "$EXTMIN", " 10", minX.toFixed(4), " 20", minY.toFixed(4), " 30", "0.0",
+                "  9", "$EXTMAX", " 10", maxX.toFixed(4), " 20", maxY.toFixed(4), " 30", "0.0",
+                "  0", "ENDSEC",
+                "  0", "SECTION",
+                "  2", "TABLES",
+                "  0", "TABLE",
+                "  2", "LAYER",
+                " 70", layerNames.size.toString()
+            ];
+
+            layerNames.forEach(name => {
+                dxfHeader.push(
+                    "  0", "LAYER",
+                    "  2", name,
+                    " 70", "0",
+                    " 62", "7",
+                    "  6", "CONTINUOUS"
+                );
+            });
+
+            dxfHeader.push(
+                "  0", "ENDTAB",
+                "  0", "ENDSEC",
+                "  0", "SECTION",
+                "  2", "ENTITIES"
+            );
+
+            let dxfFooter = [
+                "  0", "ENDSEC",
+                "  0", "EOF"
+            ];
+
+            return [...dxfHeader, ...entitiesDxf, ...dxfFooter].join("\n");
+        }
             function addPolyline(coords, isClosed, layerName) {
                 if (!coords || coords.length < 2) return;
 

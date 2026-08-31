@@ -1144,7 +1144,7 @@
 
         document.getElementById('btn-measure-clear').addEventListener('click', clearMeasurement);
 
-        // ============================================================
+       // ============================================================
         // 7. LEAFLET GEOMAN CONTROLS
         // ============================================================
 
@@ -1184,10 +1184,44 @@
             clearMeasurement();
 
             if (shape === 'Rectangle') {
-                App.map.pm.setGlobalOptions({ ortho: false });
-                if (workingLayer && workingLayer.options) {
-                    workingLayer.options.ortho = false;
+            App.map.pm.setGlobalOptions({ ortho: false });
+            if (workingLayer && workingLayer.options) {
+            workingLayer.options.ortho = false;
                 }
+            } 
+            
+            if (shape === 'Polygon' || shape === 'Rectangle') {
+                let firstLatLng = null;
+
+                workingLayer.on('pm:vertexadded', (e) => {
+                    const latlngs = workingLayer.getLatLngs ? workingLayer.getLatLngs() : [];
+                    if (latlngs && latlngs.length > 0 && latlngs[0].length > 0) {
+                        if (!firstLatLng) {
+                            firstLatLng = latlngs[0][0];
+                        }
+                        const ring = latlngs[0];
+                        if (ring.length >= 3) {
+                            const last = ring[ring.length - 1];
+                            if (firstLatLng && last && firstLatLng !== last) {
+                                const dist = L.latLng(firstLatLng).distanceTo(L.latLng(last));
+                                if (dist < 2) {
+                                    workingLayer.pm._finishShape();
+                                    App.map.pm.disableDraw(); // Hentikan guide line & mode menggambar
+                                }
+                            }
+                        }
+                    }
+                });
+
+                workingLayer.on('pm:markerdrag', (e) => {
+                    if (firstLatLng && e.latlng) {
+                        const dist = L.latLng(firstLatLng).distanceTo(e.latlng);
+                        if (dist < 2) {
+                            workingLayer.pm._finishShape();
+                            App.map.pm.disableDraw(); // Hentikan guide line & mode menggambar
+                        }
+                    }
+                });
             }
         });
 
@@ -1201,7 +1235,7 @@
             } else if (e.layer.setStyle) {
                 e.layer.setStyle({ weight: 1.5 });
             }
-            e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Object' } };
+            e.layer.feature = e.layer.feature || { type: 'Feature', properties: { name: 'User Drawn Object' } };
 
             e.layer.options.pmIgnore = false;
             e.layer.options.allowRemoval = true;
@@ -1471,7 +1505,7 @@
             }
 
             if (pastedGeo.properties) {
-                pastedGeo.properties.name = pastedGeo.properties.name || 'User Object';
+                pastedGeo.properties.name = (pastedGeo.properties.name || 'Object') + ' (Copy)';
             }
 
             const newLayer = L.geoJSON(pastedGeo, {

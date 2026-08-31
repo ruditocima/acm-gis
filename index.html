@@ -2426,6 +2426,9 @@
             });
         });
 
+        // ============================================================
+        // 19. GENERATE DXF FILE (Layer Khusus & Tanpa Label Generik)
+        // ============================================================
         function generateDXF(featureCollection) {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
@@ -2438,11 +2441,10 @@
             }
 
             // Pemetaan Warna Layer DXF (AutoCAD Color Index / ACI)
-            // 1: Red, 2: Yellow, 3: Green, 4: Cyan, 5: Blue, 6: Magenta, 7: White/Black
             const layerColors = {
                 "0": "7",
                 "House": "2",          // Layer Simbol / Titik (Kuning)
-                "Label": "3",          // Layer Teks Label (NN, NP, RK, dll.) (Hijau)
+                "Label": "3",          // Layer Teks (Hijau)
                 "KML_Boundary": "1",   // Merah
                 "OSM_Buildings": "6",  // Magenta
                 "OSM_Roads": "4",      // Cyan
@@ -2451,13 +2453,12 @@
 
             const layerNames = new Set(Object.keys(layerColors));
             
-            // Daftarkan layer kustom jika ada dari GeoJSON/KML
             featureCollection.features.forEach(f => {
                 if (f.properties && f.properties.layer) {
                     let name = f.properties.layer.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
                     layerNames.add(name);
                     if (!layerColors[name]) {
-                        layerColors[name] = "7"; // Default warna jika ada layer baru
+                        layerColors[name] = "7";
                     }
                 }
             });
@@ -2481,7 +2482,7 @@
                 entitiesDxf.push(" 40", radius.toFixed(4));
             }
 
-            // 2. Fungsi Tambah Teks (NN, NP, RK, dll) -> Wajib Layer 'Label'
+            // 2. Fungsi Tambah Teks -> Wajib Layer 'Label'
             function addTextLabel(coord, text) {
                 if (!coord || coord.length < 2 || text === undefined || text === null) return;
                 let [x, y] = CoordUtils.lonLatToMeters(coord[0], coord[1]);
@@ -2493,14 +2494,14 @@
                 entitiesDxf.push("  0", "TEXT");
                 entitiesDxf.push("  8", "Label");
                 entitiesDxf.push(" 62", layerColors["Label"]);
-                entitiesDxf.push(" 10", (x + 1.8).toFixed(4)); // Offset posisi dari simbol
+                entitiesDxf.push(" 10", (x + 1.8).toFixed(4));
                 entitiesDxf.push(" 20", y.toFixed(4));
                 entitiesDxf.push(" 30", "0.0");
-                entitiesDxf.push(" 40", "1.25"); // Tinggi teks
+                entitiesDxf.push(" 40", "1.25");
                 entitiesDxf.push("  1", labelText);
             }
 
-            // 3. Fungsi Tambah Polylines/Garis -> Sesuai Layer Fiturnya (Boundary, Roads, Buildings, dll)
+            // 3. Fungsi Tambah Polylines/Garis -> Sesuai Layer
             function addPolyline(coords, isClosed, layerName) {
                 if (!coords || coords.length < 2) return;
 
@@ -2532,18 +2533,41 @@
                 entitiesDxf.push("  8", layerName);
             }
 
-            // Extractor Properti Teks (Mencari prioritas NN, NP, RK, Nama, Title, dll)
-            function extractLabelText(props) {
+            // 4. Filter Ekstraksi Teks (Menghilangkan Teks Generik/Nama Layer)
+            function extractLabelText(props, currentLayerName) {
                 if (!props) return null;
-                return props.NN || props.NP || props.RK || props.nn || props.np || props.rk ||
-                       props.label || props.LABEL || props.name || props.Name || props.title || props.id || null;
+                
+                let rawText = props.NN || props.NP || props.RK || props.nn || props.np || props.rk ||
+                              props.label || props.LABEL || props.name || props.Name || props.title || props.id || null;
+                
+                if (!rawText) return null;
+
+                let textStr = String(rawText).trim();
+                let textLower = textStr.toLowerCase();
+
+                // Daftar kata-kata yang TIDAK BOLEH dijadikan label teks di DXF
+                const ignoreList = [
+                    "road", "roads", "boundary", "building", "buildings", 
+                    "osm_roads", "osm_buildings", "kml_boundary", "user_drawn",
+                    "point", "line", "polygon", "multipolygon"
+                ];
+
+                // Jika teks yang didapat ada di daftar larangan, abaikan (return null)
+                if (ignoreList.includes(textLower)) return null;
+
+                // Jika teks yang didapat ternyata sama persis dengan nama layernya, abaikan
+                if (currentLayerName && textLower === String(currentLayerName).toLowerCase()) return null;
+
+                // Jika lolos dari filter di atas, kembalikan teksnya untuk dijadikan label
+                return textStr;
             }
 
             // Proses Geometri Fitur
             function processGeometry(gem, layerName, featureProps) {
                 if (!gem) return;
 
-                const labelText = extractLabelText(featureProps);
+                // Ekstrak label teks dengan menyertakan nama layer untuk di-filter
+                const labelText = extractLabelText(featureProps, layerName);
 
                 if (gem.type === "Point") {
                     addPointSymbol(gem.coordinates);
@@ -2579,7 +2603,7 @@
                 }
             }
 
-            // Pemrosesan Semua Fitur GeoJSON
+            // Pemrosesan Semua Fitur
             featureCollection.features.forEach(f => {
                 let layerName = "User_Drawn";
                 if (f.properties && f.properties.layer) {
@@ -2588,7 +2612,7 @@
                 processGeometry(f.geometry, layerName, f.properties);
             });
 
-            // Menyusun Struktur File DXF
+            // Menyusun File DXF
             let dxfParts = [];
             
             // 1. HEADER
@@ -2597,7 +2621,7 @@
             dxfParts.push("  9", "$EXTMAX", " 10", maxX === -Infinity ? "0.0" : maxX.toFixed(4), " 20", maxY === -Infinity ? "0.0" : maxY.toFixed(4), " 30", "0.0");
             dxfParts.push("  0", "ENDSEC");
             
-            // 2. TABLES (Definisi Layer & Warna Baku AutoCAD)
+            // 2. TABLES (Layers)
             dxfParts.push("  0", "SECTION", "  2", "TABLES");
             dxfParts.push("  0", "TABLE", "  2", "LAYER", " 70", layerNames.size.toString());
             layerNames.forEach(ln => {

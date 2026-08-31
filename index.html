@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GIS | ACM - GeoConvert Production Ready v2.5</title>
+    <title>GIS | ACM - GeoConvert Production Ready v2.6</title>
 
     <!-- Tailwind CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
@@ -58,6 +58,7 @@
         .custom-toast { background: rgba(31, 41, 55, 0.98) !important; color: #f3f4f6 !important; }
         .sidebar-toggle-btn { position: absolute; left: 330px; top: 15px; z-index: 1001; background: rgba(23, 25, 35, 0.95); border: 1px solid rgba(255,255,255,0.1); color: #10b981; padding: 8px 12px; border-radius: 0 8px 8px 0; cursor: pointer; backdrop-filter: blur(8px); transition: left 0.3s ease-in-out; }
         .glass-panel.closed + .sidebar-toggle-btn { left: 10px; border-radius: 8px; }
+        .drag-over { border-color: #10b981 !important; background: rgba(16, 185, 129, 0.05); }
     </style>
 </head>
 <body class="flex flex-row bg-gray-900 text-gray-200">
@@ -76,7 +77,7 @@
                 <h1 class="text-xl font-bold text-emerald-400 tracking-wide">
                     <i class="fa-solid fa-layer-group text-emerald-400 mr-2"></i> GeoConvert
                 </h1>
-                <p class="text-xs text-gray-400 mt-1">GIS Production System v2.5</p>
+                <p class="text-xs text-gray-400 mt-1">GIS Production System v2.6</p>
             </div>
         </div>
 
@@ -101,13 +102,13 @@
                 </div>
             </div>
 
-            <!-- Import KML / KMZ -->
+            <!-- Import KML / KMZ (Support Drag & Drop) -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Import KML / KMZ</h2>
-                <div class="file-upload-wrapper">
-                    <button class="w-full py-3 px-4 border-2 border-dashed border-gray-600 rounded-lg hover:border-emerald-500 transition-colors flex flex-col items-center justify-center gap-1">
+                <div class="file-upload-wrapper" id="dropZoneKml">
+                    <button id="dropButtonKml" class="w-full py-3 px-4 border-2 border-dashed border-gray-600 rounded-lg hover:border-emerald-500 transition-colors flex flex-col items-center justify-center gap-1 pointer-events-none">
                         <i class="fa-solid fa-cloud-arrow-up text-xl text-gray-400"></i>
-                        <span class="text-xs text-gray-300">Pilih File KML/KMZ</span>
+                        <span class="text-xs text-gray-300">Pilih atau Seret File KML/KMZ</span>
                     </button>
                     <input type="file" id="fileInput" accept=".kml,.kmz" />
                 </div>
@@ -265,7 +266,7 @@
         App.groups.draw = L.featureGroup().addTo(App.map);
         App.groups.measure = L.featureGroup().addTo(App.map);
 
-        // Mousemove event untuk kalkulasi ukur
+        // Throttled mousemove event
         let lastMoveTime = 0;
         App.map.on('mousemove', e => {
             document.getElementById('mouseCoord').textContent = `${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`;
@@ -293,7 +294,7 @@
         document.getElementById('btn-map').addEventListener('click', () => { App.map.removeLayer(App.layers.earth); App.map.addLayer(App.layers.osm); });
         document.getElementById('btn-earth').addEventListener('click', () => { App.map.removeLayer(App.layers.osm); App.map.addLayer(App.layers.earth); });
 
-        // Geoman Drawing Tools (Disabled markers to prevent style runtime errors)
+        // Geoman Drawing Tools (Disabled markers to protect style runtime errors)
         App.map.pm.addControls({ position: 'topright', drawMarker: false, drawCircleMarker: false, drawCircle: false, drawText: false, cutPolygon: false });
         App.map.on('pm:create', e => {
             App.groups.draw.addLayer(e.layer);
@@ -301,7 +302,7 @@
         });
         App.map.on('pm:remove', () => UI.updateCounts());
 
-        // Search Location (Nominatim Geocoder)
+        // Search Location (Nominatim Geocoder with Custom Contact Header Consideration)
         let searchTimeout;
         document.getElementById('searchInput').addEventListener('input', e => {
             clearTimeout(searchTimeout);
@@ -310,7 +311,7 @@
             if (query.length < 3) { resultsBox.classList.add('hidden'); return; }
             searchTimeout = setTimeout(async () => {
                 try {
-                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&email=support@geoconvert.internal`);
                     if (!res.ok) throw new Error('Gagal mengambil data pencarian lokasi.');
                     const data = await res.json();
                     resultsBox.innerHTML = '';
@@ -342,7 +343,7 @@
             }
         });
 
-        // OSM Overpass Fetcher (Mendukung Way & Relation Multipolygon)
+        // OSM Overpass Fetcher (Menyertakan Relation Multipolygon untuk Kompleks Gedung)
         document.getElementById('btn-fetch-osm').addEventListener('click', async () => {
             const bounds = App.map.getBounds();
             const spanDist = bounds.getSouthWest().distanceTo(bounds.getNorthEast());
@@ -376,7 +377,6 @@
                                     features.push({ type: "Feature", geometry: { type: isPoly ? "Polygon" : "LineString", coordinates: isPoly ? [coords] : coords }, properties: el.tags });
                                 }
                             } else if (el.type === 'relation' && el.members) {
-                                // Penanganan dasar untuk relasi multipolygon
                                 let polyRings = [];
                                 el.members.forEach(member => {
                                     if (member.geometry && member.role === 'outer') {
@@ -403,17 +403,16 @@
             }
         });
 
-        // KML / KMZ Importer (Defensif terhadap struktur zip & parser XML)
-        document.getElementById('fileInput').addEventListener('change', async e => {
-            const file = e.target.files[0];
+        // Proses Handler Impor File (KML/KMZ dengan Drag & Drop)
+        async function handleFileImport(file) {
             if (!file) return;
             UI.showLoading('Membaca file...', file.name);
             try {
                 let kmlText = '';
-                if (file.name.toLowerCase().endsWith('.kmz')) {
+                if (file.name.toLowerCase().endswith('.kmz')) {
                     const zip = new JSZip();
                     const zipContent = await zip.loadAsync(file);
-                    const kmlFileObj = Object.values(zipContent.files).find(f => f.name.toLowerCase().endsWith('.kml') && !f.dir);
+                    const kmlFileObj = Object.values(zipContent.files).find(f => f.name.toLowerCase().endswith('.kml') && !f.dir);
                     if (!kmlFileObj) throw new Error('File KML tidak ditemukan di dalam arsip KMZ.');
                     kmlText = await kmlFileObj.async('text');
                 } else {
@@ -435,6 +434,25 @@
                 Swal.fire('Error Import', err.message, 'error');
             } finally {
                 UI.hideLoading();
+            }
+        }
+
+        const dropZone = document.getElementById('dropZoneKml');
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, e => { e.preventDefault(); dropZone.classList.add('drag-over'); }, false);
+        });
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, e => { e.preventDefault(); dropZone.classList.remove('drag-over'); }, false);
+        });
+        dropZone.addEventListener('drop', e => {
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                handleFileImport(e.dataTransfer.files[0]);
+            }
+        });
+
+        document.getElementById('fileInput').addEventListener('change', e => {
+            if (e.target.files[0]) {
+                handleFileImport(e.target.files[0]);
                 e.target.value = '';
             }
         });
@@ -484,7 +502,7 @@
             }
         });
 
-        // Layer Toggles & Aman terhadap non-path layer (Bug fix setStyle)
+        // Layer Toggles & Opacity (Aman terhadap marker non-path)
         ['kml', 'osm', 'draw'].forEach(key => {
             document.getElementById(`toggle-${key}`).addEventListener('change', e => {
                 if (e.target.checked) App.map.addLayer(App.groups[key]);
@@ -531,7 +549,7 @@
             }
         });
 
-        // Robust DXF Export dengan Penanganan Ring Luar/Dalam
+        // Robust DXF Export
         document.getElementById('btn-export').addEventListener('click', () => {
             let originX = null, originY = null;
 
@@ -604,7 +622,6 @@
                             const geom = f.geometry;
                             
                             const processRings = (rings) => {
-                                // Hanya ambil outer ring (indeks 0) untuk menghindari masalah rendering lubang poligon di CAD sederhana
                                 if (rings && rings.length > 0) {
                                     const ring = rings[0];
                                     if (ring && ring.length > 1) {
@@ -653,7 +670,7 @@
             UI.toast('success', 'File DXF terstruktur berhasil diexport!');
         });
 
-        // Export PNG dengan pemaksaan base layer OSM untuk menghindari Tainted Canvas dari Google Maps
+        // Export PNG
         document.getElementById('btn-export-png').addEventListener('click', async () => {
             UI.showLoading('Merender gambar...', 'Menangkap tampilan peta');
             try {

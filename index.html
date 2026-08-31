@@ -1822,7 +1822,7 @@
         }
 
         // ============================================================
-        // 15. FETCH OSM DATA WITH ROBUST FALLBACK MIRRORS
+        // 15. FETCH OSM DATA WITH ROBUST FALLBACK MIRRORS (Fixed 504)
         // ============================================================
 
         async function fetchOSMData(bbox) {
@@ -1856,7 +1856,7 @@
             btn.disabled = true;
             UI.showLoading('Mengambil data OSM...', 'Menghubungkan ke server Overpass');
 
-            // Mirror endpoints yang diperluas dengan per-mirror timeout yang responsif
+            // Mirror endpoints yang diperluas dengan urutan stabil
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
                 'https://lz4.overpass-api.de/api/interpreter',
@@ -1867,7 +1867,8 @@
                 'https://overpass.openstreetmap.fr/api/interpreter'
             ];
 
-            const query = `[out:json][timeout:25];
+            // Mengurangi timeout Overpass dari 25 ke 15 detik agar server merespons cepat sebelum gateway 504
+            const query = `[out:json][timeout:15];
             (
               way["building"](${s},${w},${n},${e});
               way["highway"](${s},${w},${n},${e});
@@ -1883,8 +1884,8 @@
 
                 try {
                     const controller = new AbortController();
-                    // Limit 12 detik per mirror agar saat server hang 504 langsung melompat ke mirror berikutnya
-                    const perMirrorTimeout = 12000;
+                    // Timeout lokal 10 detik per mirror untuk perpindahan cepat jika terjadi 504/hang
+                    const perMirrorTimeout = 10000;
                     const timeoutId = setTimeout(() => controller.abort(), perMirrorTimeout);
 
                     const response = await fetch(targetUrl, {
@@ -2434,7 +2435,7 @@
         });
 
         // ============================================================
-        // 20. GENERATE DXF FILE (Lengkap & Lengkap Layer AutoCAD)
+        // 20. GENERATE DXF FILE (Lengkap & Layer AutoCAD)
         // ============================================================
         function generateDXF(featureCollection) {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

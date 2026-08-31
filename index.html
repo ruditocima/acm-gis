@@ -2533,96 +2533,83 @@
                 }
             }
 
-            featureCollection.features.forEach((feature) => {
-                let gem = feature.geometry;
-                let layerName = (feature.properties && feature.properties.layer) ? feature.properties.layer : "0";
-                layerName = layerName.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
-                processGeometry(gem, layerName, feature.properties);
+            // Eksekusi pemrosesan semua fitur
+            featureCollection.features.forEach(f => {
+                let layerName = "0";
+                if (f.properties && f.properties.layer) {
+                    layerName = f.properties.layer.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+                }
+                processGeometry(f.geometry, layerName, f.properties);
             });
 
-            if (minX === Infinity) {
-                minX = 0; minY = 0; maxX = 100; maxY = 100;
-            }
-
-            let headerDxf = [];
-
-            headerDxf.push("  0", "SECTION");
-            headerDxf.push("  2", "HEADER");
-            headerDxf.push("  9", "$ACADVER");
-            headerDxf.push("  1", "AC1009");
-            headerDxf.push("  9", "$EXTMIN");
-            headerDxf.push(" 10", minX.toFixed(4));
-            headerDxf.push(" 20", minY.toFixed(4));
-            headerDxf.push(" 30", "0.0");
-            headerDxf.push("  9", "$EXTMAX");
-            headerDxf.push(" 10", maxX.toFixed(4));
-            headerDxf.push(" 20", maxY.toFixed(4));
-            headerDxf.push(" 30", "0.0");
-            headerDxf.push("  0", "ENDSEC");
-
-            headerDxf.push("  0", "SECTION");
-            headerDxf.push("  2", "TABLES");
-            headerDxf.push("  0", "TABLE");
-            headerDxf.push("  2", "LAYER");
-            headerDxf.push(" 70", layerNames.size.toString());
-
-            const layerColors = {
-                "KML_Boundary": 3,
-                "OSM_Buildings": 2,
-                "OSM_Roads": 4,
-                "User_Drawn": 1
-            };
-
-            layerNames.forEach(name => {
-                const color = layerColors[name] || 7;
-                headerDxf.push("  0", "LAYER");
-                headerDxf.push("  2", name);
-                headerDxf.push(" 70", "0");
-                headerDxf.push(" 62", color.toString());
-                headerDxf.push("  6", "CONTINUOUS");
+            // Bangun struktur file DXF
+            let dxfParts = [];
+            
+            // 1. HEADER
+            dxfParts.push("  0", "SECTION", "  2", "HEADER");
+            dxfParts.push("  9", "$EXTMIN", " 10", minX === Infinity ? "0.0" : minX.toFixed(4), " 20", minY === Infinity ? "0.0" : minY.toFixed(4), " 30", "0.0");
+            dxfParts.push("  9", "$EXTMAX", " 10", maxX === -Infinity ? "0.0" : maxX.toFixed(4), " 20", maxY === -Infinity ? "0.0" : maxY.toFixed(4), " 30", "0.0");
+            dxfParts.push("  0", "ENDSEC");
+            
+            // 2. TABLES (Layers)
+            dxfParts.push("  0", "SECTION", "  2", "TABLES");
+            dxfParts.push("  0", "TABLE", "  2", "LAYER", " 70", layerNames.size.toString());
+            layerNames.forEach(ln => {
+                dxfParts.push("  0", "LAYER", "  2", ln, " 70", "0", " 62", "7", "  6", "CONTINUOUS");
             });
+            dxfParts.push("  0", "ENDTAB", "  0", "ENDSEC");
+            
+            // 3. BLOCKS
+            dxfParts.push("  0", "SECTION", "  2", "BLOCKS", "  0", "ENDSEC");
+            
+            // 4. ENTITIES (Data geometrinya)
+            dxfParts.push("  0", "SECTION", "  2", "ENTITIES");
+            dxfParts = dxfParts.concat(entitiesDxf);
+            dxfParts.push("  0", "ENDSEC");
+            
+            // 5. EOF
+            dxfParts.push("  0", "EOF");
 
-            headerDxf.push("  0", "ENDTAB");
-            headerDxf.push("  0", "ENDSEC");
-
-            headerDxf.push("  0", "SECTION");
-            headerDxf.push("  2", "ENTITIES");
-
-            let fullDxf = headerDxf.concat(entitiesDxf);
-            fullDxf.push("  0", "ENDSEC");
-            fullDxf.push("  0", "EOF");
-
-            return fullDxf.join("\r\n") + "\r\n";
+            return dxfParts.join("\n");
         }
 
+        // ============================================================
+        // 20. EXPORT TO PNG (html2canvas)
+        // ============================================================
         document.getElementById('btn-export-png').addEventListener('click', async () => {
-            UI.showLoading('Membuat gambar...', 'Menangkap tampilan peta');
+            UI.showLoading('Mengekspor ke PNG...', 'Merender peta, mohon tunggu.');
+            
             try {
                 const mapContainer = document.getElementById('map');
+                
+                // Konfigurasi html2canvas untuk menghindari error CORS pada tile map
                 const canvas = await html2canvas(mapContainer, {
                     useCORS: true,
-                    allowTaint: true,
-                    ignoreElements: (el) => el.classList.contains('leaflet-control-zoom')
+                    allowTaint: false,
+                    ignoreElements: (element) => {
+                        // Sembunyikan tombol zoom dan kontrol UI bawaan saat diekspor
+                        return element.classList.contains('leaflet-control-zoom') || 
+                               element.classList.contains('leaflet-control-minimap');
+                    }
                 });
-                const link = document.createElement('a');
-                link.download = 'GeoConvert_Map.png';
-                link.href = canvas.toDataURL('image/png');
-                link.click();
-                UI.toast('success', 'Gambar PNG berhasil diekspor!', 2000);
+
+                const imgData = canvas.toDataURL('image/png');
+                const a = document.createElement('a');
+                a.href = imgData;
+                a.download = 'Peta_Export.png';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+
+                UI.toast('success', 'Peta berhasil di-export ke PNG!', 2000);
             } catch (err) {
-                Swal.fire('Error', 'Gagal mengekspor gambar: ' + err.message, 'error');
+                console.error(err);
+                Swal.fire('Error', 'Gagal mengekspor PNG: ' + err.message, 'error');
             } finally {
                 UI.hideLoading();
             }
         });
 
-        // ============================================================
-        // 20. INITIALIZATION
-        // ============================================================
-
-        window.addEventListener('load', () => {
-            UI.updateFeatureCounts();
-        });
     </script>
 </body>
 </html>

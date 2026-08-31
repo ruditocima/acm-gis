@@ -3,27 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GIS | ACM - GeoConvert Production Ready v3.0</title>
+    <title>GIS | ACM - GeoConvert Production Ready v3.1</title>
 
-    <!-- Tailwind CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
 
-    <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-    <!-- Leaflet Geoman -->
     <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.14.2/dist/leaflet-geoman.css" />
     <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.14.2/dist/leaflet-geoman.min.js"></script>
 
-    <!-- JSZip & toGeoJSON -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://unpkg.com/@tmcw/togeojson@4.2.0/dist/togeojson.umd.js"></script>
 
-    <!-- Turf.js -->
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
-    <!-- SweetAlert2 & FontAwesome -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 
@@ -60,26 +54,23 @@
 </head>
 <body class="flex flex-row bg-gray-900 text-gray-200">
 
-    <!-- Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay">
         <div class="loader" style="width: 48px; height: 48px; border-width: 4px; margin-bottom: 16px;"></div>
         <div id="loadingText" class="text-gray-300 font-medium text-sm">Memproses...</div>
         <div id="loadingSub" class="text-gray-500 text-xs mt-2">Mohon tunggu sebentar</div>
     </div>
 
-    <!-- Sidebar Panel -->
     <div id="sidebar" class="glass-panel w-80 h-screen flex flex-col shadow-2xl absolute left-0 top-0">
         <div class="p-5 border-b border-gray-700 border-opacity-50 flex items-center justify-between">
             <div>
                 <h1 class="text-xl font-bold text-emerald-400 tracking-wide">
                     <i class="fa-solid fa-layer-group text-emerald-400 mr-2"></i> GeoConvert
                 </h1>
-                <p class="text-xs text-gray-400 mt-1">GIS Production System v3.0</p>
+                <p class="text-xs text-gray-400 mt-1">GIS Production System v3.1</p>
             </div>
         </div>
 
         <div class="p-5 flex-1 overflow-y-auto space-y-5">
-            <!-- Search Location -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50 relative">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Cari Lokasi</h2>
                 <div class="relative">
@@ -90,7 +81,6 @@
                 <div id="searchResults" class="search-box mt-1 hidden max-h-48 overflow-y-auto shadow-xl"></div>
             </div>
 
-            <!-- Base Layer Switcher -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Base Layer</h2>
                 <div class="flex bg-gray-900 rounded-lg p-1">
@@ -99,7 +89,6 @@
                 </div>
             </div>
 
-            <!-- Import KML / KMZ -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Import KML / KMZ</h2>
                 <div class="file-upload-wrapper" id="dropZoneKml">
@@ -114,7 +103,6 @@
                 </div>
             </div>
 
-            <!-- OSM Environment Data -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Environment OSM</h2>
                 <div class="mb-3">
@@ -126,7 +114,6 @@
                 </button>
             </div>
 
-            <!-- Layer Manager -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Layer Manager</h2>
                 <div class="space-y-3">
@@ -172,7 +159,6 @@
                 </div>
             </div>
 
-            <!-- Measurement -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Pengukuran Spasial</h2>
                 <div class="grid grid-cols-2 gap-2">
@@ -184,7 +170,6 @@
             </div>
         </div>
 
-        <!-- Footer Actions -->
         <div class="p-5 border-t border-gray-700 border-opacity-50 flex flex-col gap-2 bg-gray-800 bg-opacity-30">
             <div class="grid grid-cols-2 gap-2">
                 <button id="btn-save" class="py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-xs font-medium">Save Proyek</button>
@@ -198,21 +183,17 @@
         </div>
     </div>
 
-    <!-- Toggle Sidebar Button -->
     <button id="sidebarToggle" class="sidebar-toggle-btn shadow-lg" title="Sembunyikan/Tampilkan Panel">
         <i class="fa-solid fa-bars"></i>
     </button>
 
-    <!-- Map Container -->
     <div id="map"></div>
 
-    <!-- Coordinate Display -->
     <div class="coord-display absolute bottom-4 right-4 z-[1000] flex gap-3">
         <div>Koordinat: <span id="mouseCoord" class="text-emerald-400 font-mono">0.0000, 0.0000</span></div>
         <div>Zoom: <span id="zoomLevel" class="text-blue-400 font-mono">5</span></div>
     </div>
 
-    <!-- Script Utama -->
     <script>
         const App = {
             map: null,
@@ -242,6 +223,31 @@
                 Swal.fire({ toast: true, position: 'top-end', icon, title, showConfirmButton: false, timer: 2000, customClass: { popup: 'custom-toast' } });
             }
         };
+
+        // Helper: Konversi Layer Leaflet/Geoman ke objek GeoJSON secara aman
+        function layerToGeoJSON(layer) {
+            if (typeof layer.toGeoJSON === 'function') {
+                return layer.toGeoJSON();
+            }
+            if (layer instanceof L.Marker || layer instanceof L.CircleMarker) {
+                const ll = layer.getLatLng();
+                return { type: "Feature", geometry: { type: "Point", coordinates: [ll.lng, ll.lat] }, properties: layer.feature?.properties || {} };
+            } else if (layer instanceof L.Polygon) {
+                const latlngs = layer.getLatLngs();
+                if (!latlngs || latlngs.length === 0) return null;
+                const ring = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
+                const coords = ring.map(pt => [pt.lng, pt.lat]);
+                if (coords.length > 0 && (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1])) {
+                    coords.push(coords[0]);
+                }
+                return { type: "Feature", geometry: { type: "Polygon", coordinates: [coords] }, properties: layer.feature?.properties || {} };
+            } else if (layer instanceof L.Polyline) {
+                const latlngs = layer.getLatLngs();
+                const coords = latlngs.map(pt => [pt.lng, pt.lat]);
+                return { type: "Feature", geometry: { type: "LineString", coordinates: coords }, properties: layer.feature?.properties || {} };
+            }
+            return null;
+        }
 
         // Toggle Sidebar Handler
         document.getElementById('sidebarToggle').addEventListener('click', () => {
@@ -309,7 +315,7 @@
             searchTimeout = setTimeout(async () => {
                 try {
                     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`, {
-                        headers: { 'User-Agent': 'GeoConvertProductionGIS/3.0' }
+                        headers: { 'User-Agent': 'GeoConvertProductionGIS/3.1' }
                     });
                     if (!res.ok) throw new Error('Gagal mengambil data pencarian lokasi.');
                     const data = await res.json();
@@ -342,7 +348,7 @@
             }
         });
 
-        // OSM Overpass Fetcher (Robust Response Validation)
+        // OSM Overpass Fetcher
         document.getElementById('btn-fetch-osm').addEventListener('click', async () => {
             const bounds = App.map.getBounds();
             const spanDist = bounds.getSouthWest().distanceTo(bounds.getNorthEast());
@@ -364,369 +370,6 @@
                 }
 
                 const data = await response.json();
-                
                 const nodes = {};
                 if (data && data.elements) {
-                    data.elements.forEach(el => {
-                        if (el.type === 'node') nodes[el.id] = { lon: el.lon, lat: el.lat };
-                    });
-                }
-
-                const features = [];
-                if (data && data.elements) {
-                    data.elements.forEach(el => {
-                        if (el.tags && el.type === 'way' && el.nodes) {
-                            const coords = el.nodes.map(nid => nodes[nid] ? [nodes[nid].lon, nodes[nid].lat] : null).filter(c => c !== null);
-                            if (coords.length >= 2) {
-                                const isPoly = el.tags.building || el.tags.landuse;
-                                if (isPoly && (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1])) {
-                                    coords.push(coords[0]);
-                                }
-                                features.push({ type: "Feature", geometry: { type: isPoly ? "Polygon" : "LineString", coordinates: isPoly ? [coords] : coords }, properties: el.tags });
-                            }
-                        }
-                    });
-                }
-                App.groups.osm.clearLayers();
-                L.geoJSON({ type: "FeatureCollection", features }, {
-                    style: f => f.properties.highway ? { color: '#f59e0b', weight: roadWidth, opacity: 0.8 } : { color: '#3b82f6', fillColor: '#1d4ed8', fillOpacity: 0.5, weight: 1 }
-                }).addTo(App.groups.osm);
-                UI.updateCounts();
-                UI.toast('success', 'Data OSM berhasil dimuat!');
-            } catch (err) {
-                Swal.fire('Error OSM', err.message, 'error');
-            } finally {
-                UI.hideLoading();
-            }
-        });
-
-        // Proses Handler Impor File
-        async function handleFileImport(file) {
-            if (!file) return;
-            UI.showLoading('Membaca file...', file.name);
-            try {
-                let kmlText = '';
-                const fileNameLower = file.name.toLowerCase();
-                if (fileNameLower.endsWith('.kmz')) {
-                    const zip = new JSZip();
-                    const zipContent = await zip.loadAsync(file);
-                    const kmlFileObj = Object.values(zipContent.files).find(f => f.name.toLowerCase().endsWith('.kml') && !f.dir);
-                    if (!kmlFileObj) throw new Error('File KML tidak ditemukan di dalam arsip KMZ.');
-                    kmlText = await kmlFileObj.async('text');
-                } else if (fileNameLower.endsWith('.kml')) {
-                    kmlText = await file.text();
-                } else {
-                    throw new Error('Format file tidak didukung. Harap gunakan format .kml atau .kmz');
-                }
-
-                const dom = new DOMParser().parseFromString(kmlText, 'text/xml');
-                const parserError = dom.getElementsByTagName('parsererror');
-                if (parserError.length > 0) {
-                    throw new Error('Format file KML tidak valid atau korup (kesalahan struktur XML).');
-                }
-                const converted = toGeoJSON.kml(dom);
-                App.groups.kml.clearLayers();
-                L.geoJSON(converted, { style: { color: '#10b981', weight: 2, fillOpacity: 0.3 } }).addTo(App.groups.kml);
-                document.getElementById('file-info').classList.remove('hidden');
-                document.getElementById('filename').textContent = file.name;
-                UI.updateCounts();
-                UI.toast('success', 'File berhasil diimpor!');
-            } catch (err) {
-                Swal.fire('Error Import', err.message, 'error');
-            } finally {
-                UI.hideLoading();
-            }
-        }
-
-        const dropZone = document.getElementById('dropZoneKml');
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropZone.addEventListener(eventName, e => { e.preventDefault(); dropZone.classList.add('drag-over'); }, false);
-        });
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, e => { e.preventDefault(); dropZone.classList.remove('drag-over'); }, false);
-        });
-        dropZone.addEventListener('drop', e => {
-            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                handleFileImport(e.dataTransfer.files[0]);
-            }
-        });
-
-        document.getElementById('fileInput').addEventListener('change', e => {
-            if (e.target.files[0]) {
-                handleFileImport(e.target.files[0]);
-                e.target.value = '';
-            }
-        });
-
-        // Measurement Logic
-        function startMeasurement(mode) {
-            App.state.measureMode = mode;
-            App.state.measurePoints = [];
-            App.groups.measure.clearLayers();
-            document.getElementById('measureResult').classList.remove('hidden');
-            document.getElementById('btn-measure-clear').classList.remove('hidden');
-            UI.toast('info', `Mode ukur ${mode === 'distance' ? 'jarak' : 'luas'} aktif. Klik pada peta.`);
-        }
-
-        document.getElementById('btn-measure-distance').addEventListener('click', () => startMeasurement('distance'));
-        document.getElementById('btn-measure-area').addEventListener('click', () => startMeasurement('area'));
-        document.getElementById('btn-measure-clear').addEventListener('click', () => {
-            App.state.measureMode = null;
-            App.state.measurePoints = [];
-            App.state.activeMeasureLayer = null;
-            App.groups.measure.clearLayers();
-            document.getElementById('measureResult').classList.add('hidden');
-            document.getElementById('btn-measure-clear').classList.add('hidden');
-        });
-
-        App.map.on('click', e => {
-            if (!App.state.measureMode) return;
-            const latlng = [e.latlng.lng, e.latlng.lat];
-            App.state.measurePoints.push(latlng);
-            
-            L.circleMarker([e.latlng.lat, e.latlng.lng], { radius: 4, color: '#10b981', fillColor: '#10b981', fillOpacity: 1 }).addTo(App.groups.measure);
-
-            const pts = App.state.measurePoints;
-            if (App.state.measureMode === 'distance' && pts.length >= 2) {
-                if (App.state.activeMeasureLayer) App.groups.measure.removeLayer(App.state.activeMeasureLayer);
-                const lineGeo = turf.lineString(pts);
-                App.state.activeMeasureLayer = L.geoJSON(lineGeo, { style: { color: '#10b981', weight: 3, dashArray: '4,4' } }).addTo(App.groups.measure);
-                const len = turf.length(lineGeo, {units: 'meters'});
-                document.getElementById('measureResult').textContent = `Total Jarak: ${len > 1000 ? (len/1000).toFixed(2) + ' km' : len.toFixed(1) + ' m'}`;
-            } else if (App.state.measureMode === 'area' && pts.length >= 3) {
-                if (App.state.activeMeasureLayer) App.groups.measure.removeLayer(App.state.activeMeasureLayer);
-                const closedPts = [...pts, pts[0]];
-                const polyGeo = turf.polygon([closedPts]);
-                App.state.activeMeasureLayer = L.geoJSON(polyGeo, { style: { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.2, dashArray: '4,4' } }).addTo(App.groups.measure);
-                const area = turf.area(polyGeo);
-                document.getElementById('measureResult').textContent = `Total Luas: ${area > 10000 ? (area/10000).toFixed(2) + ' ha' : area.toFixed(1) + ' m²'}`;
-            }
-        });
-
-        // Layer Toggles & Opacity
-        ['kml', 'osm', 'draw'].forEach(key => {
-            document.getElementById(`toggle-${key}`).addEventListener('change', e => {
-                if (e.target.checked) App.map.addLayer(App.groups[key]);
-                else App.map.removeLayer(App.groups[key]);
-            });
-            document.getElementById(`opacity-${key}`).addEventListener('input', e => {
-                const val = parseFloat(e.target.value);
-                App.groups[key].eachLayer(layer => {
-                    if (typeof layer.setStyle === 'function') {
-                        layer.setStyle({ opacity: val, fillOpacity: val * 0.4 });
-                    } else if (typeof layer.setOpacity === 'function') {
-                        layer.setOpacity(val);
-                    }
-                });
-            });
-        });
-
-        // Save & Load Project
-        document.getElementById('btn-save').addEventListener('click', () => {
-            const allFeatures = [];
-            App.groups.draw.eachLayer(l => { if (typeof l.toGeoJSON === 'function') allFeatures.push(l.toGeoJSON()); });
-            const blob = new Blob([JSON.stringify({ type: "FeatureCollection", features: allFeatures })], { type: 'application/json' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'geoconvert_project.json';
-            a.click();
-            UI.toast('success', 'Proyek berhasil disimpan!');
-        });
-
-        document.getElementById('loadProjectInput').addEventListener('change', async e => {
-            const file = e.target.files[0];
-            if (!file) return;
-            try {
-                const text = await file.text();
-                const json = JSON.parse(text);
-                App.groups.draw.clearLayers();
-                L.geoJSON(json).eachLayer(l => App.groups.draw.addLayer(l));
-                UI.updateCounts();
-                UI.toast('success', 'Proyek berhasil dimuat!');
-            } catch (err) {
-                Swal.fire('Error', 'Format file proyek tidak valid atau korup.', 'error');
-            } finally {
-                e.target.value = '';
-            }
-        });
-
-        // DXF Export
-        document.getElementById('btn-export').addEventListener('click', () => {
-            let originX = null, originY = null;
-
-            const groupsConfig = [
-                { group: App.groups.kml, name: 'KML_DATA' },
-                { group: App.groups.osm, name: 'OSM_DATA' },
-                { group: App.groups.draw, name: 'USER_DRAW' }
-            ];
-
-            groupsConfig.forEach(item => {
-                item.group.eachLayer(layer => {
-                    if (originX === null && typeof layer.toGeoJSON === 'function') {
-                        const geo = layer.toGeoJSON();
-                        const f = geo.features ? geo.features[0] : geo;
-                        if (f && f.geometry && f.geometry.coordinates && f.geometry.coordinates.length > 0) {
-                            let coords = f.geometry.coordinates;
-                            while (Array.isArray(coords) && Array.isArray(coords[0]) && Array.isArray(coords[0][0]) && typeof coords[0][0][0] !== 'number') {
-                                coords = coords[0];
-                            }
-                            if (Array.isArray(coords[0]) && typeof coords[0][0] === 'number') {
-                                originX = coords[0][0];
-                                originY = coords[0][1];
-                            } else if (typeof coords[0] === 'number') {
-                                originX = coords[0];
-                                originY = coords[1];
-                            }
-                        }
-                    }
-                });
-            });
-
-            if (originX === null || originY === null) {
-                Swal.fire('Informasi', 'Tidak ada objek geometri valid untuk diexport ke DXF.', 'warning');
-                return;
-            }
-
-            let dxfLines = [
-                "0", "SECTION",
-                "2", "HEADER",
-                "0", "ENDSEC",
-                "0", "SECTION",
-                "2", "TABLES",
-                "0", "TABLE",
-                "2", "LAYER",
-                "70", "3"
-            ];
-
-            groupsConfig.forEach(item => {
-                dxfLines.push(
-                    "0", "LAYER",
-                    "2", item.name,
-                    "70", "0",
-                    "62", "7",
-                    "6", "CONTINUOUS"
-                );
-            });
-
-            dxfLines.push("0", "ENDTAB", "0", "ENDSEC", "0", "SECTION", "2", "ENTITIES");
-
-            const scaleY = 110574.6;
-            const scaleX = 111319.9 * Math.cos((originY * Math.PI) / 180);
-
-            groupsConfig.forEach(item => {
-                item.group.eachLayer(layer => {
-                    if (typeof layer.toGeoJSON === 'function') {
-                        const geo = layer.toGeoJSON();
-                        const feats = geo.features ? geo.features : [geo];
-                        feats.forEach(f => {
-                            if (!f.geometry || !f.geometry.coordinates) return;
-                            const geom = f.geometry;
-                            
-                            const processRings = (rings) => {
-                                if (rings && rings.length > 0) {
-                                    const ring = rings[0];
-                                    if (ring && ring.length > 1) {
-                                        dxfLines.push(
-                                            "0", "POLYLINE",
-                                            "8", item.name,
-                                            "66", "1",
-                                            "70", geom.type.includes("Polygon") ? "1" : "0"
-                                        );
-                                        let pts = [...ring];
-                                        if (geom.type.includes("Polygon") && pts.length > 1 && pts[0][0] === pts[pts.length-1][0] && pts[0][1] === pts[pts.length-1][1]) {
-                                            pts.pop();
-                                        }
-                                        pts.forEach(c => {
-                                            if (Array.isArray(c) && c.length >= 2) {
-                                                const x = (c[0] - originX) * scaleX;
-                                                const y = (c[1] - originY) * scaleY;
-                                                dxfLines.push("0", "VERTEX", "8", item.name, "10", x.toFixed(4), "20", y.toFixed(4), "30", "0.0");
-                                            }
-                                        });
-                                        dxfLines.push("0", "SEQEND");
-                                    }
-                                }
-                            };
-
-                            if (geom.type === "LineString") {
-                                processRings([geom.coordinates]);
-                            } else if (geom.type === "Polygon") {
-                                processRings(geom.coordinates);
-                            } else if (geom.type === "MultiLineString") {
-                                geom.coordinates.forEach(lineCoords => processRings([lineCoords]));
-                            } else if (geom.type === "MultiPolygon") {
-                                geom.coordinates.forEach(polyCoords => processRings(polyCoords));
-                            }
-                        });
-                    }
-                });
-            });
-
-            dxfLines.push("0", "ENDSEC", "0", "EOF");
-            const blob = new Blob([dxfLines.join("\r\n")], { type: 'application/dxf' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'GeoConvert_Export_Structured.dxf';
-            a.click();
-            UI.toast('success', 'File DXF terstruktur berhasil diexport!');
-        });
-
-        // Export KMZ (Menggantikan Export PNG)
-        document.getElementById('btn-export-kmz').addEventListener('click', async () => {
-            UI.showLoading('Membuat file KMZ...', 'Mengompilasi seluruh layer aktif');
-            try {
-                let kmlContent = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>GeoConvert Export</name>\n`;
-
-                const processGroup = (group, folderName) => {
-                    if (group.getLayers().length === 0) return;
-                    kmlContent += `<Folder><name>${folderName}</name>\n`;
-                    group.eachLayer(layer => {
-                        if (typeof layer.toGeoJSON === 'function') {
-                            const geo = layer.toGeoJSON();
-                            const feats = geo.features ? geo.features : [geo];
-                            feats.forEach(f => {
-                                if (!f.geometry) return;
-                                const geom = f.geometry;
-                                const props = f.properties || {};
-                                const name = props.name || props.highway || props.building || 'Geometri';
-                                
-                                if (geom.type === 'Point') {
-                                    kmlContent += `<Placemark><name>${name}</name><Point><coordinates>${geom.coordinates[0]},${geom.coordinates[1]}</coordinates></Point></Placemark>\n`;
-                                } else if (geom.type === 'LineString') {
-                                    kmlContent += `<Placemark><name>${name}</name><LineString><coordinates>${geom.coordinates.map(c => c[0] + ',' + c[1]).join(' ')}</coordinates></LineString></Placemark>\n`;
-                                } else if (geom.type === 'Polygon') {
-                                    const ring = geom.coordinates[0];
-                                    kmlContent += `<Placemark><name>${name}</name><Polygon><outerBoundaryIs><LinearRing><coordinates>${ring.map(c => c[0] + ',' + c[1]).join(' ')}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>\n`;
-                                }
-                            });
-                        }
-                    });
-                    kmlContent += `</Folder>\n`;
-                };
-
-                processGroup(App.groups.kml, 'KML Import');
-                processGroup(App.groups.osm, 'OSM Environment');
-                processGroup(App.groups.draw, 'User Drawings');
-
-                kmlContent += `</Document>\n</kml>`;
-
-                const zip = new JSZip();
-                zip.file("doc.kml", kmlContent);
-                const content = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
-
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(content);
-                a.download = 'GeoConvert_Export.kmz';
-                a.click();
-                UI.toast('success', 'File KMZ berhasil diexport!');
-            } catch (err) {
-                Swal.fire('Error KMZ', 'Gagal ekspor KMZ: ' + err.message, 'error');
-            } finally {
-                UI.hideLoading();
-            }
-        });
-
-        window.addEventListener('load', () => UI.updateCounts());
-    </script>
-</body>
-</html>
+                    data

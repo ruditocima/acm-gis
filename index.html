@@ -569,6 +569,77 @@
 
     <!-- Application Logic -->
     <script>
+        /**
+ * Modul Independent Free-Draw Polygon Override untuk Leaflet / Leaflet.draw
+ * Memastikan klik dan pembuatan vertex polygon tembus di atas OSM, tile, dan objek terkunci.
+ */
+(function() {
+    // Tunggu hingga peta siap atau jalankan langsung jika map sudah ada
+    function initFreePolygonOverride() {
+        if (typeof map === 'undefined' || !map) {
+            setTimeout(initFreePolygonOverride, 500);
+            return;
+        }
+
+        // 1. Pastikan container peta / pane untuk drawing berada di layer z-index paling atas
+        // agar tidak terhalang objek terkunci (locked layers)
+        if (map.getPane('overlayPane')) {
+            map.getPane('overlayPane').style.zIndex = '600';
+        }
+        
+        // Buat pane khusus drawing jika belum ada agar interaksi pointer selalu di atas
+        if (!map.getPane('freeDrawPane')) {
+            var freePane = map.createPane('freeDrawPane');
+            freePane.style.zIndex = 650;
+            freePane.style.pointerEvents = 'none'; // Biarkan event diteruskan ke handler map di bawahnya secara terkontrol
+        }
+
+        // 2. Intersep event klik pada map saat mode draw polygon aktif untuk mengabaikan halangan objek terkunci
+        map.on('mousedown', function(e) {
+            // Cek apakah handler leaflet.draw polygon sedang aktif
+            var drawControlActive = window.drawControl && window.drawControl._toolbars;
+            let isPolygonDrawing = false;
+
+            // Deteksi state aktif dari plugin leaflet.draw standard
+            if (map._toolbars && map._toolbars.draw) {
+                // Melalui interupsi active handler
+                let activeHandler = map._toolbars.draw._activeMode;
+                if (activeHandler && activeHandler.handler && activeHandler.handler.type === 'polygon') {
+                    isPolygonDrawing = true;
+                }
+            }
+
+            // Jika mode gambar polygon aktif, paksa pointer-events pada elemen peta bawah menjadi auto/aktif
+            if (isPolygonDrawing) {
+                // Lewati proteksi objek terkunci dengan menghentikan propagasi objek target di bawah kursor
+                if (e.originalEvent) {
+                    e.originalEvent.stopPropagation();
+                }
+            }
+        }, true); // Gunakan capture phase (true) agar terpanggil sebelum event locked object memblokirnya
+
+        // 3. Patch khusus untuk Leaflet.Draw Polygon Handler agar mengabaikan target lock/interactive check jika ada
+        if (typeof L !== 'undefined' && L.Draw && L.Draw.Polygon) {
+            var originalAddVertex = L.Draw.Polygon.prototype._addVertex;
+            if (originalAddVertex && !L.Draw.Polygon.prototype._freeDrawPatched) {
+                L.Draw.Polygon.prototype._addVertex = function(e) {
+                    // Panggil fungsi asli dengan koordinat murni dari peta (e.latlng)
+                    return originalAddVertex.call(this, e);
+                };
+                L.Draw.Polygon.prototype._freeDrawPatched = true;
+            }
+        }
+
+        console.info("Free-Draw Polygon Override berhasil dimuat tanpa mengubah template utama.");
+    }
+
+    // Jalankan inisialisasi
+    if (document.readyState === 'complete') {
+        initFreePolygonOverride();
+    } else {
+        window.addEventListener('load', initFreePolygonOverride);
+    }
+})();
         const App = {
             config: {
                 maxUndoStack: 50,

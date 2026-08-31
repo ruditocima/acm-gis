@@ -588,7 +588,7 @@
                 currentBbox: null,
                 uploadedKmlFeatures: [],
                 coordFormat: 'dd',
-                deletedOSM: [] // Track terhapusnya OSM
+                deletedOSM: [] 
             },
             groups: {},
             undoStack: [],
@@ -742,7 +742,6 @@
                 if (lastAction.group && lastAction.layer) {
                     lastAction.group.addLayer(lastAction.layer);
                     
-                    // Jika yang di-undo adalah objek OSM yang terhapus, hapus dari list deletedOSM
                     if (lastAction.group === App.groups.osm && lastAction.layer.feature?.properties?._internalId) {
                         const targetId = lastAction.layer.feature.properties._internalId;
                         App.state.deletedOSM = App.state.deletedOSM.filter(geo => geo.properties?._internalId !== targetId);
@@ -800,13 +799,13 @@
                         features.push({
                             type: "Feature",
                             geometry: { type: "Polygon", coordinates: [coords] },
-                            properties: { ...el.tags, osm_id: el.id } // Pastikan ID Overpass disimpan
+                            properties: { ...el.tags, osm_id: el.id } 
                         });
                     } else {
                         features.push({
                             type: "Feature",
                             geometry: { type: "LineString", coordinates: coords },
-                            properties: { ...el.tags, osm_id: el.id } // Pastikan ID Overpass disimpan
+                            properties: { ...el.tags, osm_id: el.id } 
                         });
                     }
                 }
@@ -865,19 +864,27 @@
         // 2. EVENT PENANDAAN (MARK AS EDITED) KETIKA USER MENGEDIT
         // ============================================================
 
-        function markAsEdited(e) {
-            if (e.layer) {
-                e.layer.isEditedByUser = true;
-                if (e.layer.feature) {
-                    e.layer.feature.properties = e.layer.feature.properties || {};
-                    e.layer.feature.properties.isEditedByUser = true;
-                }
+        function setLayerAsEdited(layer) {
+            if (!layer) return;
+            layer.isEditedByUser = true;
+            if (layer.feature) {
+                layer.feature.properties = layer.feature.properties || {};
+                layer.feature.properties.isEditedByUser = true;
             }
         }
+
+        function markAsEdited(e) {
+            const layer = e.layer || e.target;
+            setLayerAsEdited(layer);
+        }
+
+        // Global Geoman Map Events (Untuk menangkap aksi pada instance map)
         App.map.on('pm:update', markAsEdited);
         App.map.on('pm:dragend', markAsEdited);
         App.map.on('pm:cut', markAsEdited);
         App.map.on('pm:rotateend', markAsEdited);
+        App.map.on('pm:edit', markAsEdited);
+        App.map.on('pm:change', markAsEdited);
 
         // ============================================================
         // 3. COORDINATE DISPLAY & MOUSE TRACKING
@@ -987,7 +994,7 @@
         });
 
         // ============================================================
-        // 6. LAYER MANAGER (Visibility, Opacity, Clear)
+        // 6. LAYER MANAGER
         // ============================================================
 
         function setupLayerManager(groupName, group) {
@@ -1032,7 +1039,7 @@
                             if (groupName === 'kml') App.state.uploadedKmlFeatures = [];
                             if (groupName === 'osm') {
                                 document.getElementById('btn-fetch-osm').disabled = true;
-                                App.state.deletedOSM = []; // Reset jika OSM di-clear manual secara massal
+                                App.state.deletedOSM = []; 
                             }
                             UI.updateFeatureCounts();
                             UI.toast('success', `Layer ${groupName.toUpperCase()} dihapus`, 2000);
@@ -1210,7 +1217,6 @@
 
         App.map.on('pm:drawstart', ({ workingLayer, shape }) => {
             clearMeasurement();
-
             if (shape === 'Rectangle') {
                 App.map.pm.setGlobalOptions({ ortho: false });
                 if (workingLayer && workingLayer.options) {
@@ -1230,6 +1236,15 @@
             e.layer.options.pmIgnore = false;
             e.layer.options.allowRemoval = true;
 
+            // Memastikan event edit spesifik per layer ditempel ke objek yang baru digambar
+            e.layer.on('pm:edit', markAsEdited);
+            e.layer.on('pm:update', markAsEdited);
+            e.layer.on('pm:dragend', markAsEdited);
+            e.layer.on('pm:change', markAsEdited);
+            e.layer.on('pm:markerdragend', markAsEdited);
+            e.layer.on('pm:vertexadded', markAsEdited);
+            e.layer.on('pm:vertexremoved', markAsEdited);
+
             App.groups.draw.addLayer(e.layer);
             bindNamePopup(e.layer);
             setSelectedLayer(e.layer);
@@ -1242,23 +1257,6 @@
 
         let editWarningShown = false;
         let currentlyEditingLayer = null;
-
-        function isLayerFromDrawGroup(layer) {
-            let found = false;
-            App.groups.draw.eachLayer((l) => {
-                if (l === layer) found = true;
-            });
-            if (!found) {
-                App.groups.draw.eachLayer((l) => {
-                    if (l.getLayers) {
-                        l.eachLayer((subL) => {
-                            if (subL === layer) found = true;
-                        });
-                    }
-                });
-            }
-            return found;
-        }
 
         App.map.on('pm:globaleditmodetoggled', (e) => {
             if (e.enabled) {
@@ -1287,7 +1285,6 @@
             const layer = e.layer;
             if (!layer) return;
 
-            // Memastikan mode edit bisa diaplikasikan ke semua grup, sehingga event isEditedByUser bisa terpanggil
             if (currentlyEditingLayer && currentlyEditingLayer !== layer) {
                 if (currentlyEditingLayer.pm && currentlyEditingLayer.pm.enabled && currentlyEditingLayer.pm.enabled()) {
                     currentlyEditingLayer.pm.disable();
@@ -1343,6 +1340,12 @@
                                         layer.feature.properties = { ...layer.feature.properties, ...feature.properties };
                                         layer.options.allowRemoval = false;
                                         layer._osmGeoJSON = JSON.parse(JSON.stringify(feature));
+                                        
+                                        layer.on('pm:edit', markAsEdited);
+                                        layer.on('pm:update', markAsEdited);
+                                        layer.on('pm:dragend', markAsEdited);
+                                        layer.on('pm:change', markAsEdited);
+                                        
                                         layer.on('click', function(e) {
                                             if (App.map.pm.globalRemovalModeEnabled()) {
                                                 L.DomEvent.stop(e);
@@ -1368,12 +1371,10 @@
             } else if (props.sourceGroup === 'osm' || props.building) {
                 sourceGroup = App.groups.osm;
 
-                // PELACAKAN OSM YANG DIHAPUS 
                 let geo = e.layer.toGeoJSON ? e.layer.toGeoJSON() : e.layer._osmGeoJSON;
                 if (geo) {
                     geo.properties = { ...props, ...geo.properties, sourceGroup: 'osm', isDeletedByUser: true };
                     
-                    // Beri ID unik tracking untuk Undo
                     if (!geo.properties._internalId) geo.properties._internalId = Date.now() + Math.random();
                     e.layer.feature = e.layer.feature || {};
                     e.layer.feature.properties = e.layer.feature.properties || {};
@@ -1381,7 +1382,6 @@
 
                     App.state.deletedOSM.push(geo);
 
-                    // Mencegah duplikasi tracking jika terjadi penghapusan berulang
                     const uniqueIds = new Set();
                     App.state.deletedOSM = App.state.deletedOSM.filter(g => {
                         const id = g.properties?.osm_id || g.properties?._internalId;
@@ -1518,6 +1518,16 @@
                 onEachFeature: function(feature, layer) {
                     layer.options.pmIgnore = false;
                     layer.options.allowRemoval = true;
+                    
+                    // Tempelkan event edit ke objek yang baru dipaste
+                    layer.on('pm:edit', markAsEdited);
+                    layer.on('pm:update', markAsEdited);
+                    layer.on('pm:dragend', markAsEdited);
+                    layer.on('pm:change', markAsEdited);
+                    layer.on('pm:markerdragend', markAsEdited);
+                    layer.on('pm:vertexadded', markAsEdited);
+                    layer.on('pm:vertexremoved', markAsEdited);
+                    
                     bindNamePopup(layer);
                 }
             });
@@ -1732,6 +1742,16 @@
                 onEachFeature: function(feature, layer) {
                     layer.options.pmIgnore = true;
                     if (L.PM) L.PM.reInitLayer(layer);
+                    
+                    // Tempelkan spesifik event ke setiap fitur KML
+                    layer.on('pm:edit', markAsEdited);
+                    layer.on('pm:update', markAsEdited);
+                    layer.on('pm:dragend', markAsEdited);
+                    layer.on('pm:change', markAsEdited);
+                    layer.on('pm:markerdragend', markAsEdited);
+                    layer.on('pm:vertexadded', markAsEdited);
+                    layer.on('pm:vertexremoved', markAsEdited);
+                    
                     bindNamePopup(layer);
                 }
             });
@@ -1747,7 +1767,7 @@
         }
 
         // ============================================================
-        // 15. FETCH OSM DATA (Dengan Proteksi Edit & Deleted)
+        // 15. FETCH OSM DATA
         // ============================================================
 
         async function fetchOSMData(bbox) {
@@ -1884,12 +1904,10 @@
                 const filteredFeatures = processedFeatures.filter(f => {
                     if (!f.properties || (!f.properties.building && !f.properties.highway)) return false;
 
-                    // MENCEGAH DUPLIKASI OSM YANG DIHAPUS USER
                     if (App.state.deletedOSM.some(del => del.properties && del.properties.osm_id === f.properties.osm_id)) {
                         return false;
                     }
 
-                    // MENCEGAH DUPLIKASI OSM YANG SUDAH DIEDIT (agar tidak tumpang tindih)
                     let isEdited = false;
                     App.groups.osm.eachLayer(layer => {
                         if (layer.isEditedByUser && layer.feature?.properties?.osm_id === f.properties.osm_id) {
@@ -1951,6 +1969,15 @@
                                 layer.options.allowRemoval = false;
                                 layer.options.interactive = true;
                             }
+
+                            // Tempelkan listener ke setiap layer OSM secara individual
+                            layer.on('pm:edit', markAsEdited);
+                            layer.on('pm:update', markAsEdited);
+                            layer.on('pm:dragend', markAsEdited);
+                            layer.on('pm:change', markAsEdited);
+                            layer.on('pm:markerdragend', markAsEdited);
+                            layer.on('pm:vertexadded', markAsEdited);
+                            layer.on('pm:vertexremoved', markAsEdited);
 
                             layer.on('click', function(e) {
                                 const props = layer.feature?.properties || {};
@@ -2022,7 +2049,7 @@
         }
 
         // ============================================================
-        // 17. SAVE PROJECT FILE (Custom logic based on modified state)
+        // 17. SAVE PROJECT FILE
         // ============================================================
 
         document.getElementById('btn-save').addEventListener('click', async () => {
@@ -2041,7 +2068,9 @@
             [App.groups.kml, App.groups.osm].forEach(group => {
                 let sourceGroupName = group === App.groups.kml ? 'kml' : 'osm';
                 processAllSubLayers(group, layer => {
-                    if (layer.isEditedByUser && typeof layer.toGeoJSON === 'function') {
+                    // Cek isEditedByUser dari layer maupun dari feature properties
+                    const isEdited = layer.isEditedByUser || (layer.feature && layer.feature.properties && layer.feature.properties.isEditedByUser);
+                    if (isEdited && typeof layer.toGeoJSON === 'function') {
                         let geo = layer.toGeoJSON();
                         geo.properties = { ...layer.feature?.properties, ...geo.properties, sourceGroup: sourceGroupName, isEditedByUser: true };
                         allFeatures.push(geo);
@@ -2107,7 +2136,7 @@
         });
 
         // ============================================================
-        // 18. LOAD PROJECT FILE (Dengan integrasi status Edit & Delete)
+        // 18. LOAD PROJECT FILE
         // ============================================================
 
         document.getElementById('loadProjectInput').addEventListener('change', (e) => {
@@ -2182,20 +2211,17 @@
                                 layer.isEditedByUser = true;
                             }
 
-                            // JIKA OBJEK INI STATUSNYA DIHAPUS USER
                             if (props.isDeletedByUser) {
                                 App.state.deletedOSM.push(feature);
                                 
-                                // Jika ada original object-nya di map (misalnya akibat fetch), hapus secara visual
                                 App.groups.osm.eachLayer(existingLayer => {
                                     if (existingLayer.feature?.properties?.osm_id === props.osm_id) {
                                         App.groups.osm.removeLayer(existingLayer);
                                     }
                                 });
-                                return; // Tidak perlu ditambahkan ke map
+                                return;
                             }
                             
-                            // JIKA INI VERSI EDIT DARI OSM, HAPUS VERSI ORIGINALNYA AGAR TIDAK TUMPANG TINDIH
                             if (props.sourceGroup === 'osm' && props.isEditedByUser && props.osm_id) {
                                 App.groups.osm.eachLayer(existingLayer => {
                                     if (existingLayer.feature?.properties?.osm_id === props.osm_id) {
@@ -2203,6 +2229,15 @@
                                     }
                                 });
                             }
+
+                            // Tempelkan ulang trigger pada layer saat di-load
+                            layer.on('pm:edit', markAsEdited);
+                            layer.on('pm:update', markAsEdited);
+                            layer.on('pm:dragend', markAsEdited);
+                            layer.on('pm:change', markAsEdited);
+                            layer.on('pm:markerdragend', markAsEdited);
+                            layer.on('pm:vertexadded', markAsEdited);
+                            layer.on('pm:vertexremoved', markAsEdited);
 
                             if (props.sourceGroup === 'kml') {
                                 if (!mergeOnlyEdits || props.isEditedByUser) {

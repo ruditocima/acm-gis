@@ -570,76 +570,70 @@
     <!-- Application Logic -->
     <script>
         /**
- * Modul Independent Free-Draw Polygon Override untuk Leaflet / Leaflet.draw
- * Memastikan klik dan pembuatan vertex polygon tembus di atas OSM, tile, dan objek terkunci.
- */
-(function() {
-    // Tunggu hingga peta siap atau jalankan langsung jika map sudah ada
-    function initFreePolygonOverride() {
-        if (typeof map === 'undefined' || !map) {
-            setTimeout(initFreePolygonOverride, 500);
-            return;
-        }
-
-        // 1. Pastikan container peta / pane untuk drawing berada di layer z-index paling atas
-        // agar tidak terhalang objek terkunci (locked layers)
-        if (map.getPane('overlayPane')) {
-            map.getPane('overlayPane').style.zIndex = '600';
-        }
-        
-        // Buat pane khusus drawing jika belum ada agar interaksi pointer selalu di atas
-        if (!map.getPane('freeDrawPane')) {
-            var freePane = map.createPane('freeDrawPane');
-            freePane.style.zIndex = 650;
-            freePane.style.pointerEvents = 'none'; // Biarkan event diteruskan ke handler map di bawahnya secara terkontrol
-        }
-
-        // 2. Intersep event klik pada map saat mode draw polygon aktif untuk mengabaikan halangan objek terkunci
-        map.on('mousedown', function(e) {
-            // Cek apakah handler leaflet.draw polygon sedang aktif
-            var drawControlActive = window.drawControl && window.drawControl._toolbars;
-            let isPolygonDrawing = false;
-
-            // Deteksi state aktif dari plugin leaflet.draw standard
-            if (map._toolbars && map._toolbars.draw) {
-                // Melalui interupsi active handler
-                let activeHandler = map._toolbars.draw._activeMode;
-                if (activeHandler && activeHandler.handler && activeHandler.handler.type === 'polygon') {
-                    isPolygonDrawing = true;
+         * Modul Independent Free-Draw Polygon Override untuk Leaflet / Leaflet.draw
+         * Memastikan klik dan pembuatan vertex polygon tembus di atas OSM, tile, dan objek terkunci.
+         */
+        (function() {
+            function initFreePolygonOverride() {
+                // Menunggu hingga instansi App.map terinisialisasi sempurna (menghindari error DOM map.getPane)
+                if (typeof App === 'undefined' || !App.map) {
+                    setTimeout(initFreePolygonOverride, 300);
+                    return;
                 }
-            }
 
-            // Jika mode gambar polygon aktif, paksa pointer-events pada elemen peta bawah menjadi auto/aktif
-            if (isPolygonDrawing) {
-                // Lewati proteksi objek terkunci dengan menghentikan propagasi objek target di bawah kursor
-                if (e.originalEvent) {
-                    e.originalEvent.stopPropagation();
+                const mapInstance = App.map;
+
+                // 1. Pastikan container peta / pane untuk drawing berada di layer z-index paling atas
+                if (mapInstance.getPane('overlayPane')) {
+                    mapInstance.getPane('overlayPane').style.zIndex = '600';
                 }
+                
+                // Buat pane khusus drawing jika belum ada agar interaksi pointer selalu di atas
+                if (!mapInstance.getPane('freeDrawPane')) {
+                    var freePane = mapInstance.createPane('freeDrawPane');
+                    freePane.style.zIndex = 650;
+                    freePane.style.pointerEvents = 'none';
+                }
+
+                // 2. Intersep event klik pada map saat mode draw polygon aktif
+                mapInstance.on('mousedown', function(e) {
+                    let isPolygonDrawing = false;
+
+                    if (mapInstance._toolbars && mapInstance._toolbars.draw) {
+                        let activeHandler = mapInstance._toolbars.draw._activeMode;
+                        if (activeHandler && activeHandler.handler && activeHandler.handler.type === 'polygon') {
+                            isPolygonDrawing = true;
+                        }
+                    }
+
+                    if (isPolygonDrawing) {
+                        if (e.originalEvent) {
+                            e.originalEvent.stopPropagation();
+                        }
+                    }
+                }, true);
+
+                // 3. Patch khusus untuk Leaflet.Draw Polygon Handler
+                if (typeof L !== 'undefined' && L.Draw && L.Draw.Polygon) {
+                    var originalAddVertex = L.Draw.Polygon.prototype._addVertex;
+                    if (originalAddVertex && !L.Draw.Polygon.prototype._freeDrawPatched) {
+                        L.Draw.Polygon.prototype._addVertex = function(e) {
+                            return originalAddVertex.call(this, e);
+                        };
+                        L.Draw.Polygon.prototype._freeDrawPatched = true;
+                    }
+                }
+
+                console.info("Free-Draw Polygon Override berhasil dimuat tanpa mengubah template utama.");
             }
-        }, true); // Gunakan capture phase (true) agar terpanggil sebelum event locked object memblokirnya
 
-        // 3. Patch khusus untuk Leaflet.Draw Polygon Handler agar mengabaikan target lock/interactive check jika ada
-        if (typeof L !== 'undefined' && L.Draw && L.Draw.Polygon) {
-            var originalAddVertex = L.Draw.Polygon.prototype._addVertex;
-            if (originalAddVertex && !L.Draw.Polygon.prototype._freeDrawPatched) {
-                L.Draw.Polygon.prototype._addVertex = function(e) {
-                    // Panggil fungsi asli dengan koordinat murni dari peta (e.latlng)
-                    return originalAddVertex.call(this, e);
-                };
-                L.Draw.Polygon.prototype._freeDrawPatched = true;
+            if (document.readyState === 'complete') {
+                initFreePolygonOverride();
+            } else {
+                window.addEventListener('load', initFreePolygonOverride);
             }
-        }
+        })();
 
-        console.info("Free-Draw Polygon Override berhasil dimuat tanpa mengubah template utama.");
-    }
-
-    // Jalankan inisialisasi
-    if (document.readyState === 'complete') {
-        initFreePolygonOverride();
-    } else {
-        window.addEventListener('load', initFreePolygonOverride);
-    }
-})();
         const App = {
             config: {
                 maxUndoStack: 50,
@@ -949,7 +943,6 @@
             setLayerAsEdited(layer);
         }
 
-        // Global Geoman Map Events (Untuk menangkap aksi pada instance map)
         App.map.on('pm:update', markAsEdited);
         App.map.on('pm:dragend', markAsEdited);
         App.map.on('pm:cut', markAsEdited);
@@ -1307,7 +1300,6 @@
             e.layer.options.pmIgnore = false;
             e.layer.options.allowRemoval = true;
 
-            // Memastikan event edit spesifik per layer ditempel ke objek yang baru digambar
             e.layer.on('pm:edit', markAsEdited);
             e.layer.on('pm:update', markAsEdited);
             e.layer.on('pm:dragend', markAsEdited);
@@ -1326,7 +1318,6 @@
             App.map.pm.disableDraw();
         });
 
-        let editWarningShown = false;
         let currentlyEditingLayer = null;
 
         App.map.on('pm:globaleditmodetoggled', (e) => {
@@ -1590,7 +1581,6 @@
                     layer.options.pmIgnore = false;
                     layer.options.allowRemoval = true;
                     
-                    // Tempelkan event edit ke objek yang baru dipaste
                     layer.on('pm:edit', markAsEdited);
                     layer.on('pm:update', markAsEdited);
                     layer.on('pm:dragend', markAsEdited);
@@ -1814,7 +1804,6 @@
                     layer.options.pmIgnore = true;
                     if (L.PM) L.PM.reInitLayer(layer);
                     
-                    // Tempelkan spesifik event ke setiap fitur KML
                     layer.on('pm:edit', markAsEdited);
                     layer.on('pm:update', markAsEdited);
                     layer.on('pm:dragend', markAsEdited);
@@ -1838,7 +1827,7 @@
         }
 
         // ============================================================
-        // 15. FETCH OSM DATA
+        // 15. FETCH OSM DATA WITH ROBUST FALLBACK MIRRORS
         // ============================================================
 
         async function fetchOSMData(bbox) {
@@ -1914,6 +1903,8 @@
                             successData = data;
                             break; 
                         }
+                    } else {
+                        console.warn(`Mirror ${mirrorName} merespons dengan status HTTP ${response.status}`);
                     }
                 } catch (error) {
                     console.warn(`Mirror ${targetUrl} sibuk/timeout, beralih ke mirror berikutnya...`);
@@ -2041,7 +2032,6 @@
                                 layer.options.interactive = true;
                             }
 
-                            // Tempelkan listener ke setiap layer OSM secara individual
                             layer.on('pm:edit', markAsEdited);
                             layer.on('pm:update', markAsEdited);
                             layer.on('pm:dragend', markAsEdited);
@@ -2076,7 +2066,7 @@
                 Swal.fire({
                     icon: 'error',
                     title: 'Gagal Memuat Data OSM',
-                    html: 'Seluruh server OSM publik sedang sibuk. Silakan coba beberapa saat lagi.',
+                    html: 'Seluruh server OSM publik sedang sibuk (Gateway Timeout). Silakan coba beberapa saat lagi.',
                     confirmButtonText: 'OK',
                     confirmButtonColor: '#10b981'
                 });
@@ -2126,7 +2116,6 @@
         document.getElementById('btn-save').addEventListener('click', async () => {
             const allFeatures = [];
             
-            // 1. Objek yang dibuat user
             processAllSubLayers(App.groups.draw, layer => {
                 if (typeof layer.toGeoJSON === 'function') {
                     let geo = layer.toGeoJSON();
@@ -2135,11 +2124,9 @@
                 }
             });
 
-            // 2. Objek yang di-edit user (KML / OSM)
             [App.groups.kml, App.groups.osm].forEach(group => {
                 let sourceGroupName = group === App.groups.kml ? 'kml' : 'osm';
                 processAllSubLayers(group, layer => {
-                    // Cek isEditedByUser dari layer maupun dari feature properties
                     const isEdited = layer.isEditedByUser || (layer.feature && layer.feature.properties && layer.feature.properties.isEditedByUser);
                     if (isEdited && typeof layer.toGeoJSON === 'function') {
                         let geo = layer.toGeoJSON();
@@ -2149,7 +2136,6 @@
                 });
             });
 
-            // 3. OSM yang dihapus user
             App.state.deletedOSM.forEach(geo => {
                 allFeatures.push(geo);
             });
@@ -2301,7 +2287,6 @@
                                 });
                             }
 
-                            // Tempelkan ulang trigger pada layer saat di-load
                             layer.on('pm:edit', markAsEdited);
                             layer.on('pm:update', markAsEdited);
                             layer.on('pm:dragend', markAsEdited);
@@ -2426,8 +2411,29 @@
             });
         });
 
+        document.getElementById('btn-export-png').addEventListener('click', async () => {
+            UI.showLoading('Meng-export PNG...', 'Mengambil gambar peta');
+            try {
+                const mapElement = document.getElementById('map');
+                const canvas = await html2canvas(mapElement, {
+                    useCORS: true,
+                    allowTaint: true,
+                    ignoreElements: (element) => element.classList.contains('leaflet-control-zoom')
+                });
+                const link = document.createElement('a');
+                link.download = 'map_export.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                UI.toast('success', 'Export PNG berhasil!', 2000);
+            } catch (err) {
+                UI.toast('error', 'Gagal export PNG: ' + err.message, 3000);
+            } finally {
+                UI.hideLoading();
+            }
+        });
+
         // ============================================================
-        // 19. GENERATE DXF FILE (Layer Khusus & Tanpa Label Generik)
+        // 20. GENERATE DXF FILE (Lengkap & Lengkap Layer AutoCAD)
         // ============================================================
         function generateDXF(featureCollection) {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -2440,15 +2446,14 @@
                 if (y > maxY) maxY = y;
             }
 
-            // Pemetaan Warna Layer DXF (AutoCAD Color Index / ACI)
             const layerColors = {
                 "0": "7",
-                "House": "2",          // Layer Simbol / Titik (Kuning)
-                "Label": "3",          // Layer Teks (Hijau)
-                "KML_Boundary": "1",   // Merah
-                "OSM_Buildings": "6",  // Magenta
-                "OSM_Roads": "4",      // Cyan
-                "User_Drawn": "5"      // Biru
+                "House": "2",
+                "Label": "3",
+                "KML_Boundary": "1",
+                "OSM_Buildings": "6",
+                "OSM_Roads": "4",
+                "User_Drawn": "5"
             };
 
             const layerNames = new Set(Object.keys(layerColors));
@@ -2465,7 +2470,6 @@
 
             let entitiesDxf = [];
 
-            // 1. Fungsi Tambah Simbol (Titik) -> Wajib Layer 'House'
             function addPointSymbol(coord) {
                 if (!coord || coord.length < 2) return;
                 let [x, y] = CoordUtils.lonLatToMeters(coord[0], coord[1]);
@@ -2482,7 +2486,6 @@
                 entitiesDxf.push(" 40", radius.toFixed(4));
             }
 
-            // 2. Fungsi Tambah Teks -> Wajib Layer 'Label'
             function addTextLabel(coord, text) {
                 if (!coord || coord.length < 2 || text === undefined || text === null) return;
                 let [x, y] = CoordUtils.lonLatToMeters(coord[0], coord[1]);
@@ -2501,7 +2504,6 @@
                 entitiesDxf.push("  1", labelText);
             }
 
-            // 3. Fungsi Tambah Polylines/Garis -> Sesuai Layer
             function addPolyline(coords, isClosed, layerName) {
                 if (!coords || coords.length < 2) return;
 
@@ -2520,10 +2522,8 @@
                     if (!c || c.length < 2) return;
                     let [x, y] = CoordUtils.lonLatToMeters(c[0], c[1]);
                     updateExtents(x, y);
-
                     entitiesDxf.push("  0", "VERTEX");
                     entitiesDxf.push("  8", layerName);
-                    entitiesDxf.push(" 62", colorCode);
                     entitiesDxf.push(" 10", x.toFixed(4));
                     entitiesDxf.push(" 20", y.toFixed(4));
                     entitiesDxf.push(" 30", "0.0");
@@ -2533,152 +2533,85 @@
                 entitiesDxf.push("  8", layerName);
             }
 
-            // 4. Filter Ekstraksi Teks (Menghilangkan Teks Generik/Nama Layer)
-            function extractLabelText(props, currentLayerName) {
-                if (!props) return null;
-                
-                let rawText = props.NN || props.NP || props.RK || props.nn || props.np || props.rk ||
-                              props.label || props.LABEL || props.name || props.Name || props.title || props.id || null;
-                
-                if (!rawText) return null;
-
-                let textStr = String(rawText).trim();
-                let textLower = textStr.toLowerCase();
-
-                // Daftar kata-kata yang TIDAK BOLEH dijadikan label teks di DXF
-                const ignoreList = [
-                    "road", "roads", "boundary", "building", "buildings", 
-                    "osm_roads", "osm_buildings", "kml_boundary", "user_drawn",
-                    "point", "line", "polygon", "multipolygon"
-                ];
-
-                // Jika teks yang didapat ada di daftar larangan, abaikan (return null)
-                if (ignoreList.includes(textLower)) return null;
-
-                // Jika teks yang didapat ternyata sama persis dengan nama layernya, abaikan
-                if (currentLayerName && textLower === String(currentLayerName).toLowerCase()) return null;
-
-                // Jika lolos dari filter di atas, kembalikan teksnya untuk dijadikan label
-                return textStr;
-            }
-
-            // Proses Geometri Fitur
-            function processGeometry(gem, layerName, featureProps) {
-                if (!gem) return;
-
-                // Ekstrak label teks dengan menyertakan nama layer untuk di-filter
-                const labelText = extractLabelText(featureProps, layerName);
-
-                if (gem.type === "Point") {
-                    addPointSymbol(gem.coordinates);
-                    if (labelText) addTextLabel(gem.coordinates, labelText);
-                } else if (gem.type === "MultiPoint") {
-                    gem.coordinates.forEach(pt => {
-                        addPointSymbol(pt);
-                        if (labelText) addTextLabel(pt, labelText);
-                    });
-                } else if (gem.type === "LineString") {
-                    addPolyline(gem.coordinates, false, layerName);
-                    if (labelText && gem.coordinates.length > 0) {
-                        let midIdx = Math.floor(gem.coordinates.length / 2);
-                        addTextLabel(gem.coordinates[midIdx], labelText);
-                    }
-                } else if (gem.type === "MultiLineString") {
-                    gem.coordinates.forEach(line => {
-                        addPolyline(line, false, layerName);
-                        if (labelText && line.length > 0) addTextLabel(line[0], labelText);
-                    });
-                } else if (gem.type === "Polygon") {
-                    gem.coordinates.forEach(ring => addPolyline(ring, true, layerName));
-                    if (labelText && gem.coordinates[0] && gem.coordinates[0].length > 0) {
-                        addTextLabel(gem.coordinates[0][0], labelText);
-                    }
-                } else if (gem.type === "MultiPolygon") {
-                    gem.coordinates.forEach(poly => poly.forEach(ring => addPolyline(ring, true, layerName)));
-                    if (labelText && gem.coordinates[0] && gem.coordinates[0][0] && gem.coordinates[0][0].length > 0) {
-                        addTextLabel(gem.coordinates[0][0][0], labelText);
-                    }
-                } else if (gem.type === "GeometryCollection") {
-                    gem.geometries.forEach(g => processGeometry(g, layerName, featureProps));
-                }
-            }
-
-            // Pemrosesan Semua Fitur
             featureCollection.features.forEach(f => {
-                let layerName = "User_Drawn";
-                if (f.properties && f.properties.layer) {
-                    layerName = f.properties.layer.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
-                }
-                processGeometry(f.geometry, layerName, f.properties);
-            });
+                if (!f.geometry) return;
+                const geom = f.geometry;
+                const props = f.properties || {};
+                const layerName = props.layer ? props.layer.toString().replace(/[^a-zA-Z0-9_-]/g, '_') : "User_Drawn";
+                const nameText = props.name || props.Name || props.NAME || "";
 
-            // Menyusun File DXF
-            let dxfParts = [];
-            
-            // 1. HEADER
-            dxfParts.push("  0", "SECTION", "  2", "HEADER");
-            dxfParts.push("  9", "$EXTMIN", " 10", minX === Infinity ? "0.0" : minX.toFixed(4), " 20", minY === Infinity ? "0.0" : minY.toFixed(4), " 30", "0.0");
-            dxfParts.push("  9", "$EXTMAX", " 10", maxX === -Infinity ? "0.0" : maxX.toFixed(4), " 20", maxY === -Infinity ? "0.0" : maxY.toFixed(4), " 30", "0.0");
-            dxfParts.push("  0", "ENDSEC");
-            
-            // 2. TABLES (Layers)
-            dxfParts.push("  0", "SECTION", "  2", "TABLES");
-            dxfParts.push("  0", "TABLE", "  2", "LAYER", " 70", layerNames.size.toString());
-            layerNames.forEach(ln => {
-                let color = layerColors[ln] || "7";
-                dxfParts.push("  0", "LAYER", "  2", ln, " 70", "0", " 62", color, "  6", "CONTINUOUS");
-            });
-            dxfParts.push("  0", "ENDTAB", "  0", "ENDSEC");
-            
-            // 3. BLOCKS
-            dxfParts.push("  0", "SECTION", "  2", "BLOCKS", "  0", "ENDSEC");
-            
-            // 4. ENTITIES
-            dxfParts.push("  0", "SECTION", "  2", "ENTITIES");
-            dxfParts = dxfParts.concat(entitiesDxf);
-            dxfParts.push("  0", "ENDSEC");
-            
-            // 5. EOF
-            dxfParts.push("  0", "EOF");
-
-            return dxfParts.join("\n");
-        }
-
-        // ============================================================
-        // 20. EXPORT TO PNG (html2canvas)
-        // ============================================================
-        document.getElementById('btn-export-png').addEventListener('click', async () => {
-            UI.showLoading('Mengekspor ke PNG...', 'Merender peta, mohon tunggu.');
-            
-            try {
-                const mapContainer = document.getElementById('map');
-                
-                const canvas = await html2canvas(mapContainer, {
-                    useCORS: true,
-                    allowTaint: false,
-                    ignoreElements: (element) => {
-                        return element.classList.contains('leaflet-control-zoom') || 
-                               element.classList.contains('leaflet-control-minimap');
+                if (geom.type === 'Point') {
+                    addPointSymbol(geom.coordinates);
+                    if (nameText) addTextLabel(geom.coordinates, nameText);
+                } else if (geom.type === 'LineString') {
+                    addPolyline(geom.coordinates, false, layerName);
+                    if (nameText && geom.coordinates.length > 0) {
+                        addTextLabel(geom.coordinates[0], nameText);
                     }
-                });
+                } else if (geom.type === 'Polygon') {
+                    geom.coordinates.forEach(ring => {
+                        addPolyline(ring, true, layerName);
+                    });
+                    if (nameText && geom.coordinates[0] && geom.coordinates[0].length > 0) {
+                        addTextLabel(geom.coordinates[0][0], nameText);
+                    }
+                } else if (geom.type === 'MultiLineString') {
+                    geom.coordinates.forEach(line => {
+                        addPolyline(line, false, layerName);
+                    });
+                    if (nameText && geom.coordinates[0] && geom.coordinates[0].length > 0) {
+                        addTextLabel(geom.coordinates[0][0], nameText);
+                    }
+                } else if (geom.type === 'MultiPolygon') {
+                    geom.coordinates.forEach(poly => {
+                        poly.forEach(ring => {
+                            addPolyline(ring, true, layerName);
+                        });
+                    });
+                    if (nameText && geom.coordinates[0] && geom.coordinates[0][0] && geom.coordinates[0][0].length > 0) {
+                        addTextLabel(geom.coordinates[0][0][0], nameText);
+                    }
+                }
+            });
 
-                const imgData = canvas.toDataURL('image/png');
-                const a = document.createElement('a');
-                a.href = imgData;
-                a.download = 'Peta_Export.png';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-
-                UI.toast('success', 'Peta berhasil di-export ke PNG!', 2000);
-            } catch (err) {
-                console.error(err);
-                Swal.fire('Error', 'Gagal mengekspor PNG: ' + err.message, 'error');
-            } finally {
-                UI.hideLoading();
+            if (minX === Infinity) {
+                minX = 0; minY = 0; maxX = 100; maxY = 100;
             }
-        });
 
+            let dxf = [];
+            dxf.push("  0", "SECTION");
+            dxf.push("  2", "HEADER");
+            dxf.push("  9", "$EXTMIN");
+            dxf.push(" 10", minX.toFixed(4), " 20", minY.toFixed(4), " 30", "0.0");
+            dxf.push("  9", "$EXTMAX");
+            dxf.push(" 10", maxX.toFixed(4), " 20", maxY.toFixed(4), " 30", "0.0");
+            dxf.push("  0", "ENDSEC");
+
+            dxf.push("  0", "SECTION");
+            dxf.push("  2", "TABLES");
+            dxf.push("  0", "TABLE");
+            dxf.push("  2", "LAYER");
+            dxf.push(" 70", layerNames.size.toString());
+
+            layerNames.forEach(name => {
+                dxf.push("  0", "LAYER");
+                dxf.push("  2", name);
+                dxf.push(" 70", "0");
+                dxf.push(" 62", layerColors[name] || "7");
+                dxf.push("  6", "CONTINUOUS");
+            });
+
+            dxf.push("  0", "ENDTAB");
+            dxf.push("  0", "ENDSEC");
+
+            dxf.push("  0", "SECTION");
+            dxf.push("  2", "ENTITIES");
+            dxf = dxf.concat(entitiesDxf);
+            dxf.push("  0", "ENDSEC");
+            dxf.push("  0", "EOF");
+
+            return dxf.join("\n");
+        }
     </script>
 </body>
 </html>

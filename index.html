@@ -587,7 +587,8 @@
                 lastSelectedLayer: null,
                 currentBbox: null,
                 uploadedKmlFeatures: [],
-                coordFormat: 'dd'
+                coordFormat: 'dd',
+                deletedOSM: [] // Track terhapusnya OSM
             },
             groups: {},
             undoStack: [],
@@ -740,6 +741,12 @@
             } else if (lastAction.type === 'remove') {
                 if (lastAction.group && lastAction.layer) {
                     lastAction.group.addLayer(lastAction.layer);
+                    
+                    // Jika yang di-undo adalah objek OSM yang terhapus, hapus dari list deletedOSM
+                    if (lastAction.group === App.groups.osm && lastAction.layer.feature?.properties?._internalId) {
+                        const targetId = lastAction.layer.feature.properties._internalId;
+                        App.state.deletedOSM = App.state.deletedOSM.filter(geo => geo.properties?._internalId !== targetId);
+                    }
                 } else if (lastAction.layer) {
                     App.map.addLayer(lastAction.layer);
                 }
@@ -793,13 +800,13 @@
                         features.push({
                             type: "Feature",
                             geometry: { type: "Polygon", coordinates: [coords] },
-                            properties: el.tags
+                            properties: { ...el.tags, osm_id: el.id } // Pastikan ID Overpass disimpan
                         });
                     } else {
                         features.push({
                             type: "Feature",
                             geometry: { type: "LineString", coordinates: coords },
-                            properties: el.tags
+                            properties: { ...el.tags, osm_id: el.id } // Pastikan ID Overpass disimpan
                         });
                     }
                 }
@@ -855,7 +862,25 @@
         App.groups.measure = L.featureGroup().addTo(App.map);
 
         // ============================================================
-        // 2. COORDINATE DISPLAY & MOUSE TRACKING
+        // 2. EVENT PENANDAAN (MARK AS EDITED) KETIKA USER MENGEDIT
+        // ============================================================
+
+        function markAsEdited(e) {
+            if (e.layer) {
+                e.layer.isEditedByUser = true;
+                if (e.layer.feature) {
+                    e.layer.feature.properties = e.layer.feature.properties || {};
+                    e.layer.feature.properties.isEditedByUser = true;
+                }
+            }
+        }
+        App.map.on('pm:update', markAsEdited);
+        App.map.on('pm:dragend', markAsEdited);
+        App.map.on('pm:cut', markAsEdited);
+        App.map.on('pm:rotateend', markAsEdited);
+
+        // ============================================================
+        // 3. COORDINATE DISPLAY & MOUSE TRACKING
         // ============================================================
 
         App.map.on('mousemove', (e) => {
@@ -874,7 +899,7 @@
         });
 
         // ============================================================
-        // 3. SEARCH / GEOCODING
+        // 4. SEARCH / GEOCODING
         // ============================================================
 
         let searchTimeout = null;
@@ -943,7 +968,7 @@
         });
 
         // ============================================================
-        // 4. GO TO COORDINATE
+        // 5. GO TO COORDINATE
         // ============================================================
 
         document.getElementById('btn-goto').addEventListener('click', () => {
@@ -962,7 +987,7 @@
         });
 
         // ============================================================
-        // 5. LAYER MANAGER (Visibility, Opacity, Clear)
+        // 6. LAYER MANAGER (Visibility, Opacity, Clear)
         // ============================================================
 
         function setupLayerManager(groupName, group) {
@@ -1005,7 +1030,10 @@
                         if (result.isConfirmed) {
                             group.clearLayers();
                             if (groupName === 'kml') App.state.uploadedKmlFeatures = [];
-                            if (groupName === 'osm') document.getElementById('btn-fetch-osm').disabled = true;
+                            if (groupName === 'osm') {
+                                document.getElementById('btn-fetch-osm').disabled = true;
+                                App.state.deletedOSM = []; // Reset jika OSM di-clear manual secara massal
+                            }
                             UI.updateFeatureCounts();
                             UI.toast('success', `Layer ${groupName.toUpperCase()} dihapus`, 2000);
                         }
@@ -1019,7 +1047,7 @@
         setupLayerManager('draw', App.groups.draw);
 
         // ============================================================
-        // 6. MEASUREMENT TOOLS
+        // 7. MEASUREMENT TOOLS
         // ============================================================
 
         function clearMeasurement() {
@@ -1145,7 +1173,7 @@
         document.getElementById('btn-measure-clear').addEventListener('click', clearMeasurement);
 
         // ============================================================
-        // 7. LEAFLET GEOMAN CONTROLS
+        // 8. LEAFLET GEOMAN CONTROLS
         // ============================================================
 
         App.map.pm.addControls({
@@ -1192,10 +1220,6 @@
         });
 
         App.map.on('pm:create', (e) => {
-            const { shape, layer } = e;
-            if (shape === 'Rectangle') {
-                console.log('Rectangle created successfully without ortho constraint.');
-            }
             if (e.shape === 'Marker') {
                 e.layer.setIcon(blueDotIcon);
             } else if (e.layer.setStyle) {
@@ -1213,7 +1237,6 @@
             pushUndoAction({ type: 'add', group: App.groups.draw, layer: e.layer });
             UI.updateFeatureCounts();
 
-            // Memastikan mode menggambar & bayangan garis dibersihkan sepenuhnya dari peta
             App.map.pm.disableDraw();
         });
 
@@ -1264,18 +1287,7 @@
             const layer = e.layer;
             if (!layer) return;
 
-            if (!isLayerFromDrawGroup(layer)) {
-                if (layer.pm && layer.pm.enabled && layer.pm.enabled()) {
-                    layer.pm.disable();
-                }
-                if (!editWarningShown) {
-                    editWarningShown = true;
-                    UI.toast('info', 'Edit mode hanya tersedia untuk objek yang Anda gambar.', 2500);
-                    setTimeout(() => { editWarningShown = false; }, 3000);
-                }
-                return;
-            }
-
+            // Memastikan mode edit bisa diaplikasikan ke semua grup, sehingga event isEditedByUser bisa terpanggil
             if (currentlyEditingLayer && currentlyEditingLayer !== layer) {
                 if (currentlyEditingLayer.pm && currentlyEditingLayer.pm.enabled && currentlyEditingLayer.pm.enabled()) {
                     currentlyEditingLayer.pm.disable();
@@ -1355,6 +1367,29 @@
                 sourceGroup = App.groups.kml;
             } else if (props.sourceGroup === 'osm' || props.building) {
                 sourceGroup = App.groups.osm;
+
+                // PELACAKAN OSM YANG DIHAPUS 
+                let geo = e.layer.toGeoJSON ? e.layer.toGeoJSON() : e.layer._osmGeoJSON;
+                if (geo) {
+                    geo.properties = { ...props, ...geo.properties, sourceGroup: 'osm', isDeletedByUser: true };
+                    
+                    // Beri ID unik tracking untuk Undo
+                    if (!geo.properties._internalId) geo.properties._internalId = Date.now() + Math.random();
+                    e.layer.feature = e.layer.feature || {};
+                    e.layer.feature.properties = e.layer.feature.properties || {};
+                    e.layer.feature.properties._internalId = geo.properties._internalId;
+
+                    App.state.deletedOSM.push(geo);
+
+                    // Mencegah duplikasi tracking jika terjadi penghapusan berulang
+                    const uniqueIds = new Set();
+                    App.state.deletedOSM = App.state.deletedOSM.filter(g => {
+                        const id = g.properties?.osm_id || g.properties?._internalId;
+                        if(uniqueIds.has(id)) return false;
+                        uniqueIds.add(id);
+                        return true;
+                    });
+                }
             }
 
             pushUndoAction({ type: 'remove', group: sourceGroup, layer: e.layer });
@@ -1362,7 +1397,7 @@
         });
 
         // ============================================================
-        // 8. SELEKSI & HIGHLIGHT OBJEK
+        // 9. SELEKSI & HIGHLIGHT OBJEK
         // ============================================================
 
         function setSelectedLayer(layer) {
@@ -1399,7 +1434,7 @@
         }
 
         // ============================================================
-        // 9. BASE LAYER SWITCHER
+        // 10. BASE LAYER SWITCHER
         // ============================================================
 
         const btnMap = document.getElementById('btn-map');
@@ -1420,7 +1455,7 @@
         });
 
         // ============================================================
-        // 10. COPY & PASTE HANDLERS
+        // 11. COPY & PASTE HANDLERS
         // ============================================================
 
         document.getElementById('btn-copy').addEventListener('click', () => {
@@ -1498,7 +1533,7 @@
         });
 
         // ============================================================
-        // 11. KEYBOARD SHORTCUTS
+        // 12. KEYBOARD SHORTCUTS
         // ============================================================
 
         document.addEventListener('keydown', (e) => {
@@ -1554,7 +1589,7 @@
         document.getElementById('btn-help').addEventListener('click', showShortcutsModal);
 
         // ============================================================
-        // 12. INTERAKSI FEATURE & POPUP BINDING (dengan Edit Mode Fix)
+        // 13. INTERAKSI FEATURE & POPUP BINDING
         // ============================================================
 
         function bindNamePopup(layer) {
@@ -1569,31 +1604,21 @@
                     return;
                 }
 
-                // PERBAIKAN: Aktifkan vertex titik edit saat objek diklik dalam mode Edit Layers
                 if (App.map.pm && App.map.pm.globalEditModeEnabled()) {
-                    if (isLayerFromDrawGroup(layer)) {
-                        if (currentlyEditingLayer && currentlyEditingLayer !== layer) {
-                            if (currentlyEditingLayer.pm && currentlyEditingLayer.pm.enabled && currentlyEditingLayer.pm.enabled()) {
-                                currentlyEditingLayer.pm.disable();
-                            }
-                        }
-                        if (layer.pm) {
-                            layer.pm.enable();
-                            currentlyEditingLayer = layer;
-                        }
-                    } else {
-                        if (!editWarningShown) {
-                            editWarningShown = true;
-                            UI.toast('info', 'Edit mode hanya tersedia untuk objek yang Anda gambar.', 2500);
-                            setTimeout(() => { editWarningShown = false; }, 3000);
+                    if (currentlyEditingLayer && currentlyEditingLayer !== layer) {
+                        if (currentlyEditingLayer.pm && currentlyEditingLayer.pm.enabled && currentlyEditingLayer.pm.enabled()) {
+                            currentlyEditingLayer.pm.disable();
                         }
                     }
-                    return; // Hindari membuka popup jika sedang dalam mode edit agar titik vertex jelas
+                    if (layer.pm) {
+                        layer.pm.enable();
+                        currentlyEditingLayer = layer;
+                    }
+                    return;
                 }
 
                 setSelectedLayer(layer);
 
-                // Normal click - show popup (Label + Deskripsi saja)
                 let props = layer.feature?.properties || {};
                 let name = props.name || props.Name || props.NAME || props.type || props.building || props.highway || 'Object';
                 let desc = props.description || props.Description || props.desc || '';
@@ -1614,7 +1639,7 @@
         }
 
         // ============================================================
-        // 13. FILE UPLOAD (KML / KMZ) WITH SMART SYNC
+        // 14. FILE UPLOAD (KML / KMZ) WITH SMART SYNC
         // ============================================================
 
         document.getElementById('fileInput').addEventListener('change', async (e) => {
@@ -1676,6 +1701,7 @@
             if (!keepEdits) {
                 App.groups.draw.clearLayers();
                 App.groups.osm.clearLayers();
+                App.state.deletedOSM = [];
             }
 
             const parser = new DOMParser();
@@ -1721,7 +1747,7 @@
         }
 
         // ============================================================
-        // 14. FETCH OSM DATA (Improved with Loading States)
+        // 15. FETCH OSM DATA (Dengan Proteksi Edit & Deleted)
         // ============================================================
 
         async function fetchOSMData(bbox) {
@@ -1852,12 +1878,25 @@
                             }
                         } catch (err) {}
                     }
-
                     processedFeatures.push(targetFeature);
                 });
 
                 const filteredFeatures = processedFeatures.filter(f => {
                     if (!f.properties || (!f.properties.building && !f.properties.highway)) return false;
+
+                    // MENCEGAH DUPLIKASI OSM YANG DIHAPUS USER
+                    if (App.state.deletedOSM.some(del => del.properties && del.properties.osm_id === f.properties.osm_id)) {
+                        return false;
+                    }
+
+                    // MENCEGAH DUPLIKASI OSM YANG SUDAH DIEDIT (agar tidak tumpang tindih)
+                    let isEdited = false;
+                    App.groups.osm.eachLayer(layer => {
+                        if (layer.isEditedByUser && layer.feature?.properties?.osm_id === f.properties.osm_id) {
+                            isEdited = true;
+                        }
+                    });
+                    if (isEdited) return false;
 
                     if (App.state.uploadedKmlFeatures.length > 0) {
                         let intersects = false;
@@ -1933,7 +1972,7 @@
                     UI.updateFeatureCounts();
                     UI.toast('success', `Berhasil memuat ${filteredFeatures.length} objek dari OSM!`, 3000);
                 } else {
-                    UI.toast('info', 'Tidak ada gedung/jalan ditemukan pada area ini.', 3000);
+                    UI.toast('info', 'Tidak ada gedung/jalan baru ditemukan pada area ini.', 3000);
                 }
             } else {
                 Swal.fire({
@@ -1952,6 +1991,10 @@
         document.getElementById('btn-fetch-osm').addEventListener('click', () => {
             if (App.state.currentBbox) fetchOSMData(App.state.currentBbox);
         });
+
+        // ============================================================
+        // 16. EXPORT / SAVE UTILITIES
+        // ============================================================
 
         function extractFeaturesTo(group, sourceGroupName, targetArray) {
             processAllSubLayers(group, layer => {
@@ -1979,17 +2022,40 @@
         }
 
         // ============================================================
-        // 15. SAVE PROJECT FILE
+        // 17. SAVE PROJECT FILE (Custom logic based on modified state)
         // ============================================================
 
         document.getElementById('btn-save').addEventListener('click', async () => {
             const allFeatures = [];
-            extractFeaturesTo(App.groups.kml, 'kml', allFeatures);
-            extractFeaturesTo(App.groups.osm, 'osm', allFeatures);
-            extractFeaturesTo(App.groups.draw, 'draw', allFeatures);
+            
+            // 1. Objek yang dibuat user
+            processAllSubLayers(App.groups.draw, layer => {
+                if (typeof layer.toGeoJSON === 'function') {
+                    let geo = layer.toGeoJSON();
+                    geo.properties = { ...layer.feature?.properties, ...geo.properties, sourceGroup: 'draw' };
+                    allFeatures.push(geo);
+                }
+            });
+
+            // 2. Objek yang di-edit user (KML / OSM)
+            [App.groups.kml, App.groups.osm].forEach(group => {
+                let sourceGroupName = group === App.groups.kml ? 'kml' : 'osm';
+                processAllSubLayers(group, layer => {
+                    if (layer.isEditedByUser && typeof layer.toGeoJSON === 'function') {
+                        let geo = layer.toGeoJSON();
+                        geo.properties = { ...layer.feature?.properties, ...geo.properties, sourceGroup: sourceGroupName, isEditedByUser: true };
+                        allFeatures.push(geo);
+                    }
+                });
+            });
+
+            // 3. OSM yang dihapus user
+            App.state.deletedOSM.forEach(geo => {
+                allFeatures.push(geo);
+            });
 
             if (allFeatures.length === 0) {
-                Swal.fire('Warning', 'Tidak ada data di peta untuk disimpan.', 'warning');
+                Swal.fire('Info', 'Tidak ada objek baru, yang diedit, maupun OSM yang dihapus untuk disimpan.', 'info');
                 return;
             }
 
@@ -2041,7 +2107,7 @@
         });
 
         // ============================================================
-        // 16. LOAD PROJECT FILE (B.json) WITH MERGE SUPPORT
+        // 18. LOAD PROJECT FILE (Dengan integrasi status Edit & Delete)
         // ============================================================
 
         document.getElementById('loadProjectInput').addEventListener('change', (e) => {
@@ -2073,8 +2139,7 @@
                         App.groups.kml.clearLayers();
                         App.groups.osm.clearLayers();
                         App.groups.draw.clearLayers();
-                    } else {
-                        App.groups.draw.clearLayers();
+                        App.state.deletedOSM = []; 
                     }
 
                     const tempGeoLayer = L.geoJSON(geojson);
@@ -2113,14 +2178,40 @@
                         onEachFeature: function(feature, layer) {
                             const props = feature.properties || {};
 
+                            if (props.isEditedByUser) {
+                                layer.isEditedByUser = true;
+                            }
+
+                            // JIKA OBJEK INI STATUSNYA DIHAPUS USER
+                            if (props.isDeletedByUser) {
+                                App.state.deletedOSM.push(feature);
+                                
+                                // Jika ada original object-nya di map (misalnya akibat fetch), hapus secara visual
+                                App.groups.osm.eachLayer(existingLayer => {
+                                    if (existingLayer.feature?.properties?.osm_id === props.osm_id) {
+                                        App.groups.osm.removeLayer(existingLayer);
+                                    }
+                                });
+                                return; // Tidak perlu ditambahkan ke map
+                            }
+                            
+                            // JIKA INI VERSI EDIT DARI OSM, HAPUS VERSI ORIGINALNYA AGAR TIDAK TUMPANG TINDIH
+                            if (props.sourceGroup === 'osm' && props.isEditedByUser && props.osm_id) {
+                                App.groups.osm.eachLayer(existingLayer => {
+                                    if (existingLayer.feature?.properties?.osm_id === props.osm_id) {
+                                        App.groups.osm.removeLayer(existingLayer);
+                                    }
+                                });
+                            }
+
                             if (props.sourceGroup === 'kml') {
-                                if (!mergeOnlyEdits) {
+                                if (!mergeOnlyEdits || props.isEditedByUser) {
                                     layer.options.pmIgnore = true;
                                     if (L.PM) L.PM.reInitLayer(layer);
                                     App.groups.kml.addLayer(layer);
                                 }
                             } else if (props.sourceGroup === 'osm') {
-                                if (!mergeOnlyEdits) {
+                                if (!mergeOnlyEdits || props.isEditedByUser) {
                                     layer.options.pmIgnore = false;
                                     if (props.building) {
                                         layer.options.allowRemoval = true;
@@ -2169,7 +2260,7 @@
         });
 
         // ============================================================
-        // 17. EXPORT TO DXF & PNG
+        // 19. EXPORT TO DXF & PNG
         // ============================================================
 
         document.getElementById('btn-export').addEventListener('click', () => {
@@ -2420,7 +2511,7 @@
         });
 
         // ============================================================
-        // 18. INITIALIZATION
+        // 20. INITIALIZATION
         // ============================================================
 
         window.addEventListener('load', () => {

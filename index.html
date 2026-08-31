@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GIS | ACM - GeoConvert Production Ready v3.4</title>
+    <title>GIS | ACM - GeoConvert Production Ready v3.5</title>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -64,7 +64,7 @@
                 <h1 class="text-xl font-bold text-emerald-400 tracking-wide">
                     <i class="fa-solid fa-layer-group text-emerald-400 mr-2"></i> GeoConvert
                 </h1>
-                <p class="text-xs text-gray-400 mt-1">GIS Production System v3.4</p>
+                <p class="text-xs text-gray-400 mt-1">GIS Production System v3.5</p>
             </div>
         </div>
 
@@ -323,7 +323,7 @@
             searchTimeout = setTimeout(async () => {
                 try {
                     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`, {
-                        headers: { 'User-Agent': 'GeoConvertProductionGIS/3.4' }
+                        headers: { 'User-Agent': 'GeoConvertProductionGIS/3.5' }
                     });
                     if (!res.ok) throw new Error('Gagal mengambil data pencarian lokasi.');
                     const data = await res.json();
@@ -434,7 +434,7 @@
             }
         });
 
-        // KML / KMZ File Import Parser with Robust Auto-Center (Autocenter)
+        // KML / KMZ File Import Parser with Robust Auto-Center & Circle Markers
         const fileInput = document.getElementById('fileInput');
         const dropZone = document.getElementById('dropZoneKml');
 
@@ -477,6 +477,15 @@
                 App.groups.kml.clearLayers();
                 const geoJsonLayer = L.geoJSON(convertedGeoJSON, {
                     style: { color: '#10b981', weight: 2, fillOpacity: 0.3 },
+                    pointToLayer: (feature, latlng) => {
+                        return L.circleMarker(latlng, {
+                            radius: 5,
+                            color: '#10b981',
+                            fillColor: '#10b981',
+                            fillOpacity: 0.8,
+                            weight: 1
+                        });
+                    },
                     onEachFeature: (feature, layer) => {
                         if (feature.properties && feature.properties.name) {
                             layer.bindPopup(`<b>${feature.properties.name}</b><br>${feature.properties.description || ''}`);
@@ -486,7 +495,6 @@
 
                 geoJsonLayer.eachLayer(l => App.groups.kml.addLayer(l));
                 
-                // Robust Autocenter implementation
                 if (App.groups.kml.getLayers().length > 0) {
                     const groupBounds = App.groups.kml.getBounds();
                     if (groupBounds.isValid()) {
@@ -548,7 +556,7 @@
             const pt = [e.latlng.lng, e.latlng.lat];
             App.state.measurePoints.push(pt);
 
-            const marker = L.circleMarker([e.latlng.lat, e.latlng.lng], { radius: 4, color: '#10b981', fillColor: '#10b981', fillOpacity: 1 });
+            const marker = L.circleMarker([e.latlng.lat, e.latlng.lng], { radius: 5, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.8 });
             App.groups.measure.addLayer(marker);
 
             if (App.state.measurePoints.length > 1) {
@@ -573,7 +581,7 @@
             document.getElementById('measureResult').textContent = '';
         }
 
-        // Save & Load Project
+        // Save & Load Project with Circle Marker Support
         document.getElementById('btn-save').addEventListener('click', () => {
             const features = [];
             ['kml', 'osm', 'draw'].forEach(key => {
@@ -610,6 +618,12 @@
                 App.groups.draw.clearLayers();
 
                 const loadedLayer = L.geoJSON(fc, {
+                    pointToLayer: (feature, latlng) => {
+                        const src = feature.properties?.layerSource || 'draw';
+                        const colorMap = { kml: '#10b981', osm: '#3b82f6', draw: '#8b5cf6' };
+                        const col = colorMap[src] || '#8b5cf6';
+                        return L.circleMarker(latlng, { radius: 5, color: col, fillColor: col, fillOpacity: 0.8, weight: 1 });
+                    },
                     onEachFeature: (feature, layer) => {
                         const src = feature.properties?.layerSource || 'draw';
                         if (App.groups[src]) {
@@ -674,7 +688,7 @@
 
         // Export KMZ with Standard Styling Definitions
         document.getElementById('btn-export-kmz').addEventListener('click', async () => {
-            let kmlData = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>GeoConvert Export v3.4</name>\n`;
+            let kmlData = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>GeoConvert Export v3.5</name>\n`;
             kmlData += `<Style id="kmlStyle"><LineStyle><color>ff00b910</color><width>2</width></LineStyle><PolyStyle><color>5500b910</color></PolyStyle></Style>\n`;
             kmlData += `<Style id="osmStyle"><LineStyle><color>ff0bf59e</color><width>2</width></LineStyle><PolyStyle><color>550bf59e</color></PolyStyle></Style>\n`;
             kmlData += `<Style id="drawStyle"><LineStyle><color>ff8b5cf6</color><width>2</width></LineStyle><PolyStyle><color>558b5cf6</color></PolyStyle></Style>\n`;

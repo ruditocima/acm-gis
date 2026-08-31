@@ -6,7 +6,6 @@
     <title>GIS | ACM - GeoConvert Production Ready v3.1</title>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
-
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -15,7 +14,6 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://unpkg.com/@tmcw/togeojson@4.2.0/dist/togeojson.umd.js"></script>
-
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -224,7 +222,6 @@
             }
         };
 
-        // Helper: Konversi Layer Leaflet/Geoman ke objek GeoJSON secara aman
         function layerToGeoJSON(layer) {
             if (typeof layer.toGeoJSON === 'function') {
                 return layer.toGeoJSON();
@@ -269,7 +266,7 @@
         App.groups.draw = L.featureGroup().addTo(App.map);
         App.groups.measure = L.featureGroup().addTo(App.map);
 
-        // Throttled mousemove event
+        // Mousemove & Koordinat Handler
         let lastMoveTime = 0;
         App.map.on('mousemove', e => {
             document.getElementById('mouseCoord').textContent = `${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`;
@@ -294,8 +291,18 @@
         App.map.on('zoomend', () => { document.getElementById('zoomLevel').textContent = App.map.getZoom(); });
 
         // Base Layer Switcher
-        document.getElementById('btn-map').addEventListener('click', () => { App.map.removeLayer(App.layers.earth); App.map.addLayer(App.layers.osm); });
-        document.getElementById('btn-earth').addEventListener('click', () => { App.map.removeLayer(App.layers.osm); App.map.addLayer(App.layers.earth); });
+        document.getElementById('btn-map').addEventListener('click', () => {
+            App.map.removeLayer(App.layers.earth);
+            App.map.addLayer(App.layers.osm);
+            document.getElementById('btn-map').className = "flex-1 py-2 text-sm rounded-md bg-emerald-500 bg-opacity-20 text-emerald-400 font-medium transition-all";
+            document.getElementById('btn-earth').className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
+        });
+        document.getElementById('btn-earth').addEventListener('click', () => {
+            App.map.removeLayer(App.layers.osm);
+            App.map.addLayer(App.layers.earth);
+            document.getElementById('btn-earth').className = "flex-1 py-2 text-sm rounded-md bg-emerald-500 bg-opacity-20 text-emerald-400 font-medium transition-all";
+            document.getElementById('btn-map').className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
+        });
 
         // Geoman Drawing Tools
         App.map.pm.addControls({ position: 'topright', drawMarker: false, drawCircleMarker: false, drawCircle: false, drawText: false, cutPolygon: false });
@@ -348,7 +355,7 @@
             }
         });
 
-        // OSM Overpass Fetcher
+        // OSM Overpass Fetcher (Completed & Fixed)
         document.getElementById('btn-fetch-osm').addEventListener('click', async () => {
             const bounds = App.map.getBounds();
             const spanDist = bounds.getSouthWest().distanceTo(bounds.getNorthEast());
@@ -372,4 +379,333 @@
                 const data = await response.json();
                 const nodes = {};
                 if (data && data.elements) {
-                    data
+                    data.elements.forEach(el => {
+                        if (el.type === 'node') {
+                            nodes[el.id] = { lat: el.lat, lon: el.lon };
+                        }
+                    });
+
+                    App.groups.osm.clearLayers();
+
+                    data.elements.forEach(el => {
+                        if (el.type === 'way' && el.nodes && el.nodes.length > 0) {
+                            const pts = el.nodes.map(nid => nodes[nid]).filter(n => n !== undefined);
+                            if (pts.length < 2) return;
+                            const coords = pts.map(n => [n.lon, n.lat]);
+
+                            if (el.tags && el.tags.building) {
+                                if (coords.length >= 3) {
+                                    if (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1]) {
+                                        coords.push(coords[0]);
+                                    }
+                                    const poly = L.polygon(coords.map(c => [c[1], c[0]]), {
+                                        color: '#3b82f6', weight: 1, fillColor: '#3b82f6', fillOpacity: 0.4
+                                    });
+                                    poly.bindPopup(`<b>Gudang / Gedung OSM</b><br>ID: ${el.id}`);
+                                    App.groups.osm.addLayer(poly);
+                                }
+                            } else if (el.tags && el.tags.highway) {
+                                const line = turf.lineString(coords);
+                                const buffered = turf.buffer(line, roadWidth / 2, { units: 'meters' });
+                                if (buffered && buffered.geometry) {
+                                    const bCoords = buffered.geometry.coordinates[0].map(c => [c[1], c[0]]);
+                                    const roadPoly = L.polygon(bCoords, {
+                                        color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.5
+                                    });
+                                    roadPoly.bindPopup(`<b>Jalan OSM</b><br>Tipe: ${el.tags.highway}<br>Lebar: ${roadWidth}m`);
+                                    App.groups.osm.addLayer(roadPoly);
+                                }
+                            }
+                        }
+                    });
+                }
+                UI.hideLoading();
+                UI.updateCounts();
+                UI.toast('success', 'Data OSM Berhasil Dimuat!');
+            } catch (err) {
+                UI.hideLoading();
+                console.error(err);
+                Swal.fire('Gagal Memuat OSM', err.message, 'error');
+            }
+        });
+
+        // KML / KMZ File Import Parser Handler
+        const fileInput = document.getElementById('fileInput');
+        const dropZone = document.getElementById('dropZoneKml');
+
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length > 0) {
+                processKmlFile(e.dataTransfer.files[0]);
+            }
+        });
+        fileInput.addEventListener('change', e => {
+            if (e.target.files.length > 0) processKmlFile(e.target.files[0]);
+        });
+
+        async function processKmlFile(file) {
+            UI.showLoading('Membaca file KML/KMZ...', file.name);
+            try {
+                let kmlText = '';
+                if (file.name.endsWith('.kmz')) {
+                    const zip = new JSZip();
+                    const zipContent = await zip.loadAsync(file);
+                    let kmlFileEntry = null;
+                    for (let filename in zipContent.files) {
+                        if (filename.toLowerCase().endsWith('.kml')) {
+                            kmlFileEntry = zipContent.files[filename];
+                            break;
+                        }
+                    }
+                    if (!kmlFileEntry) throw new Error('File KML tidak ditemukan di dalam arsip KMZ.');
+                    kmlText = await kmlFileEntry.async('text');
+                } else {
+                    kmlText = await file.text();
+                }
+
+                const dom = new DOMParser().parseFromString(kmlText, 'text/xml');
+                const convertedGeoJSON = toGeoJSON.kml(dom);
+
+                App.groups.kml.clearLayers();
+                const geoJsonLayer = L.geoJSON(convertedGeoJSON, {
+                    style: { color: '#10b981', weight: 2, fillOpacity: 0.3 },
+                    onEachFeature: (feature, layer) => {
+                        if (feature.properties && feature.properties.name) {
+                            layer.bindPopup(`<b>${feature.properties.name}</b><br>${feature.properties.description || ''}`);
+                        }
+                    }
+                });
+
+                geoJsonLayer.eachLayer(l => App.groups.kml.addLayer(l));
+                if (App.groups.kml.getLayers().length > 0) {
+                    App.map.fitBounds(App.groups.kml.getBounds());
+                }
+
+                document.getElementById('file-info').classList.remove('hidden');
+                document.getElementById('filename').textContent = file.name;
+
+                UI.hideLoading();
+                UI.updateCounts();
+                UI.toast('success', 'File KML/KMZ Berhasil Dimuat!');
+            } catch (err) {
+                UI.hideLoading();
+                console.error(err);
+                Swal.fire('Gagal Import', err.message, 'error');
+            }
+        }
+
+        // Layer Manager Controls (Toggle & Opacity)
+        ['kml', 'osm', 'draw'].forEach(key => {
+            document.getElementById(`toggle-${key}`).addEventListener('change', e => {
+                if (e.target.checked) {
+                    App.map.addLayer(App.groups[key]);
+                } else {
+                    App.map.removeLayer(App.groups[key]);
+                }
+            });
+            document.getElementById(`opacity-${key}`).addEventListener('input', e => {
+                const opacity = parseFloat(e.target.value);
+                App.groups[key].eachLayer(layer => {
+                    if (typeof layer.setStyle === 'function') {
+                        layer.setStyle({ opacity: opacity, fillOpacity: opacity * 0.4 });
+                    } else if (typeof layer.setOpacity === 'function') {
+                        layer.setOpacity(opacity);
+                    }
+                });
+            });
+        });
+
+        // Spatial Measurement Tools
+        document.getElementById('btn-measure-distance').addEventListener('click', () => startMeasurement('distance'));
+        document.getElementById('btn-measure-area').addEventListener('click', () => startMeasurement('area'));
+        document.getElementById('btn-measure-clear').addEventListener('click', clearMeasurement);
+
+        function startMeasurement(mode) {
+            clearMeasurement();
+            App.state.measureMode = mode;
+            App.state.measurePoints = [];
+            document.getElementById('measureResult').classList.remove('hidden');
+            document.getElementById('btn-measure-clear').classList.remove('hidden');
+            UI.toast('info', `Mode ${mode === 'distance' ? 'Ukur Jarak' : 'Ukur Luas'} Aktif. Klik peta untuk mulai.`);
+        }
+
+        App.map.on('click', e => {
+            if (!App.state.measureMode) return;
+            const pt = [e.latlng.lng, e.latlng.lat];
+            App.state.measurePoints.push(pt);
+
+            const marker = L.circleMarker([e.latlng.lat, e.latlng.lng], { radius: 4, color: '#10b981', fillColor: '#10b981', fillOpacity: 1 });
+            App.groups.measure.addLayer(marker);
+
+            if (App.state.measurePoints.length > 1) {
+                App.groups.measure.eachLayer(l => { if (l instanceof L.Polyline || l instanceof L.Polygon) App.groups.measure.removeLayer(l); });
+                
+                if (App.state.measureMode === 'distance') {
+                    const line = L.polyline(App.state.measurePoints.map(p => [p[1], p[0]]), { color: '#10b981', weight: 3, dashArray: '5,5' });
+                    App.groups.measure.addLayer(line);
+                } else if (App.state.measureMode === 'area' && App.state.measurePoints.length >= 3) {
+                    const poly = L.polygon(App.state.measurePoints.map(p => [p[1], p[0]]), { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.3 });
+                    App.groups.measure.addLayer(poly);
+                }
+            }
+        });
+
+        function clearMeasurement() {
+            App.state.measureMode = null;
+            App.state.measurePoints = [];
+            App.groups.measure.clearLayers();
+            document.getElementById('measureResult').classList.add('hidden');
+            document.getElementById('btn-measure-clear').classList.add('hidden');
+            document.getElementById('measureResult').textContent = '';
+        }
+
+        // Save & Load Project
+        document.getElementById('btn-save').addEventListener('click', () => {
+            const features = [];
+            ['kml', 'osm', 'draw'].forEach(key => {
+                App.groups[key].eachLayer(layer => {
+                    const gj = layerToGeoJSON(layer);
+                    if (gj) {
+                        gj.properties = gj.properties || {};
+                        gj.properties.layerSource = key;
+                        features.push(gj);
+                    }
+                });
+            });
+            const fc = { type: "FeatureCollection", features: features };
+            const blob = new Blob([JSON.stringify(fc, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `GeoConvert_Project_${new Date().toISOString().slice(0,10)}.geojson`;
+            a.click();
+            URL.revokeObjectURL(url);
+            UI.toast('success', 'Proyek Berhasil Disimpan!');
+        });
+
+        document.getElementById('loadProjectInput').addEventListener('change', async e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            try {
+                const text = await file.text();
+                const fc = JSON.parse(text);
+                if (!fc.features) throw new Error('Format file proyek tidak valid.');
+
+                App.groups.kml.clearLayers();
+                App.groups.osm.clearLayers();
+                App.groups.draw.clearLayers();
+
+                L.geoJSON(fc, {
+                    onEachFeature: (feature, layer) => {
+                        const src = feature.properties?.layerSource || 'draw';
+                        if (App.groups[src]) {
+                            App.groups[src].addLayer(layer);
+                        } else {
+                            App.groups.draw.addLayer(layer);
+                        }
+                    }
+                });
+                UI.updateCounts();
+                UI.toast('success', 'Proyek Berhasil Dimuat!');
+            } catch (err) {
+                Swal.fire('Gagal Load Proyek', err.message, 'error');
+            }
+        });
+
+        // Export DXF
+        document.getElementById('btn-export').addEventListener('click', () => {
+            let dxfContent = "0\nSECTION\n2\nHEADER\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n";
+            let count = 0;
+
+            ['kml', 'osm', 'draw'].forEach(key => {
+                App.groups[key].eachLayer(layer => {
+                    const gj = layerToGeoJSON(layer);
+                    if (!gj) return;
+                    if (gj.geometry.type === 'Point') {
+                        const [lng, lat] = gj.geometry.coordinates;
+                        dxfContent += `0\nPOINT\n8\n${key.toUpperCase()}\n10\n${lng}\n20\n${lat}\n30\n0.0\n`;
+                        count++;
+                    } else if (gj.geometry.type === 'LineString' || gj.geometry.type === 'Polygon') {
+                        const coords = gj.geometry.type === 'Polygon' ? gj.geometry.coordinates[0] : gj.geometry.coordinates;
+                        dxfContent += `0\nLWPOLYLINE\n8\n${key.toUpperCase()}\n90\n${coords.length}\n70\n${gj.geometry.type === 'Polygon' ? 1 : 0}\n`;
+                        coords.forEach(pt => {
+                            dxfContent += `10\n${pt[0]}\n20\n${pt[1]}\n`;
+                        });
+                        count++;
+                    }
+                });
+            });
+
+            dxfContent += "0\nENDSEC\n0\nEOF\n";
+            if (count === 0) {
+                Swal.fire('Kosong', 'Tidak ada data spasial untuk diexport ke DXF.', 'warning');
+                return;
+            }
+
+            const blob = new Blob([dxfContent], { type: 'application/dxf' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `GeoConvert_Export_${Date.now()}.dxf`;
+            a.click();
+            URL.revokeObjectURL(url);
+            UI.toast('success', 'Export DXF Berhasil!');
+        });
+
+        // Export KMZ
+        document.getElementById('btn-export-kmz').addEventListener('click', async () => {
+            let kmlData = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>GeoConvert Export</name>\n`;
+
+            let count = 0;
+            ['kml', 'osm', 'draw'].forEach(key => {
+                App.groups[key].eachLayer(layer => {
+                    const gj = layerToGeoJSON(layer);
+                    if (!gj) return;
+                    count++;
+                    const name = gj.properties?.name || `${key.toUpperCase()}_${count}`;
+                    if (gj.geometry.type === 'Point') {
+                        const [lng, lat] = gj.geometry.coordinates;
+                        kmlData += `<Placemark><name>${name}</name><Point><coordinates>${lng},${lat},0</coordinates></Point></Placemark>\n`;
+                    } else if (gj.geometry.type === 'LineString') {
+                        const coordStr = gj.geometry.coordinates.map(c => `${c[0]},${c[1]},0`).join(' ');
+                        kmlData += `<Placemark><name>${name}</name><LineString><coordinates>${coordStr}</coordinates></LineString></Placemark>\n`;
+                    } else if (gj.geometry.type === 'Polygon') {
+                        const coordStr = gj.geometry.coordinates[0].map(c => `${c[0]},${c[1]},0`).join(' ');
+                        kmlData += `<Placemark><name>${name}</name><Polygon><outerBoundaryIs><LinearRing><coordinates>${coordStr}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>\n`;
+                    }
+                });
+            });
+
+            kmlData += `</Document>\n</kml>`;
+            if (count === 0) {
+                Swal.fire('Kosong', 'Tidak ada data spasial untuk diexport ke KMZ.', 'warning');
+                return;
+            }
+
+            UI.showLoading('Membuat arsip KMZ...', 'Mengompresi data KML');
+            try {
+                const zip = new JSZip();
+                zip.file("doc.kml", kmlData);
+                const content = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+                
+                const url = URL.createObjectURL(content);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `GeoConvert_Export_${Date.now()}.kmz`;
+                a.click();
+                URL.revokeObjectURL(url);
+                UI.hideLoading();
+                UI.toast('success', 'Export KMZ Berhasil!');
+            } catch (err) {
+                UI.hideLoading();
+                Swal.fire('Gagal Export KMZ', err.message, 'error');
+            }
+        });
+
+        UI.updateCounts();
+    </script>
+</body>
+</html>

@@ -1922,7 +1922,7 @@
                 if (y > maxY) maxY = y;
             }
 
-            const layerNames = new Set(["0", "House", "Text", "Boundary", "Buildings", "Roads", "Drawn"]);[cite: 1]
+            const layerNames = new Set(["0", "House", "Text", "Boundary", "Buildings", "Roads", "Drawn"]);
             featureCollection.features.forEach(f => {
                 if (f.properties && f.properties.layer) {
                     let name = f.properties.layer.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -1940,7 +1940,7 @@
                 const radius = 1.5;
 
                 entitiesDxf.push("  0", "CIRCLE");
-                entitiesDxf.push("  8", "House");[cite: 1]
+                entitiesDxf.push("  8", "House");
                 entitiesDxf.push(" 10", x.toFixed(4));
                 entitiesDxf.push(" 20", y.toFixed(4));
                 entitiesDxf.push(" 30", "0.0");
@@ -1953,7 +1953,7 @@
                 labelText = String(labelText).replace(/[\r\n]+/g, " ");
 
                 entitiesDxf.push("  0", "TEXT");
-                entitiesDxf.push("  8", "Text");[cite: 1]
+                entitiesDxf.push("  8", "Text");
                 entitiesDxf.push(" 10", (x + radius * 1.3).toFixed(4));
                 entitiesDxf.push(" 20", y.toFixed(4));
                 entitiesDxf.push(" 30", "0.0");

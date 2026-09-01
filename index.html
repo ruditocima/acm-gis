@@ -1384,24 +1384,6 @@
                 return;
             }
 
-            // TAMBAHKAN BARIS INI: Pastikan layer benar-benar dihapus dari group penyimpanannya
-            [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
-                if (group.hasLayer(e.layer)) {
-                    group.removeLayer(e.layer);
-                }
-            });
-
-            let sourceGroup = App.groups.draw;
-            if (props.sourceGroup === 'kml' || e.layer.options.pmIgnore === true) {
-                sourceGroup = App.groups.kml;
-            } else if (props.sourceGroup === 'osm' || props.building) {
-                sourceGroup = App.groups.osm;
-            }
-
-            pushUndoAction({ type: 'remove', group: sourceGroup, layer: e.layer });
-            UI.updateFeatureCounts();
-        });
-
             let sourceGroup = App.groups.draw;
             if (props.sourceGroup === 'kml' || e.layer.options.pmIgnore === true) {
                 sourceGroup = App.groups.kml;

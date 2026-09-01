@@ -2293,10 +2293,10 @@ function sanitizeGeoJSON(geojson) {
                                 f.properties = { ...layer.feature.properties, ...f.properties };
                             }
                             
-                            if (group === App.groups.kml) f.properties.layer = "KML_Boundary";
-                            else if (group === App.groups.osm && f.properties.building) f.properties.layer = "OSM_Buildings";
-                            else if (group === App.groups.osm && f.properties.highway) f.properties.layer = "OSM_Roads";
-                            else f.properties.layer = "User_Drawn";
+                            if (group === App.groups.kml) f.properties.layer = "Boundary";
+                            else if (group === App.groups.osm && f.properties.building) f.properties.layer = "Buildings";
+                            else if (group === App.groups.osm && f.properties.highway) f.properties.layer = "Roads";
+                            else f.properties.layer = "Drawn";
                             
                             allFeatures.push(f);
                         };
@@ -2348,7 +2348,7 @@ function sanitizeGeoJSON(geojson) {
     }
 
     // Menambahkan 'House' dan 'Text' ke daftar layer DXF[cite: 1]
-    const layerNames = new Set(["0", "House", "Text", "KML_Boundary", "OSM_Buildings", "OSM_Roads", "User_Drawn"]);
+    const layerNames = new Set(["0", "House", "Text", "Boundary", "Buildings", "Roads", "Drawn"]);
     featureCollection.features.forEach(f => {
         if (f.properties && f.properties.layer) {
             let name = f.properties.layer.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -2396,7 +2396,7 @@ function sanitizeGeoJSON(geojson) {
         entitiesDxf.push("  8", layerName);
         
         if (!isClosed) {
-            const colorCode = (layerName === "OSM_Roads") ? "4" : "1";
+            const colorCode = (layerName === "Roads") ? "4" : "1";
             entitiesDxf.push(" 62", colorCode); 
         }
 
@@ -2414,7 +2414,7 @@ function sanitizeGeoJSON(geojson) {
             entitiesDxf.push("  0", "VERTEX");
             entitiesDxf.push("  8", layerName);
             if (!isClosed) {
-                const colorCode = (layerName === "OSM_Roads") ? "4" : "1";
+                const colorCode = (layerName === "Roads") ? "4" : "1";
                 entitiesDxf.push(" 62", colorCode);
             }
             entitiesDxf.push(" 10", x.toFixed(4));
@@ -2483,10 +2483,10 @@ function sanitizeGeoJSON(geojson) {
     const layerColors = {
         "House": 3,
         "Text": 7,
-        "KML_Boundary": 3,
-        "OSM_Buildings": 2,
-        "OSM_Roads": 4,
-        "User_Drawn": 1
+        "Boundary": 3,
+        "Buildings": 2,
+        "Roads": 4,
+        "Drawn": 1
     };
 
     layerNames.forEach(name => {

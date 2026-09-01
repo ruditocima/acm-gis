@@ -167,6 +167,27 @@
             pointer-events: auto;
         }
 
+        /* Search Box */
+        .search-box {
+            background: rgba(31, 41, 55, 0.95);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        }
+        .search-result-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            transition: background 0.15s;
+        }
+        .search-result-item:hover {
+            background: rgba(16, 185, 129, 0.1);
+        }
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+
         /* Measurement Tooltip */
         .measure-tooltip {
             background: rgba(17, 24, 39, 0.95);
@@ -250,6 +271,31 @@
             border-radius: 8px !important;
             box-shadow: 0 4px 15px rgba(0,0,0,0.4) !important;
         }
+
+        /* Attribute editor form */
+        .attr-input {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            padding: 6px 10px;
+            color: #f3f4f6;
+            font-size: 12px;
+            width: 100%;
+            margin-bottom: 8px;
+            transition: border-color 0.2s;
+        }
+        .attr-input:focus {
+            outline: none;
+            border-color: #10b981;
+        }
+        .attr-label {
+            font-size: 10px;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+            display: block;
+        }
         
         /* Styling Vertex Marker Leaflet Geoman */
         .leaflet-pm-edit-marker,
@@ -276,6 +322,7 @@
             background-color: #f59e0b !important;
         }
 
+        /* Pastikan OSM layer tetap solid saat zoom */
         .osm-building-layer, .osm-road-layer {
             vector-effect: non-scaling-stroke;
         }
@@ -284,32 +331,35 @@
             transition: none !important;
         }
         .leaflet-pane, 
-        .leaflet-tile, 
-        .leaflet-marker-icon, 
-        .leaflet-marker-shadow, 
-        .leaflet-tile-pane, 
-        .leaflet-overlay-pane, 
-        .leaflet-shadow-pane, 
-        .leaflet-marker-pane, 
-        .leaflet-popup-pane {
-            will-change: transform;
-        }
+    .leaflet-tile, 
+    .leaflet-marker-icon, 
+    .leaflet-marker-shadow, 
+    .leaflet-tile-pane, 
+    .leaflet-overlay-pane, 
+    .leaflet-shadow-pane, 
+    .leaflet-marker-pane, 
+    .leaflet-popup-pane {
+        will-change: transform;
+    }
 
-        .leaflet-zoom-anim .leaflet-zoom-animated {
-            transition: transform 0.2s cubic-bezier(0, 0, 0.2, 1) !important;
-        }
+    /* Pastikan animasi zoom Leaflet berjalan mulus tanpa jeda melayang */
+    .leaflet-zoom-anim .leaflet-zoom-animated {
+        transition: transform 0.2s cubic-bezier(0, 0, 0.2, 1) !important;
+    }
 
-        .leaflet-overlay-pane svg,
-        .leaflet-overlay-pane canvas,
-        .leaflet-marker-pane img,
-        .leaflet-marker-pane div {
-            transition: none !important;
-        }
+    /* Matikan transisi CSS kustom pada elemen SVG, Canvas, dan Marker agar menempel akurat */
+    .leaflet-overlay-pane svg,
+    .leaflet-overlay-pane canvas,
+    .leaflet-marker-pane img,
+    .leaflet-marker-pane div {
+        transition: none !important;
+    }
 
-        .leaflet-container {
-            -webkit-tap-highlight-color: transparent;
-            font-family: 'Inter', sans-serif;
-        }
+    /* Optimasi rendering Canvas & SVG agar tetap tajam saat di-zoom */
+    .leaflet-container {
+        -webkit-tap-highlight-color: transparent;
+        font-family: 'Inter', sans-serif;
+    }
     </style>
 </head>
 <body class="flex flex-row bg-gray-900 text-gray-200">
@@ -792,21 +842,38 @@
 
         App.map.on('mousemove', (e) => {
             const format = App.state.coordFormat;
-            document.getElementById('mouseCoord').textContent = CoordUtils.format(e.latlng.lng, e.latlng.lat, format);
+            const mouseCoordEl = document.getElementById('mouseCoord');
+            if (mouseCoordEl) {
+                mouseCoordEl.textContent = CoordUtils.format(e.latlng.lng, e.latlng.lat, format);
+            }
         });
 
         App.map.on('zoomend', () => {
-            document.getElementById('zoomLevel').textContent = App.map.getZoom();
+            const zoomLevelEl = document.getElementById('zoomLevel');
+            if (zoomLevelEl) {
+                zoomLevelEl.textContent = App.map.getZoom();
+            }
         });
 
-        document.getElementById('coordFormat').addEventListener('change', (e) => {
-            App.state.coordFormat = e.target.value;
-            const center = App.map.getCenter();
-            document.getElementById('mouseCoord').textContent = CoordUtils.format(center.lng, center.lat, e.target.value);
-        });
+        const coordFormatEl = document.getElementById('coordFormat');
+        if (coordFormatEl) {
+            coordFormatEl.addEventListener('change', (e) => {
+                App.state.coordFormat = e.target.value;
+                const center = App.map.getCenter();
+                const mouseCoordEl = document.getElementById('mouseCoord');
+                if (mouseCoordEl) {
+                    mouseCoordEl.textContent = CoordUtils.format(center.lng, center.lat, e.target.value);
+                }
+            });
+        }
 
         // ============================================================
-        // 3. LAYER MANAGER (Visibility, Opacity, Clear)
+        // 3. SEARCH / GEOCODING (Optional Safe Check)
+        // ============================================================
+        let searchMarker = null;
+
+        // ============================================================
+        // 5. LAYER MANAGER (Visibility, Opacity, Clear)
         // ============================================================
 
         function setupLayerManager(groupName, group) {
@@ -849,7 +916,10 @@
                         if (result.isConfirmed) {
                             group.clearLayers();
                             if (groupName === 'kml') App.state.uploadedKmlFeatures = [];
-                            if (groupName === 'osm') document.getElementById('btn-fetch-osm').disabled = true;
+                            if (groupName === 'osm') {
+                                const fetchOsmBtn = document.getElementById('btn-fetch-osm');
+                                if (fetchOsmBtn) fetchOsmBtn.disabled = true;
+                            }
                             UI.updateFeatureCounts();
                             UI.toast('success', `Layer ${groupName.toUpperCase()} dihapus`, 2000);
                         }
@@ -863,7 +933,102 @@
         setupLayerManager('draw', App.groups.draw);
 
         // ============================================================
-        // 4. LEAFLET GEOMAN CONTROLS
+        // 6. MEASUREMENT TOOLS (Safe Initialization)
+        // ============================================================
+
+        function clearMeasurement() {
+            App.groups.measure.clearLayers();
+            App.state.measurePoints = [];
+            if (App.state.measureTooltip) {
+                App.map.closeTooltip(App.state.measureTooltip);
+                App.state.measureTooltip = null;
+            }
+            App.state.isMeasureMode = false;
+            App.state.measureType = null;
+            const measureClearBtn = document.getElementById('btn-measure-clear');
+            if (measureClearBtn) measureClearBtn.classList.add('hidden');
+            App.map.off('click', onMeasureClick);
+            App.map.off('mousemove', onMeasureMove);
+            App.map.getContainer().style.cursor = '';
+        }
+
+        function onMeasureClick(e) {
+            if (!App.state.isMeasureMode) return;
+
+            App.state.measurePoints.push([e.latlng.lng, e.latlng.lat]);
+
+            L.circleMarker(e.latlng, {
+                radius: 4,
+                color: '#10b981',
+                fillColor: '#10b981',
+                fillOpacity: 1,
+                weight: 2
+            }).addTo(App.groups.measure);
+
+            if (App.state.measureType === 'distance' && App.state.measurePoints.length >= 2) {
+                const line = turf.lineString(App.state.measurePoints);
+                const length = turf.length(line, { units: 'meters' });
+
+                const latlngs = App.state.measurePoints.map(p => [p[1], p[0]]);
+                L.polyline(latlngs, { color: '#10b981', weight: 2, dashArray: '5, 10' }).addTo(App.groups.measure);
+
+                let text = length >= 1000 ? `${(length/1000).toFixed(2)} km` : `${length.toFixed(1)} m`;
+
+                App.state.measureTooltip = L.tooltip({
+                    permanent: true,
+                    direction: 'top',
+                    className: 'measure-tooltip',
+                    offset: [0, -10]
+                })
+                .setContent(text)
+                .setLatLng(e.latlng)
+                .addTo(App.map);
+
+            } else if (App.state.measureType === 'area' && App.state.measurePoints.length >= 3) {
+                const coords = [...App.state.measurePoints, App.state.measurePoints[0]];
+                const polygon = turf.polygon([coords]);
+                const area = turf.area(polygon);
+
+                const latlngs = App.state.measurePoints.map(p => [p[1], p[0]]);
+                L.polygon(latlngs, { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.1, dashArray: '5, 10' }).addTo(App.groups.measure);
+
+                let text = area >= 10000 ? `${(area/10000).toFixed(2)} ha` : `${area.toFixed(1)} m²`;
+
+                App.state.measureTooltip = L.tooltip({
+                    permanent: true,
+                    direction: 'center',
+                    className: 'measure-tooltip',
+                    offset: [0, 0]
+                })
+                .setContent(text)
+                .setLatLng(turf.center(polygon).geometry.coordinates.reverse())
+                .addTo(App.map);
+            }
+        }
+
+        function onMeasureMove(e) {
+            if (!App.state.isMeasureMode || App.state.measurePoints.length === 0) return;
+
+            const tempPoints = [...App.state.measurePoints, [e.latlng.lng, e.latlng.lat]];
+            const latlngs = tempPoints.map(p => [p[1], p[0]]);
+
+            App.groups.measure.eachLayer(layer => {
+                if (layer.options && layer.options._isTemp) {
+                    App.groups.measure.removeLayer(layer);
+                }
+            });
+
+            if (App.state.measureType === 'distance') {
+                const polyline = L.polyline(latlngs, { color: '#10b981', weight: 2, dashArray: '3, 7', opacity: 0.6, _isTemp: true });
+                polyline.addTo(App.groups.measure);
+            } else if (App.state.measureType === 'area' && tempPoints.length >= 3) {
+                const polygon = L.polygon(latlngs, { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.05, dashArray: '3, 7', _isTemp: true });
+                polygon.addTo(App.groups.measure);
+            }
+        }
+
+        // ============================================================
+        // 7. LEAFLET GEOMAN CONTROLS
         // ============================================================
 
         App.map.pm.addControls({
@@ -899,6 +1064,8 @@
         });
 
         App.map.on('pm:drawstart', ({ workingLayer, shape }) => {
+            clearMeasurement();
+
             if (shape === 'Rectangle') {
                 App.map.pm.setGlobalOptions({ ortho: false });
                 if (workingLayer && workingLayer.options) {
@@ -943,6 +1110,9 @@
 
         App.map.on('pm:create', (e) => {
             const { shape, layer } = e;
+            if (shape === 'Rectangle') {
+                console.log('Rectangle created successfully without ortho constraint.');
+            }
             if (e.shape === 'Marker') {
                 e.layer.setIcon(blueDotIcon);
             } else if (e.layer.setStyle) {
@@ -1111,7 +1281,7 @@
         });
 
         // ============================================================
-        // 5. SELEKSI & HIGHLIGHT OBJEK
+        // 8. SELEKSI & HIGHLIGHT OBJEK
         // ============================================================
 
         function setSelectedLayer(layer) {
@@ -1148,28 +1318,34 @@
         }
 
         // ============================================================
-        // 6. BASE LAYER SWITCHER
+        // 9. BASE LAYER SWITCHER
         // ============================================================
 
         const btnMap = document.getElementById('btn-map');
         const btnEarth = document.getElementById('btn-earth');
 
-        btnMap.addEventListener('click', () => {
-            App.map.removeLayer(App.layers.earth);
-            App.map.addLayer(App.layers.osm);
-            btnMap.className = "flex-1 py-2 text-sm rounded-md bg-emerald-500 bg-opacity-20 text-emerald-400 font-medium transition-all";
-            btnEarth.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
-        });
+        if (btnMap && btnEarth) {
+            btnMap.addEventListener('click', () => {
+                App.map.removeLayer(App.layers.earth);
+                App.map.addLayer(App.layers.osm);
+                btnMap.className = "flex-1 py-2 text-sm rounded-md bg-emerald-500 bg-opacity-20 text-emerald-400 font-medium transition-all";
+                btnEarth.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
+            });
 
-        btnEarth.addEventListener('click', () => {
-            App.map.removeLayer(App.layers.osm);
-            App.map.addLayer(App.layers.earth);
-            btnEarth.className = "flex-1 py-2 text-sm rounded-md bg-emerald-500 bg-opacity-20 text-emerald-400 font-medium transition-all";
-            btnMap.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
-        });
+            btnEarth.addEventListener('click', () => {
+                App.map.removeLayer(App.layers.osm);
+                App.map.addLayer(App.layers.earth);
+                btnEarth.className = "flex-1 py-2 text-sm rounded-md bg-emerald-500 bg-opacity-20 text-emerald-400 font-medium transition-all";
+                btnMap.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
+            });
+        }
 
         // ============================================================
-        // 7. KEYBOARD SHORTCUTS
+        // 10. COPY & PASTE HANDLERS (Safe Check)
+        // ============================================================
+
+        // ============================================================
+        // 11. KEYBOARD SHORTCUTS
         // ============================================================
 
         document.addEventListener('keydown', (e) => {
@@ -1187,6 +1363,10 @@
                 e.preventDefault();
                 showShortcutsModal();
             }
+
+            if (e.key === 'Escape') {
+                clearMeasurement();
+            }
         });
 
         function showShortcutsModal() {
@@ -1196,6 +1376,7 @@
                     <div class="text-left text-sm space-y-2">
                         <div class="flex items-center"><span class="shortcut-key">Ctrl+Z</span><span>Undo aksi terakhir</span></div>
                         <div class="flex items-center"><span class="shortcut-key">?</span><span>Tampilkan bantuan ini</span></div>
+                        <div class="flex items-center"><span class="shortcut-key">Esc</span><span>Batalkan mode aktif</span></div>
                     </div>
                 `,
                 confirmButtonColor: '#10b981',
@@ -1205,10 +1386,13 @@
             });
         }
 
-        document.getElementById('btn-help').addEventListener('click', showShortcutsModal);
+        const btnHelp = document.getElementById('btn-help');
+        if (btnHelp) {
+            btnHelp.addEventListener('click', showShortcutsModal);
+        }
 
         // ============================================================
-        // 8. INTERAKSI FEATURE & POPUP BINDING
+        // 12. INTERAKSI FEATURE & POPUP BINDING
         // ============================================================
 
         function bindNamePopup(layer) {
@@ -1266,44 +1450,49 @@
         }
 
         // ============================================================
-        // 9. FILE UPLOAD (KML / KMZ) WITH SMART SYNC
+        // 13. FILE UPLOAD (KML / KMZ) WITH SMART SYNC
         // ============================================================
 
-        document.getElementById('fileInput').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+        const fileInput = document.getElementById('fileInput');
+        if (fileInput) {
+            fileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
 
-            document.getElementById('file-info').classList.remove('hidden');
-            document.getElementById('filename').innerText = file.name;
+                const fileInfoEl = document.getElementById('file-info');
+                const filenameEl = document.getElementById('filename');
+                if (fileInfoEl) fileInfoEl.classList.remove('hidden');
+                if (filenameEl) filenameEl.innerText = file.name;
 
-            try {
-                if (file.name.toLowerCase().endsWith('.kmz')) {
-                    const zip = new JSZip();
-                    const contents = await zip.loadAsync(file);
-                    let kmlFile = null;
-                    for (let filename in contents.files) {
-                        if (filename.toLowerCase().endsWith('.kml')) {
-                            kmlFile = contents.files[filename];
-                            break;
+                try {
+                    if (file.name.toLowerCase().endsWith('.kmz')) {
+                        const zip = new JSZip();
+                        const contents = await zip.loadAsync(file);
+                        let kmlFile = null;
+                        for (let filename in contents.files) {
+                            if (filename.toLowerCase().endsWith('.kml')) {
+                                kmlFile = contents.files[filename];
+                                break;
+                            }
                         }
-                    }
-                    if (kmlFile) {
-                        const kmlText = await kmlFile.async('text');
+                        if (kmlFile) {
+                            const kmlText = await kmlFile.async('text');
+                            await parseKML(kmlText);
+                        } else {
+                            Swal.fire('Error', 'Tidak ada file KML di dalam paket KMZ ini.', 'error');
+                        }
+                    } else if (file.name.toLowerCase().endsWith('.kml')) {
+                        const kmlText = await file.text();
                         await parseKML(kmlText);
                     } else {
-                        Swal.fire('Error', 'Tidak ada file KML di dalam paket KMZ ini.', 'error');
+                        Swal.fire('Error', 'Format file tidak valid. Upload file .kml atau .kmz', 'error');
                     }
-                } else if (file.name.toLowerCase().endsWith('.kml')) {
-                    const kmlText = await file.text();
-                    await parseKML(kmlText);
-                } else {
-                    Swal.fire('Error', 'Format file tidak valid. Upload file .kml atau .kmz', 'error');
+                } catch (err) {
+                    Swal.fire('Error', 'Gagal membaca file: ' + err.message, 'error');
                 }
-            } catch (err) {
-                Swal.fire('Error', 'Gagal membaca file: ' + err.message, 'error');
-            }
-            e.target.value = '';
-        });
+                e.target.value = '';
+            });
+        }
 
         function sanitizeCoordinates(coords, geomType) {
             if (geomType === 'Point') {
@@ -1396,14 +1585,15 @@
             App.map.fitBounds(layer.getBounds(), { padding: [50, 50] });
 
             App.state.currentBbox = layer.getBounds();
-            document.getElementById('btn-fetch-osm').disabled = false;
+            const fetchOsmBtn = document.getElementById('btn-fetch-osm');
+            if (fetchOsmBtn) fetchOsmBtn.disabled = false;
 
             UI.updateFeatureCounts();
             UI.toast('success', hasExistingEdits && keepEdits ? 'File Diperbarui & Hasil Edit Tersinkronkan!' : 'KML Berhasil Dimuat!', 3000);
         }
 
         // ============================================================
-        // 10. FETCH OSM DATA
+        // 14. FETCH OSM DATA
         // ============================================================
 
         async function fetchOSMData(bbox) {
@@ -1433,8 +1623,8 @@
             }
 
             const btn = document.getElementById('btn-fetch-osm');
-            const originalHTML = btn.innerHTML;
-            btn.disabled = true;
+            const originalHTML = btn ? btn.innerHTML : '';
+            if (btn) btn.disabled = true;
             UI.showLoading('Mengambil data OSM...', 'Menghubungkan ke server Overpass');
 
             const endpoints = [
@@ -1456,7 +1646,8 @@
             for (let i = 0; i < endpoints.length; i++) {
                 const targetUrl = endpoints[i];
                 const mirrorName = new URL(targetUrl).hostname;
-                document.getElementById('loadingSub').textContent = `Mirror ${i+1}/${endpoints.length}: ${mirrorName}`;
+                const loadingSubEl = document.getElementById('loadingSub');
+                if (loadingSubEl) loadingSubEl.textContent = `Mirror ${i+1}/${endpoints.length}: ${mirrorName}`;
 
                 try {
                     const controller = new AbortController();
@@ -1627,13 +1818,18 @@
                 });
             }
 
-            btn.innerHTML = originalHTML;
-            btn.disabled = false;
+            if (btn) {
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+            }
         }
 
-        document.getElementById('btn-fetch-osm').addEventListener('click', () => {
-            if (App.state.currentBbox) fetchOSMData(App.state.currentBbox);
-        });
+        const fetchOsmBtn = document.getElementById('btn-fetch-osm');
+        if (fetchOsmBtn) {
+            fetchOsmBtn.addEventListener('click', () => {
+                if (App.state.currentBbox) fetchOSMData(App.state.currentBbox);
+            });
+        }
 
         function extractFeaturesTo(group, sourceGroupName, targetArray) {
             processAllSubLayers(group, layer => {
@@ -1661,255 +1857,265 @@
         }
 
         // ============================================================
-        // 11. SAVE PROJECT FILE
+        // 15. SAVE PROJECT FILE
         // ============================================================
 
-        document.getElementById('btn-save').addEventListener('click', async () => {
-            const allFeatures = [];
-            extractFeaturesTo(App.groups.kml, 'kml', allFeatures);
-            extractFeaturesTo(App.groups.osm, 'osm', allFeatures);
-            extractFeaturesTo(App.groups.draw, 'draw', allFeatures);
+        const btnSave = document.getElementById('btn-save');
+        if (btnSave) {
+            btnSave.addEventListener('click', async () => {
+                const allFeatures = [];
+                extractFeaturesTo(App.groups.kml, 'kml', allFeatures);
+                extractFeaturesTo(App.groups.osm, 'osm', allFeatures);
+                extractFeaturesTo(App.groups.draw, 'draw', allFeatures);
 
-            if (allFeatures.length === 0) {
-                Swal.fire('Warning', 'Tidak ada data di peta untuk disimpan.', 'warning');
-                return;
-            }
-
-            const featureCollection = { type: "FeatureCollection", features: allFeatures };
-            const jsonContent = JSON.stringify(featureCollection, null, 2);
-
-            if ('showSaveFilePicker' in window) {
-                try {
-                    const handle = await window.showSaveFilePicker({
-                        suggestedName: 'proyek_geoconvert.json',
-                        types: [{
-                            description: 'GeoJSON Project File (*.json)',
-                            accept: { 'application/json': ['.json', '.geojson'] },
-                        }],
-                    });
-                    const writable = await handle.createWritable();
-                    await writable.write(jsonContent);
-                    await writable.close();
-                    UI.toast('success', 'Proyek berhasil disimpan!', 2000);
-                } catch (err) {
-                    if (err.name !== 'AbortError') {
-                        Swal.fire('Error', 'Gagal menyimpan file: ' + err.message, 'error');
-                    }
+                if (allFeatures.length === 0) {
+                    Swal.fire('Warning', 'Tidak ada data di peta untuk disimpan.', 'warning');
+                    return;
                 }
-            } else {
-                const { value: fileName } = await Swal.fire({
-                    title: 'Simpan Proyek Peta',
-                    input: 'text',
-                    inputLabel: 'Masukkan nama file proyek:',
-                    inputValue: 'proyek_geoconvert',
-                    showCancelButton: true,
-                    confirmButtonColor: '#10b981',
-                    inputValidator: (value) => {
-                        if (!value) return 'Nama file tidak boleh kosong!';
-                    }
-                });
 
-                if (fileName) {
-                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonContent);
-                    const a = document.createElement('a');
-                    a.href = dataStr;
-                    a.download = `${fileName.trim()}.json`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    UI.toast('success', 'Proyek berhasil disimpan!', 2000);
-                }
-            }
-        });
+                const featureCollection = { type: "FeatureCollection", features: allFeatures };
+                const jsonContent = JSON.stringify(featureCollection, null, 2);
 
-        // ============================================================
-        // 12. LOAD PROJECT FILE
-        // ============================================================
-
-        document.getElementById('loadProjectInput').addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = async function(event) {
-                try {
-                    const geojson = JSON.parse(event.target.result);
-                    const hasActiveKML = App.groups.kml.getLayers().length > 0;
-                    let mergeOnlyEdits = false;
-
-                    if (hasActiveKML) {
-                        const result = await Swal.fire({
-                            title: 'Gabungkan File B.json?',
-                            text: 'File KMZ terbaru sedang aktif di peta. Apakah Anda ingin mengimpor file anda tanpa menimpa KMZ terbaru?',
-                            icon: 'question',
-                            showCancelButton: true,
-                            confirmButtonText: 'Gabungkan Edit Saja',
-                            cancelButtonText: 'Timpa Seluruh Peta',
-                            confirmButtonColor: '#10b981',
-                            cancelButtonColor: '#ef4444'
+                if ('showSaveFilePicker' in window) {
+                    try {
+                        const handle = await window.showSaveFilePicker({
+                            suggestedName: 'proyek_geoconvert.json',
+                            types: [{
+                                description: 'GeoJSON Project File (*.json)',
+                                accept: { 'application/json': ['.json', '.geojson'] },
+                            }],
                         });
-                        mergeOnlyEdits = result.isConfirmed;
+                        const writable = await handle.createWritable();
+                        await writable.write(jsonContent);
+                        await writable.close();
+                        UI.toast('success', 'Proyek berhasil disimpan!', 2000);
+                    } catch (err) {
+                        if (err.name !== 'AbortError') {
+                            Swal.fire('Error', 'Gagal menyimpan file: ' + err.message, 'error');
+                        }
                     }
-
-                    if (!mergeOnlyEdits) {
-                        App.groups.kml.clearLayers();
-                        App.groups.osm.clearLayers();
-                        App.groups.draw.clearLayers();
-                    } else {
-                        App.groups.draw.clearLayers();
-                    }
-
-                    const tempGeoLayer = L.geoJSON(geojson);
-                    if (!hasActiveKML && tempGeoLayer.getBounds().isValid()) {
-                        App.map.fitBounds(tempGeoLayer.getBounds(), { padding: [50, 50] });
-                    }
-
-                    L.geoJSON(geojson, {
-                        renderer: canvasRenderer,
-                        style: function(feature) {
-                            const props = feature.properties || {};
-                            const geomType = feature.geometry ? feature.geometry.type : '';
-
-                            if (props.sourceGroup === 'kml') {
-                                if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
-                                    return { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.15 };
-                                } else {
-                                    return { color: '#ef4444', weight: 3 };
-                                }
-                            } 
-                            else if (props.sourceGroup === 'osm') {
-                                if (props.building) {
-                                    return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
-                                }
-                                if (props.highway) {
-                                    return { color: '#06b6d4', weight: 1.5, fillColor: '#06b6d4', fillOpacity: 0.3 };
-                                }
-                                return { color: '#06b6d4', weight: 1.5, fillOpacity: 0.3 };
-                            }
-
-                            return { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 };
-                        },
-                        pointToLayer: function(feature, latlng) {
-                            return L.marker(latlng, { icon: blueDotIcon });
-                        },
-                        onEachFeature: function(feature, layer) {
-                            const props = feature.properties || {};
-
-                            if (props.sourceGroup === 'kml') {
-                                if (!mergeOnlyEdits) {
-                                    layer.options.pmIgnore = true;
-                                    if (L.PM) L.PM.reInitLayer(layer);
-                                    App.groups.kml.addLayer(layer);
-                                }
-                            } else if (props.sourceGroup === 'osm') {
-                                if (!mergeOnlyEdits) {
-                                    layer.options.pmIgnore = false;
-                                    if (props.building) {
-                                        layer.options.allowRemoval = true;
-                                    } else if (props.highway) {
-                                        layer.options.allowRemoval = false;
-                                    }
-                                    App.groups.osm.addLayer(layer);
-                                }
-                            } else {
-                                layer.options.pmIgnore = false;
-                                layer.options.allowRemoval = true;
-                                App.groups.draw.addLayer(layer);
-                            }
-                            bindNamePopup(layer);
+                } else {
+                    const { value: fileName } = await Swal.fire({
+                        title: 'Simpan Proyek Peta',
+                        input: 'text',
+                        inputLabel: 'Masukkan nama file proyek:',
+                        inputValue: 'proyek_geoconvert',
+                        showCancelButton: true,
+                        confirmButtonColor: '#10b981',
+                        inputValidator: (value) => {
+                            if (!value) return 'Nama file tidak boleh kosong!';
                         }
                     });
 
-                    if (!mergeOnlyEdits) {
-                        const allLayers = [];
-                        extractFeaturesTo(App.groups.kml, 'kml', allLayers);
-                        App.state.uploadedKmlFeatures = allLayers.filter(f => f.properties?.sourceGroup === 'kml');
-
-                        if (App.groups.kml.getLayers().length > 0) {
-                            App.state.currentBbox = App.groups.kml.getBounds();
-                            document.getElementById('btn-fetch-osm').disabled = false;
-                        }
+                    if (fileName) {
+                        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonContent);
+                        const a = document.createElement('a');
+                        a.href = dataStr;
+                        a.download = `${fileName.trim()}.json`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        UI.toast('success', 'Proyek berhasil disimpan!', 2000);
                     }
-
-                    UI.updateFeatureCounts();
-                    
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Proyek Berhasil Dimuat!',
-                        text: mergeOnlyEdits 
-                            ? `Hasil editing dari "${file.name}" berhasil digabungkan di atas File terbaru.`
-                            : `File "${file.name}" telah berhasil dimuat ke peta.`,
-                        confirmButtonColor: '#10b981'
-                    });
-
-                } catch (err) {
-                    Swal.fire('Error', 'Gagal membaca file proyek: Format JSON/GeoJSON tidak valid.', 'error');
                 }
-            };
-            reader.readAsText(file);
-            e.target.value = '';
-        });
+            });
+        }
 
         // ============================================================
-        // 13. EXPORT TO DXF & PNG
+        // 16. LOAD PROJECT FILE (B.json) WITH MERGE SUPPORT
         // ============================================================
 
-        document.getElementById('btn-export').addEventListener('click', () => {
-            const allFeatures = [];
-            
-            [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
-                processAllSubLayers(group, layer => {
-                    if (typeof layer.toGeoJSON === 'function') {
-                        let geo = layer.toGeoJSON();
-                        
-                        const processFeature = (f) => {
-                            f.properties = f.properties || {};
-                            if (layer.feature && layer.feature.properties) {
-                                f.properties = { ...layer.feature.properties, ...f.properties };
-                            }
-                            
-                            if (group === App.groups.kml) f.properties.layer = "Boundary";
-                            else if (group === App.groups.osm && f.properties.building) f.properties.layer = "Buildings";
-                            else if (group === App.groups.osm && f.properties.highway) f.properties.layer = "Roads";
-                            else f.properties.layer = "Drawn";
-                            
-                            allFeatures.push(f);
-                        };
+        const loadProjectInput = document.getElementById('loadProjectInput');
+        if (loadProjectInput) {
+            loadProjectInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
 
-                        if (geo.type === 'FeatureCollection' && geo.features) {
-                            geo.features.forEach(processFeature);
-                        } else if (geo.type === 'Feature') {
-                            processFeature(geo);
-                        } else if (geo.type && geo.coordinates) {
-                            processFeature({ type: "Feature", geometry: geo, properties: {} });
+                const reader = new FileReader();
+                reader.onload = async function(event) {
+                    try {
+                        const geojson = JSON.parse(event.target.result);
+                        const hasActiveKML = App.groups.kml.getLayers().length > 0;
+                        let mergeOnlyEdits = false;
+
+                        if (hasActiveKML) {
+                            const result = await Swal.fire({
+                                title: 'Gabungkan File B.json?',
+                                text: 'File KMZ terbaru sedang aktif di peta. Apakah Anda ingin mengimpor file anda tanpa menimpa KMZ terbaru?',
+                                icon: 'question',
+                                showCancelButton: true,
+                                confirmButtonText: 'Gabungkan Edit Saja',
+                                cancelButtonText: 'Timpa Seluruh Peta',
+                                confirmButtonColor: '#10b981',
+                                cancelButtonColor: '#ef4444'
+                            });
+                            mergeOnlyEdits = result.isConfirmed;
                         }
+
+                        if (!mergeOnlyEdits) {
+                            App.groups.kml.clearLayers();
+                            App.groups.osm.clearLayers();
+                            App.groups.draw.clearLayers();
+                        } else {
+                            App.groups.draw.clearLayers();
+                        }
+
+                        const tempGeoLayer = L.geoJSON(geojson);
+                        if (!hasActiveKML && tempGeoLayer.getBounds().isValid()) {
+                            App.map.fitBounds(tempGeoLayer.getBounds(), { padding: [50, 50] });
+                        }
+
+                        L.geoJSON(geojson, {
+                            renderer: canvasRenderer,
+                            style: function(feature) {
+                                const props = feature.properties || {};
+                                const geomType = feature.geometry ? feature.geometry.type : '';
+
+                                if (props.sourceGroup === 'kml') {
+                                    if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
+                                        return { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.15 };
+                                    } else {
+                                        return { color: '#ef4444', weight: 3 };
+                                    }
+                                } 
+                                else if (props.sourceGroup === 'osm') {
+                                    if (props.building) {
+                                        return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
+                                    }
+                                    if (props.highway) {
+                                        return { color: '#06b6d4', weight: 1.5, fillColor: '#06b6d4', fillOpacity: 0.3 };
+                                    }
+                                    return { color: '#06b6d4', weight: 1.5, fillOpacity: 0.3 };
+                                }
+
+                                return { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 };
+                            },
+                            pointToLayer: function(feature, latlng) {
+                                return L.marker(latlng, { icon: blueDotIcon });
+                            },
+                            onEachFeature: function(feature, layer) {
+                                const props = feature.properties || {};
+
+                                if (props.sourceGroup === 'kml') {
+                                    if (!mergeOnlyEdits) {
+                                        layer.options.pmIgnore = true;
+                                        if (L.PM) L.PM.reInitLayer(layer);
+                                        App.groups.kml.addLayer(layer);
+                                    }
+                                } else if (props.sourceGroup === 'osm') {
+                                    if (!mergeOnlyEdits) {
+                                        layer.options.pmIgnore = false;
+                                        if (props.building) {
+                                            layer.options.allowRemoval = true;
+                                        } else if (props.highway) {
+                                            layer.options.allowRemoval = false;
+                                        }
+                                        App.groups.osm.addLayer(layer);
+                                    }
+                                } else {
+                                    layer.options.pmIgnore = false;
+                                    layer.options.allowRemoval = true;
+                                    App.groups.draw.addLayer(layer);
+                                }
+                                bindNamePopup(layer);
+                            }
+                        });
+
+                        if (!mergeOnlyEdits) {
+                            const allLayers = [];
+                            extractFeaturesTo(App.groups.kml, 'kml', allLayers);
+                            App.state.uploadedKmlFeatures = allLayers.filter(f => f.properties?.sourceGroup === 'kml');
+
+                            if (App.groups.kml.getLayers().length > 0) {
+                                App.state.currentBbox = App.groups.kml.getBounds();
+                                const fetchOsmBtn = document.getElementById('btn-fetch-osm');
+                                if (fetchOsmBtn) fetchOsmBtn.disabled = false;
+                            }
+                        }
+
+                        UI.updateFeatureCounts();
+                        
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Proyek Berhasil Dimuat!',
+                            text: mergeOnlyEdits 
+                                ? `Hasil editing dari "${file.name}" berhasil digabungkan di atas File terbaru.`
+                                : `File "${file.name}" telah berhasil dimuat ke peta.`,
+                            confirmButtonColor: '#10b981'
+                        });
+
+                    } catch (err) {
+                        Swal.fire('Error', 'Gagal membaca file proyek: Format JSON/GeoJSON tidak valid.', 'error');
                     }
+                };
+                reader.readAsText(file);
+                e.target.value = '';
+            });
+        }
+
+        // ============================================================
+        // 17. EXPORT TO DXF & PNG
+        // ============================================================
+
+        const btnExport = document.getElementById('btn-export');
+        if (btnExport) {
+            btnExport.addEventListener('click', () => {
+                const allFeatures = [];
+                
+                [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
+                    processAllSubLayers(group, layer => {
+                        if (typeof layer.toGeoJSON === 'function') {
+                            let geo = layer.toGeoJSON();
+                            
+                            const processFeature = (f) => {
+                                f.properties = f.properties || {};
+                                if (layer.feature && layer.feature.properties) {
+                                    f.properties = { ...layer.feature.properties, ...f.properties };
+                                }
+                                
+                                if (group === App.groups.kml) f.properties.layer = "Boundary";
+                                else if (group === App.groups.osm && f.properties.building) f.properties.layer = "Buildings";
+                                else if (group === App.groups.osm && f.properties.highway) f.properties.layer = "Roads";
+                                else f.properties.layer = "Drawn";
+                                
+                                allFeatures.push(f);
+                            };
+
+                            if (geo.type === 'FeatureCollection' && geo.features) {
+                                geo.features.forEach(processFeature);
+                            } else if (geo.type === 'Feature') {
+                                processFeature(geo);
+                            } else if (geo.type && geo.coordinates) {
+                                processFeature({ type: "Feature", geometry: geo, properties: {} });
+                            }
+                        }
+                    });
+                });
+
+                if(allFeatures.length === 0) {
+                    Swal.fire('Warning', 'Peta masih kosong. Upload KML atau gambar objek terlebih dahulu.', 'warning');
+                    return;
+                }
+
+                const featureCollection = { type: "FeatureCollection", features: allFeatures };
+                const dxfString = generateDXF(featureCollection);
+                
+                const blob = new Blob([dxfString], { type: 'application/dxf' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'Convert_Export.dxf';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                Swal.fire({
+                    toast: true, position: 'top-end', icon: 'success',
+                    title: 'DXF Berhasil Di-export!', showConfirmButton: false, timer: 2500
                 });
             });
-
-            if(allFeatures.length === 0) {
-                Swal.fire('Warning', 'Peta masih kosong. Upload KML atau gambar objek terlebih dahulu.', 'warning');
-                return;
-            }
-
-            const featureCollection = { type: "FeatureCollection", features: allFeatures };
-            const dxfString = generateDXF(featureCollection);
-            
-            const blob = new Blob([dxfString], { type: 'application/dxf' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'Convert_Export.dxf';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            
-            Swal.fire({
-                toast: true, position: 'top-end', icon: 'success',
-                title: 'DXF Berhasil Di-export!', showConfirmButton: false, timer: 2500
-            });
-        });
+        }
 
         function generateDXF(featureCollection) {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -2043,33 +2249,37 @@
             headerDxf.push(" 20", maxY.toFixed(4));
             headerDxf.push("  0", "ENDSEC");
 
-            headerDxf.push("  0", "SECTION");
-            headerDxf.push("  2", "TABLES");
-            headerDxf.push("  0", "TABLE");
-            headerDxf.push("  2", "LAYER");
-            headerDxf.push(" 70", layerNames.size.toString());
+            let tablesDxf = [];
+            tablesDxf.push("  0", "SECTION");
+            tablesDxf.push("  2", "TABLES");
+            tablesDxf.push("  0", "TABLE");
+            tablesDxf.push("  2", "LAYER");
+            tablesDxf.push(" 70", layerNames.size.toString());
 
             layerNames.forEach(name => {
-                headerDxf.push("  0", "LAYER");
-                headerDxf.push("  2", name);
-                headerDxf.push(" 70", "0");
-                headerDxf.push(" 62", "7");
-                headerDxf.push("  6", "CONTINUOUS");
+                tablesDxf.push("  0", "LAYER");
+                tablesDxf.push("  2", name);
+                tablesDxf.push(" 70", "0");
+                tablesDxf.push(" 62", name === "House" ? "3" : (name === "Text" ? "7" : "7"));
+                tablesDxf.push("  6", "CONTINUOUS");
             });
 
-            headerDxf.push("  0", "ENDTAB");
-            headerDxf.push("  0", "ENDSEC");
+            tablesDxf.push("  0", "ENDTAB");
+            tablesDxf.push("  0", "ENDSEC");
 
-            headerDxf.push("  0", "SECTION");
-            headerDxf.push("  2", "ENTITIES");
+            let dxfContent = [
+                ...headerDxf,
+                ...tablesDxf,
+                "  0", "SECTION",
+                "  2", "ENTITIES",
+                ...entitiesDxf,
+                "  0", "ENDSEC",
+                "  0", "EOF"
+            ];
 
-            headerDxf = headerDxf.concat(entitiesDxf);
-
-            headerDxf.push("  0", "ENDSEC");
-            headerDxf.push("  0", "EOF");
-
-            return headerDxf.join("\n");
+            return dxfContent.join("\n");
         }
     </script>
 </body>
 </html>
+```[cite: 1]

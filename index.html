@@ -2260,7 +2260,13 @@
                 tablesDxf.push("  0", "LAYER");
                 tablesDxf.push("  2", name);
                 tablesDxf.push(" 70", "0");
-                tablesDxf.push(" 62", name === "House" ? "3" : (name === "Text" ? "7" : "7"));
+                
+                let color = "7";
+                if (name === "House") color = "3";
+                else if (name === "Roads") color = "4";     // Cyan
+                else if (name === "Boundary") color = "1";  // Red
+                
+                tablesDxf.push(" 62", color);
                 tablesDxf.push("  6", "CONTINUOUS");
             });
 

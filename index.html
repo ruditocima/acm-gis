@@ -2532,6 +2532,65 @@ function sanitizeGeoJSON(geojson) {
         });
 
         // ============================================================
+// SMART SYNC: Mencegah KMZ Baru Menimpa Data a.json / Manual
+// ============================================================
+
+// Fungsi untuk mendeteksi apakah suatu fitur dari KMZ sudah ada di a.json / state aktif
+function isFeatureDuplicate(newFeature, existingFeatures) {
+    return existingFeatures.some(exFeat => {
+        // 1. Cek berdasarkan nama/ID (jika ada properti nama)
+        const nameMatch = newFeature.properties && exFeat.properties && 
+                          newFeature.properties.name && exFeat.properties.name &&
+                          newFeature.properties.name.trim().toLowerCase() === exFeat.properties.name.trim().toLowerCase();
+        
+        // 2. Cek kesamaan koordinat persis (mencegah duplikat geometri ganda)
+        let coordMatch = false;
+        if (newFeature.geometry && exFeat.geometry && 
+            newFeature.geometry.type === exFeat.geometry.type) {
+            coordMatch = JSON.stringify(newFeature.geometry.coordinates) === JSON.stringify(exFeat.geometry.coordinates);
+        }
+        
+        return nameMatch || coordMatch;
+    });
+}
+
+// Fungsi utama untuk memproses KMZ baru dengan aman
+function processSmartSyncKMZ(newGeoJsonData) {
+    // Ambil daftar fitur yang saat ini tersimpan/dimuat dari a.json atau layer manual
+    // Pastikan Anda memiliki variabel global (misal: window.loadedJsonFeatures) saat a.json di-load
+    window.loadedJsonFeatures = geoJsonDataFromAJson.features;
+    const existingFeatures = window.loadedJsonFeatures || [];
+
+    // Filter fitur: Hanya ambil fitur dari KMZ baru yang BELUM ADA di a.json
+    const filteredFeatures = {
+        type: "FeatureCollection",
+        features: newGeoJsonData.features.filter(feat => !isFeatureDuplicate(feat, existingFeatures))
+    };
+
+    const skippedCount = newGeoJsonData.features.length - filteredFeatures.features.length;
+
+    // Masukkan hanya fitur unik baru ke peta (misal ke dalam layer khusus KMZ)
+    if (window.kmzLayerGroup) {
+        window.kmzLayerGroup.clearLayers(); // Bersihkan layer KMZ lama, tampilkan KMZ baru yang sudah difilter
+    } else {
+        window.kmzLayerGroup = L.layerGroup().addTo(map);
+    }
+
+    L.geoJSON(filteredFeatures, {
+        onEachFeature: function(feature, layer) {
+            // Sesuaikan dengan logic popup/styling yang sudah ada di index (6).html Anda
+            if (feature.properties && feature.properties.name) {
+                layer.bindPopup(feature.properties.name);
+            }
+        }
+    }).addTo(window.kmzLayerGroup);
+
+    // Berikan informasi ke pengguna melalui UI toast yang sudah ada di aplikasi
+    if (typeof UI !== 'undefined' && UI.toast) {
+        UI.toast('success', `KMZ diperbarui! ${filteredFeatures.features.length} objek baru ditambahkan. (${skippedCount} objek dilewati karena sudah ada di a.json/manual).`, 4000);
+    }
+}
+        // ============================================================
         // 18. INITIALIZATION
         // ============================================================
 

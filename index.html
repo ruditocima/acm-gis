@@ -1255,41 +1255,26 @@
         let currentlyEditingLayer = null;
 
         function isLayerFromDrawGroup(layer) {
-            let found = false;
-            App.groups.draw.eachLayer((l) => {
-                if (l === layer) found = true;
-            });
-            if (!found) {
-                App.groups.draw.eachLayer((l) => {
-                    if (l.getLayers) {
-                        l.eachLayer((subL) => {
-                            if (subL === layer) found = true;
-                        });
-                    }
-                });
-            }
-            return found;
+        return !!(layer && layer.options && layer.options.isDraw);
         }
 
         App.map.on('pm:globaleditmodetoggled', (e) => {
             if (e.enabled) {
                 currentlyEditingLayer = null;
-                [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
-                    processAllSubLayers(group, layer => {
-                        if (layer.pm && layer.pm.enabled && layer.pm.enabled()) {
-                            layer.pm.disable();
-                        }
-                    });
-                });
+                App.groups.draw.eachLayer(layer => {
+            if (layer.pm && layer.pm.enabled && layer.pm.enabled()) {
+                layer.pm.disable();
+                }
+            });
+                
                 UI.toast('info', 'Klik objek yang ingin diedit', 3000);
             } else {
+                if (currentlyEditingLayer && currentlyEditingLayer.pm && currentlyEditingLayer.pm.enabled && currentlyEditingLayer.pm.enabled()) {
+                    currentlyEditingLayer.pm.disable();
+                }
                 currentlyEditingLayer = null;
-                [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
-                    processAllSubLayers(group, layer => {
-                        if (layer.pm && layer.pm.enabled && layer.pm.enabled()) {
-                            layer.pm.disable();
-                        }
-                    });
+            }
+    });
                 });
             }
         });

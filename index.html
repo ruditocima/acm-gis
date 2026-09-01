@@ -815,13 +815,19 @@
         App.layers.osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 22,
             maxNativeZoom: 19,
-            attribution: '© OpenStreetMap contributors'
+            attribution: '© OpenStreetMap contributors',
+            keepBuffer: 6,           // Menyimpan tile di buffer untuk mencegah layar blank
+            updateWhenIdle: false,
+            updateWhenZooming: false
         });
 
         App.layers.earth = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
             maxZoom: 22,
-            maxNativeZoom: 20, 
-            attribution: '© Google Maps'
+            maxNativeZoom: 20,
+            attribution: '© Google Maps',
+            keepBuffer: 6,
+            updateWhenIdle: false,
+            updateWhenZooming: false
         });
 
         App.map = L.map('map', {
@@ -830,12 +836,11 @@
             layers: [App.layers.osm],
             zoomControl: false,
             renderer: canvasRenderer,
-            zoomAnimation: false,      // Menghilangkan jeda/transisi animasi zoom
-            fadeAnimation: false,      // Menghilangkan efek fade pada tile saat zoom
-            markerZoomAnimation: false,// Menghilangkan animasi skala marker saat zoom
-            inertia: false             // Menghilangkan efek luncur/geser bebas (inertia)
+            zoomAnimation: true,          // Diaktifkan agar transisi zoom mulus (menghilangkan jeda/blank)
+            fadeAnimation: true,          // Diaktifkan agar pergantian tile halus
+            markerZoomAnimation: true,    // Diaktifkan agar marker ikut berskala dengan mulus
+            inertia: true                 // Mengaktifkan kembali efek luncur/geser peta
         });
-
         L.control.zoom({ position: 'topright' }).addTo(App.map);
         L.control.scale({ position: 'bottomright', metric: true, imperial: false }).addTo(App.map);
 

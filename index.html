@@ -1390,6 +1390,9 @@
             } else if (props.sourceGroup === 'osm' || props.building) {
                 sourceGroup = App.groups.osm;
             }
+            if (sourceGroup && sourceGroup.hasLayer(e.layer)) {
+                sourceGroup.removeLayer(e.layer);
+            }
 
             pushUndoAction({ type: 'remove', group: sourceGroup, layer: e.layer });
             UI.updateFeatureCounts();

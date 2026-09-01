@@ -1765,7 +1765,7 @@ function sanitizeGeoJSON(geojson) {
 
             if (hasExistingEdits) {
                 const result = await Swal.fire({
-                    title: 'File A Diperbarui!',
+                    title: 'File Diperbarui!',
                     text: 'Ditemukan objek hasil editing aktif di peta. Bagaimana Anda ingin memproses pembaruan ini?',
                     icon: 'question',
                     showCancelButton: true,
@@ -1824,7 +1824,7 @@ function sanitizeGeoJSON(geojson) {
             document.getElementById('btn-fetch-osm').disabled = false;
 
             UI.updateFeatureCounts();
-            UI.toast('success', hasExistingEdits && keepEdits ? 'File A Diperbarui & Hasil Edit Tersinkronkan!' : 'KML Berhasil Dimuat!', 3000);
+            UI.toast('success', hasExistingEdits && keepEdits ? 'File Diperbarui & Hasil Edit Tersinkronkan!' : 'KML Berhasil Dimuat!', 3000);
         }
 
         // ============================================================
@@ -2165,7 +2165,7 @@ function sanitizeGeoJSON(geojson) {
                     if (hasActiveKML) {
                         const result = await Swal.fire({
                             title: 'Gabungkan File B.json?',
-                            text: 'File A (KML) terbaru sedang aktif di peta. Apakah Anda ingin mengimpor hasil editing dari B.json tanpa menimpa File A terbaru?',
+                            text: 'File KMZ terbaru sedang aktif di peta. Apakah Anda ingin mengimpor file anda tanpa menimpa KMZ terbaru?',
                             icon: 'question',
                             showCancelButton: true,
                             confirmButtonText: 'Gabungkan Edit Saja',
@@ -2262,7 +2262,7 @@ function sanitizeGeoJSON(geojson) {
                         icon: 'success',
                         title: 'Proyek Berhasil Dimuat!',
                         text: mergeOnlyEdits 
-                            ? `Hasil editing dari "${file.name}" berhasil digabungkan di atas File A terbaru.`
+                            ? `Hasil editing dari "${file.name}" berhasil digabungkan di atas File terbaru.`
                             : `File "${file.name}" telah berhasil dimuat ke peta.`,
                         confirmButtonColor: '#10b981'
                     });

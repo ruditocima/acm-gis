@@ -330,6 +330,36 @@
         .leaflet-overlay-pane svg g path.osm-road-layer {
             transition: none !important;
         }
+        .leaflet-pane, 
+    .leaflet-tile, 
+    .leaflet-marker-icon, 
+    .leaflet-marker-shadow, 
+    .leaflet-tile-pane, 
+    .leaflet-overlay-pane, 
+    .leaflet-shadow-pane, 
+    .leaflet-marker-pane, 
+    .leaflet-popup-pane {
+        will-change: transform;
+    }
+
+    /* Pastikan animasi zoom Leaflet berjalan mulus tanpa jeda melayang */
+    .leaflet-zoom-anim .leaflet-zoom-animated {
+        transition: transform 0.2s cubic-bezier(0, 0, 0.2, 1) !important;
+    }
+
+    /* Matikan transisi CSS kustom pada elemen SVG, Canvas, dan Marker agar menempel akurat */
+    .leaflet-overlay-pane svg,
+    .leaflet-overlay-pane canvas,
+    .leaflet-marker-pane img,
+    .leaflet-marker-pane div {
+        transition: none !important;
+    }
+
+    /* Optimasi rendering Canvas & SVG agar tetap tajam saat di-zoom */
+    .leaflet-container {
+        -webkit-tap-highlight-color: transparent;
+        font-family: 'Inter', sans-serif;
+    }
     </style>
 </head>
 <body class="flex flex-row bg-gray-900 text-gray-200">
@@ -836,10 +866,11 @@
             layers: [App.layers.osm],
             zoomControl: false,
             renderer: canvasRenderer,
-            zoomAnimation: true,          // Diaktifkan agar transisi zoom mulus (menghilangkan jeda/blank)
-            fadeAnimation: true,          // Diaktifkan agar pergantian tile halus
-            markerZoomAnimation: true,    // Diaktifkan agar marker ikut berskala dengan mulus
-            inertia: true                 // Mengaktifkan kembali efek luncur/geser peta
+            zoomAnimation: true,       // Diaktifkan agar transisi zoom mulus
+            fadeAnimation: true,       // Diaktifkan agar pergantian tile halus
+            markerZoomAnimation: true, // Memastikan marker ikut berskala secara presisi
+            inertia: true,             // Efek luncur/geser peta yang natural
+            worldCopyJump: false
         });
         L.control.zoom({ position: 'topright' }).addTo(App.map);
         L.control.scale({ position: 'bottomright', metric: true, imperial: false }).addTo(App.map);

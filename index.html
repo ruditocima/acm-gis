@@ -1346,6 +1346,35 @@
                         try {
                             App.groups.osm.addLayer(e.layer);
                         } catch (err) {
+                            if (geojsonBackup) {
+                                const newLayer = L.geoJSON(geojsonBackup, {
+                                    renderer: canvasRenderer,
+                                    style: function() {
+                                        return {
+                                            color: layerStyle.color || '#06b6d4',
+                                            weight: layerStyle.weight || 1.5,
+                                            fillColor: layerStyle.fillColor || '#06b6d4',
+                                            fillOpacity: typeof layerStyle.fillOpacity !== 'undefined' ? layerStyle.fillOpacity : 0.3,
+                                            className: 'osm-road-layer'
+                                        };
+                                    },
+                                    onEachFeature: function(feature, layer) {
+                                        layer.options.interactive = true;
+                                        layer.options.pmIgnore = false;
+                                        layer.feature = layer.feature || { type: 'Feature', properties: {} };
+                                        layer.feature.properties = { ...layer.feature.properties, ...feature.properties };
+                                        layer.options.allowRemoval = false;
+                                        layer._osmGeoJSON = JSON.parse(JSON.stringify(feature));
+                                        layer.on('click', function(e) {
+                                            if (App.map.pm.globalRemovalModeEnabled()) {
+                                                L.DomEvent.stop(e);
+                                                UI.toast('warning', 'Data OSM Jalan tidak diizinkan untuk dihapus!', 2500);
+                                            }
+                                        });
+                                        bindNamePopup(layer);
+                                    }
+                                });
+                                newLayer.eachLayer(lyr => App.groups.osm.addLayer(lyr));
                             }
                         }
                     }
@@ -1360,10 +1389,6 @@
                 sourceGroup = App.groups.kml;
             } else if (props.sourceGroup === 'osm' || props.building) {
                 sourceGroup = App.groups.osm;
-            }
-            // --- PERBAIKAN: Hapus secara paksa dari FeatureGroup agar tidak ikut ter-export/tersimpan ---
-            if (sourceGroup && sourceGroup.hasLayer(e.layer)) {
-                sourceGroup.removeLayer(e.layer);
             }
 
             pushUndoAction({ type: 'remove', group: sourceGroup, layer: e.layer });

@@ -1255,7 +1255,6 @@
         let currentlyEditingLayer = null;
 
         function isLayerFromDrawGroup(layer) {
-            return !!(layer && layer.options && layer.options.isDraw);
             let found = false;
             App.groups.draw.eachLayer((l) => {
                 if (l === layer) found = true;
@@ -1275,20 +1274,22 @@
         App.map.on('pm:globaleditmodetoggled', (e) => {
             if (e.enabled) {
                 currentlyEditingLayer = null;
-                App.groups.draw.eachLayer(layer => {
-                    if (layer.pm && layer.pm.enabled && layer.pm.enabled()) {
-                        layer.pm.disable();
-                }
-            });
-
-            UI.toast('info', 'Klik objek yang ingin diedit', 3000);
+                [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
+                    processAllSubLayers(group, layer => {
+                        if (layer.pm && layer.pm.enabled && layer.pm.enabled()) {
+                            layer.pm.disable();
+                        }
+                    });
+                });
+                UI.toast('info', 'Klik objek yang ingin diedit', 3000);
             } else {
-            if (currentlyEditingLayer && currentlyEditingLayer.pm && currentlyEditingLayer.pm.enabled && currentlyEditingLayer.pm.enabled()) {
-            currentlyEditingLayer.pm.disable();
-            }
-            currentlyEditingLayer = null;
-            }
-        });
+                currentlyEditingLayer = null;
+                [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
+                    processAllSubLayers(group, layer => {
+                        if (layer.pm && layer.pm.enabled && layer.pm.enabled()) {
+                            layer.pm.disable();
+                        }
+                    });
                 });
             }
         });

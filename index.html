@@ -2337,174 +2337,179 @@ function sanitizeGeoJSON(geojson) {
         });
 
         function generateDXF(featureCollection) {
-            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
-            function updateExtents(x, y) {
-                if (isNaN(x) || isNaN(y)) return;
-                if (x < minX) minX = x;
-                if (y < minY) minY = y;
-                if (x > maxX) maxX = x;
-                if (y > maxY) maxY = y;
-            }
+    function updateExtents(x, y) {
+        if (isNaN(x) || isNaN(y)) return;
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+    }
 
-            const layerNames = new Set(["0", "KML_Boundary", "OSM_Buildings", "OSM_Roads", "User_Drawn"]);
-            featureCollection.features.forEach(f => {
-                if (f.properties && f.properties.layer) {
-                    let name = f.properties.layer.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
-                    layerNames.add(name);
-                }
-            });
+    // Menambahkan 'House' dan 'Text' ke daftar layer DXF[cite: 1]
+    const layerNames = new Set(["0", "House", "Text", "KML_Boundary", "OSM_Buildings", "OSM_Roads", "User_Drawn"]);
+    featureCollection.features.forEach(f => {
+        if (f.properties && f.properties.layer) {
+            let name = f.properties.layer.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+            layerNames.add(name);
+        }
+    });
 
-            let entitiesDxf = [];
+    let entitiesDxf = [];
 
-            function addPointSymbol(coord, layerName, featureProps) {
-                if (!coord || coord.length < 2) return;
-                let [x, y] = CoordUtils.lonLatToMeters(coord[0], coord[1]);
-                updateExtents(x, y);
+    function addPointSymbol(coord, layerName, featureProps) {
+        if (!coord || coord.length < 2) return;
+        let [x, y] = CoordUtils.lonLatToMeters(coord[0], coord[1]);
+        updateExtents(x, y);
 
-                const radius = 1.5;
+        const radius = 1.5;
 
-                entitiesDxf.push("  0", "CIRCLE");
-                entitiesDxf.push("  8", layerName);
-                entitiesDxf.push(" 10", x.toFixed(4));
-                entitiesDxf.push(" 20", y.toFixed(4));
-                entitiesDxf.push(" 30", "0.0");
-                entitiesDxf.push(" 40", radius.toFixed(4));
+        // 1. Symbol/titik dimasukkan ke layer 'House'[cite: 1]
+        entitiesDxf.push("  0", "CIRCLE");
+        entitiesDxf.push("  8", "House");
+        entitiesDxf.push(" 10", x.toFixed(4));
+        entitiesDxf.push(" 20", y.toFixed(4));
+        entitiesDxf.push(" 30", "0.0");
+        entitiesDxf.push(" 40", radius.toFixed(4));
 
-                let labelText = "Point";
-                if (featureProps) {
-                    labelText = featureProps.name || featureProps.Name || featureProps.title || featureProps.id || "Point";
-                }
-                labelText = String(labelText).replace(/[\r\n]+/g, " ");
+        let labelText = "Point";
+        if (featureProps) {
+            labelText = featureProps.name || featureProps.Name || featureProps.title || featureProps.id || "Point";
+        }
+        labelText = String(labelText).replace(/[\r\n]+/g, " ");
 
-                entitiesDxf.push("  0", "TEXT");
-                entitiesDxf.push("  8", layerName);
-                entitiesDxf.push(" 10", (x + radius * 1.3).toFixed(4));
-                entitiesDxf.push(" 20", y.toFixed(4));
-                entitiesDxf.push(" 30", "0.0");
-                entitiesDxf.push(" 40", "1.25");
-                entitiesDxf.push("  1", labelText);
-            }
+        // 2. Label teks dimasukkan ke layer 'Text'[cite: 1]
+        entitiesDxf.push("  0", "TEXT");
+        entitiesDxf.push("  8", "Text");
+        entitiesDxf.push(" 10", (x + radius * 1.3).toFixed(4));
+        entitiesDxf.push(" 20", y.toFixed(4));
+        entitiesDxf.push(" 30", "0.0");
+        entitiesDxf.push(" 40", "1.25");
+        entitiesDxf.push("  1", labelText);
+    }
 
-            function addPolyline(coords, isClosed, layerName) {
-                if (!coords || coords.length < 2) return;
+    function addPolyline(coords, isClosed, layerName) {
+        if (!coords || coords.length < 2) return;
 
-                entitiesDxf.push("  0", "POLYLINE");
-                entitiesDxf.push("  8", layerName);
-                
-                if (!isClosed) {
-                    const colorCode = (layerName === "OSM_Roads") ? "4" : "1";
-                    entitiesDxf.push(" 62", colorCode); 
-                }
-
-                entitiesDxf.push(" 66", "1");
-                entitiesDxf.push(" 70", isClosed ? "1" : "0");
-                entitiesDxf.push(" 10", "0.0");
-                entitiesDxf.push(" 20", "0.0");
-                entitiesDxf.push(" 30", "0.0");
-
-                coords.forEach(c => {
-                    if (!c || c.length < 2) return;
-                    let [x, y] = CoordUtils.lonLatToMeters(c[0], c[1]);
-                    updateExtents(x, y);
-
-                    entitiesDxf.push("  0", "VERTEX");
-                    entitiesDxf.push("  8", layerName);
-                    if (!isClosed) {
-                        const colorCode = (layerName === "OSM_Roads") ? "4" : "1";
-                        entitiesDxf.push(" 62", colorCode);
-                    }
-                    entitiesDxf.push(" 10", x.toFixed(4));
-                    entitiesDxf.push(" 20", y.toFixed(4));
-                    entitiesDxf.push(" 30", "0.0");
-                });
-
-                entitiesDxf.push("  0", "SEQEND");
-                entitiesDxf.push("  8", layerName);
-            }
-
-            function processGeometry(gem, layerName, featureProps) {
-                if (!gem) return;
-
-                if (gem.type === "Point") {
-                    addPointSymbol(gem.coordinates, layerName, featureProps);
-                } else if (gem.type === "MultiPoint") {
-                    gem.coordinates.forEach(pt => addPointSymbol(pt, layerName, featureProps));
-                } else if (gem.type === "LineString") {
-                    addPolyline(gem.coordinates, false, layerName);
-                } else if (gem.type === "MultiLineString") {
-                    gem.coordinates.forEach(line => addPolyline(line, false, layerName));
-                } else if (gem.type === "Polygon") {
-                    gem.coordinates.forEach(ring => addPolyline(ring, true, layerName));
-                } else if (gem.type === "MultiPolygon") {
-                    gem.coordinates.forEach(poly => poly.forEach(ring => addPolyline(ring, true, layerName)));
-                } else if (gem.type === "GeometryCollection") {
-                    gem.geometries.forEach(g => processGeometry(g, layerName, featureProps));
-                }
-            }
-
-            featureCollection.features.forEach((feature) => {
-                let gem = feature.geometry;
-                let layerName = (feature.properties && feature.properties.layer) ? feature.properties.layer : "0";
-                layerName = layerName.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
-                processGeometry(gem, layerName, feature.properties);
-            });
-
-            if (minX === Infinity) {
-                minX = 0; minY = 0; maxX = 100; maxY = 100;
-            }
-
-            let headerDxf = [];
-
-            headerDxf.push("  0", "SECTION");
-            headerDxf.push("  2", "HEADER");
-            headerDxf.push("  9", "$ACADVER");
-            headerDxf.push("  1", "AC1009");
-            headerDxf.push("  9", "$EXTMIN");
-            headerDxf.push(" 10", minX.toFixed(4));
-            headerDxf.push(" 20", minY.toFixed(4));
-            headerDxf.push(" 30", "0.0");
-            headerDxf.push("  9", "$EXTMAX");
-            headerDxf.push(" 10", maxX.toFixed(4));
-            headerDxf.push(" 20", maxY.toFixed(4));
-            headerDxf.push(" 30", "0.0");
-            headerDxf.push("  0", "ENDSEC");
-
-            headerDxf.push("  0", "SECTION");
-            headerDxf.push("  2", "TABLES");
-            headerDxf.push("  0", "TABLE");
-            headerDxf.push("  2", "LAYER");
-            headerDxf.push(" 70", layerNames.size.toString());
-
-            const layerColors = {
-                "KML_Boundary": 3,
-                "OSM_Buildings": 2,
-                "OSM_Roads": 4,
-                "User_Drawn": 1
-            };
-
-            layerNames.forEach(name => {
-                const color = layerColors[name] || 7;
-                headerDxf.push("  0", "LAYER");
-                headerDxf.push("  2", name);
-                headerDxf.push(" 70", "0");
-                headerDxf.push(" 62", color.toString());
-                headerDxf.push("  6", "CONTINUOUS");
-            });
-
-            headerDxf.push("  0", "ENDTAB");
-            headerDxf.push("  0", "ENDSEC");
-
-            headerDxf.push("  0", "SECTION");
-            headerDxf.push("  2", "ENTITIES");
-
-            let fullDxf = headerDxf.concat(entitiesDxf);
-            fullDxf.push("  0", "ENDSEC");
-            fullDxf.push("  0", "EOF");
-
-            return fullDxf.join("\r\n") + "\r\n";
+        entitiesDxf.push("  0", "POLYLINE");
+        entitiesDxf.push("  8", layerName);
+        
+        if (!isClosed) {
+            const colorCode = (layerName === "OSM_Roads") ? "4" : "1";
+            entitiesDxf.push(" 62", colorCode); 
         }
 
+        entitiesDxf.push(" 66", "1");
+        entitiesDxf.push(" 70", isClosed ? "1" : "0");
+        entitiesDxf.push(" 10", "0.0");
+        entitiesDxf.push(" 20", "0.0");
+        entitiesDxf.push(" 30", "0.0");
+
+        coords.forEach(c => {
+            if (!c || c.length < 2) return;
+            let [x, y] = CoordUtils.lonLatToMeters(c[0], c[1]);
+            updateExtents(x, y);
+
+            entitiesDxf.push("  0", "VERTEX");
+            entitiesDxf.push("  8", layerName);
+            if (!isClosed) {
+                const colorCode = (layerName === "OSM_Roads") ? "4" : "1";
+                entitiesDxf.push(" 62", colorCode);
+            }
+            entitiesDxf.push(" 10", x.toFixed(4));
+            entitiesDxf.push(" 20", y.toFixed(4));
+            entitiesDxf.push(" 30", "0.0");
+        });
+
+        entitiesDxf.push("  0", "SEQEND");
+        entitiesDxf.push("  8", layerName);
+    }
+
+    function processGeometry(gem, layerName, featureProps) {
+        if (!gem) return;
+
+        if (gem.type === "Point") {
+            addPointSymbol(gem.coordinates, layerName, featureProps);
+        } else if (gem.type === "MultiPoint") {
+            gem.coordinates.forEach(pt => addPointSymbol(pt, layerName, featureProps));
+        } else if (gem.type === "LineString") {
+            addPolyline(gem.coordinates, false, layerName);
+        } else if (gem.type === "MultiLineString") {
+            gem.coordinates.forEach(line => addPolyline(line, false, layerName));
+        } else if (gem.type === "Polygon") {
+            gem.coordinates.forEach(ring => addPolyline(ring, true, layerName));
+        } else if (gem.type === "MultiPolygon") {
+            gem.coordinates.forEach(poly => poly.forEach(ring => addPolyline(ring, true, layerName)));
+        } else if (gem.type === "GeometryCollection") {
+            gem.geometries.forEach(g => processGeometry(g, layerName, featureProps));
+        }
+    }
+
+    featureCollection.features.forEach((feature) => {
+        let gem = feature.geometry;
+        let layerName = (feature.properties && feature.properties.layer) ? feature.properties.layer : "0";
+        layerName = layerName.toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+        processGeometry(gem, layerName, feature.properties);
+    });
+
+    if (minX === Infinity) {
+        minX = 0; minY = 0; maxX = 100; maxY = 100;
+    }
+
+    let headerDxf = [];
+
+    headerDxf.push("  0", "SECTION");
+    headerDxf.push("  2", "HEADER");
+    headerDxf.push("  9", "$ACADVER");
+    headerDxf.push("  1", "AC1009");
+    headerDxf.push("  9", "$EXTMIN");
+    headerDxf.push(" 10", minX.toFixed(4));
+    headerDxf.push(" 20", minY.toFixed(4));
+    headerDxf.push(" 30", "0.0");
+    headerDxf.push("  9", "$EXTMAX");
+    headerDxf.push(" 10", maxX.toFixed(4));
+    headerDxf.push(" 20", maxY.toFixed(4));
+    headerDxf.push(" 30", "0.0");
+    headerDxf.push("  0", "ENDSEC");
+
+    headerDxf.push("  0", "SECTION");
+    headerDxf.push("  2", "TABLES");
+    headerDxf.push("  0", "TABLE");
+    headerDxf.push("  2", "LAYER");
+    headerDxf.push(" 70", layerNames.size.toString());
+
+    // Konfigurasi warna layer termasuk 'House' dan 'Text'[cite: 1]
+    const layerColors = {
+        "House": 3,
+        "Text": 7,
+        "KML_Boundary": 3,
+        "OSM_Buildings": 2,
+        "OSM_Roads": 4,
+        "User_Drawn": 1
+    };
+
+    layerNames.forEach(name => {
+        const color = layerColors[name] || 7;
+        headerDxf.push("  0", "LAYER");
+        headerDxf.push("  2", name);
+        headerDxf.push(" 70", "0");
+        headerDxf.push(" 62", color.toString());
+        headerDxf.push("  6", "CONTINUOUS");
+    });
+
+    headerDxf.push("  0", "ENDTAB");
+    headerDxf.push("  0", "ENDSEC");
+
+    headerDxf.push("  0", "SECTION");
+    headerDxf.push("  2", "ENTITIES");
+
+    let fullDxf = headerDxf.concat(entitiesDxf);
+    fullDxf.push("  0", "ENDSEC");
+    fullDxf.push("  0", "EOF");
+
+    return fullDxf.join("\r\n") + "\r\n";
+}
         document.getElementById('btn-export-png').addEventListener('click', async () => {
             UI.showLoading('Membuat gambar...', 'Menangkap tampilan peta');
             try {

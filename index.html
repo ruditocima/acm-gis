@@ -533,6 +533,22 @@
                 </button>
             </div>
 
+            <!-- Drawing Controls Note -->
+            <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
+                <h2 class="text-sm font-semibold mb-1 text-gray-300 uppercase tracking-wider">Drawing Tools</h2>
+                <p class="text-xs text-gray-400 mb-3">Gunakan toolbar di kanan atas peta untuk menggambar polygon, garis, atau marker. Klik tombol sampah untuk menghapus objek yang digambar.</p>
+
+                <div class="grid grid-cols-2 gap-2 mt-2">
+                    <button id="btn-copy" class="py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
+                        <i class="fa-solid fa-copy mr-1"></i> Copy Selected
+                    </button>
+                    <button id="btn-paste" class="py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
+                        <i class="fa-solid fa-paste mr-1"></i> Paste
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Footer Actions -->
         <div class="p-5 border-t border-gray-700 border-opacity-50 flex flex-col gap-3 bg-gray-800 bg-opacity-30">
             <div class="grid grid-cols-2 gap-2">
@@ -1043,6 +1059,132 @@
         setupLayerManager('draw', App.groups.draw);
 
         // ============================================================
+        // 6. MEASUREMENT TOOLS
+        // ============================================================
+
+        function clearMeasurement() {
+            App.groups.measure.clearLayers();
+            App.state.measurePoints = [];
+            if (App.state.measureTooltip) {
+                App.map.closeTooltip(App.state.measureTooltip);
+                App.state.measureTooltip = null;
+            }
+            App.state.isMeasureMode = false;
+            App.state.measureType = null;
+            document.getElementById('btn-measure-clear').classList.add('hidden');
+            App.map.off('click', onMeasureClick);
+            App.map.off('mousemove', onMeasureMove);
+            App.map.getContainer().style.cursor = '';
+        }
+
+        function onMeasureClick(e) {
+            if (!App.state.isMeasureMode) return;
+
+            App.state.measurePoints.push([e.latlng.lng, e.latlng.lat]);
+
+            L.circleMarker(e.latlng, {
+                radius: 4,
+                color: '#10b981',
+                fillColor: '#10b981',
+                fillOpacity: 1,
+                weight: 2
+            }).addTo(App.groups.measure);
+
+            if (App.state.measureType === 'distance' && App.state.measurePoints.length >= 2) {
+                const line = turf.lineString(App.state.measurePoints);
+                const length = turf.length(line, { units: 'meters' });
+
+                const latlngs = App.state.measurePoints.map(p => [p[1], p[0]]);
+                L.polyline(latlngs, { color: '#10b981', weight: 2, dashArray: '5, 10' }).addTo(App.groups.measure);
+
+                let text = length >= 1000 ? `${(length/1000).toFixed(2)} km` : `${length.toFixed(1)} m`;
+
+                App.state.measureTooltip = L.tooltip({
+                    permanent: true,
+                    direction: 'top',
+                    className: 'measure-tooltip',
+                    offset: [0, -10]
+                })
+                .setContent(text)
+                .setLatLng(e.latlng)
+                .addTo(App.map);
+
+            } else if (App.state.measureType === 'area' && App.state.measurePoints.length >= 3) {
+                const coords = [...App.state.measurePoints, App.state.measurePoints[0]];
+                const polygon = turf.polygon([coords]);
+                const area = turf.area(polygon);
+
+                const latlngs = App.state.measurePoints.map(p => [p[1], p[0]]);
+                L.polygon(latlngs, { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.1, dashArray: '5, 10' }).addTo(App.groups.measure);
+
+                let text = area >= 10000 ? `${(area/10000).toFixed(2)} ha` : `${area.toFixed(1)} m²`;
+
+                App.state.measureTooltip = L.tooltip({
+                    permanent: true,
+                    direction: 'center',
+                    className: 'measure-tooltip',
+                    offset: [0, 0]
+                })
+                .setContent(text)
+                .setLatLng(turf.center(polygon).geometry.coordinates.reverse())
+                .addTo(App.map);
+            }
+        }
+
+        function onMeasureMove(e) {
+            if (!App.state.isMeasureMode || App.state.measurePoints.length === 0) return;
+
+            const tempPoints = [...App.state.measurePoints, [e.latlng.lng, e.latlng.lat]];
+            const latlngs = tempPoints.map(p => [p[1], p[0]]);
+
+            App.groups.measure.eachLayer(layer => {
+                if (layer.options && layer.options._isTemp) {
+                    App.groups.measure.removeLayer(layer);
+                }
+            });
+
+            if (App.state.measureType === 'distance') {
+                const polyline = L.polyline(latlngs, { color: '#10b981', weight: 2, dashArray: '3, 7', opacity: 0.6, _isTemp: true });
+                polyline.addTo(App.groups.measure);
+            } else if (App.state.measureType === 'area' && tempPoints.length >= 3) {
+                const polygon = L.polygon(latlngs, { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.05, dashArray: '3, 7', _isTemp: true });
+                polygon.addTo(App.groups.measure);
+            }
+        }
+
+        document.getElementById('btn-measure-distance').addEventListener('click', () => {
+            if (App.state.isMeasureMode && App.state.measureType === 'distance') {
+                clearMeasurement();
+                return;
+            }
+            clearMeasurement();
+            App.state.isMeasureMode = true;
+            App.state.measureType = 'distance';
+            App.map.getContainer().style.cursor = 'crosshair';
+            App.map.on('click', onMeasureClick);
+            App.map.on('mousemove', onMeasureMove);
+            document.getElementById('btn-measure-clear').classList.remove('hidden');
+            UI.toast('info', 'Klik pada peta untuk mulai mengukur jarak. Klik tombol lagi untuk selesai.', 3000);
+        });
+
+        document.getElementById('btn-measure-area').addEventListener('click', () => {
+            if (App.state.isMeasureMode && App.state.measureType === 'area') {
+                clearMeasurement();
+                return;
+            }
+            clearMeasurement();
+            App.state.isMeasureMode = true;
+            App.state.measureType = 'area';
+            App.map.getContainer().style.cursor = 'crosshair';
+            App.map.on('click', onMeasureClick);
+            App.map.on('mousemove', onMeasureMove);
+            document.getElementById('btn-measure-clear').classList.remove('hidden');
+            UI.toast('info', 'Klik pada peta untuk membuat polygon. Klik tombol lagi untuk selesai.', 3000);
+        });
+
+        document.getElementById('btn-measure-clear').addEventListener('click', clearMeasurement);
+
+       // ============================================================
         // 7. LEAFLET GEOMAN CONTROLS
         // ============================================================
 

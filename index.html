@@ -829,7 +829,11 @@
             zoom: 5,
             layers: [App.layers.osm],
             zoomControl: false,
-            renderer: canvasRenderer
+            renderer: canvasRenderer,
+            zoomAnimation: false,      // Menghilangkan jeda/transisi animasi zoom
+            fadeAnimation: false,      // Menghilangkan efek fade pada tile saat zoom
+            markerZoomAnimation: false,// Menghilangkan animasi skala marker saat zoom
+            inertia: false             // Menghilangkan efek luncur/geser bebas (inertia)
         });
 
         L.control.zoom({ position: 'topright' }).addTo(App.map);

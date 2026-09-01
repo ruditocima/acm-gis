@@ -1748,6 +1748,25 @@
             });
 
             App.groups.kml.addLayer(layer);
+            }
+                            } else if (props.sourceGroup === 'osm') {
+                                App.groups.osm.addLayer(layer);
+                            } else {
+                                App.groups.draw.addLayer(layer);
+                            }
+                            bindNamePopup(layer);
+                        }
+                    });
+
+                    UI.updateFeatureCounts();
+                    UI.toast('success', 'Proyek berhasil dimuat!', 3000);
+                } catch (err) {
+                    Swal.fire('Error', 'Gagal memuat file proyek: ' + err.message, 'error');
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        });
             App.map.fitBounds(layer.getBounds(), { padding: [50, 50] });
 
             App.state.currentBbox = layer.getBounds();

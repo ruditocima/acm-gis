@@ -279,6 +279,23 @@
                 </div>
             </div>
 
+            <!-- Network Device Markers (ODC, ODP, Closure) -->
+            <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
+                <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Simbol Perangkat Jaringan</h2>
+                <div class="grid grid-cols-3 gap-2">
+                    <button id="btn-device-odc" class="py-2 px-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-semibold transition-all flex flex-col items-center justify-center gap-1">
+                        <i class="fa-solid fa-server text-sm"></i> + ODC
+                    </button>
+                    <button id="btn-device-odp" class="py-2 px-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition-all flex flex-col items-center justify-center gap-1">
+                        <i class="fa-solid fa-network-wired text-sm"></i> + ODP
+                    </button>
+                    <button id="btn-device-closure" class="py-2 px-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-all flex flex-col items-center justify-center gap-1">
+                        <i class="fa-solid fa-circle-nodes text-sm"></i> + Closure
+                    </button>
+                </div>
+                <p id="device-hint" class="text-[11px] text-gray-400 mt-2 text-center italic hidden">Klik pada peta untuk menempatkan perangkat</p>
+            </div>
+
             <!-- Fetch OSM Data -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Environment Data</h2>
@@ -368,9 +385,14 @@
                 </div>
             </div>
 
-            <button id="btn-export" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg transition-all shadow-lg flex items-center justify-center">
-                <i class="fa-solid fa-file-export mr-2"></i> Export to DXF
-            </button>
+            <div class="grid grid-cols-2 gap-2">
+                <button id="btn-export" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg transition-all shadow-lg flex items-center justify-center">
+                    <i class="fa-solid fa-file-export mr-1.5"></i> DXF
+                </button>
+                <button id="btn-export-kml" class="w-full py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs rounded-lg transition-all shadow-lg flex items-center justify-center">
+                    <i class="fa-solid fa-file-code mr-1.5"></i> KML
+                </button>
+            </div>
 
             <button id="btn-export-png" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg transition-all shadow-lg flex items-center justify-center">
                 <i class="fa-solid fa-image mr-2"></i> Export to PNG
@@ -409,7 +431,7 @@
                 osmTimeout: 30000,
                 defaultRoadWidth: 6,
                 coordinatePrecision: 6,
-                version: '2.0.2-lite'
+                version: '2.1.0-lite'
             },
             state: {
                 isMeasureMode: false,
@@ -421,7 +443,8 @@
                 lastSelectedLayer: null,
                 currentBbox: null,
                 uploadedKmlFeatures: [],
-                coordFormat: 'dd'
+                coordFormat: 'dd',
+                activeDeviceTool: null
             },
             groups: {},
             undoStack: [],
@@ -518,6 +541,23 @@
             iconSize: [10, 10], iconAnchor: [5, 5]
         });
 
+        // --- Network Device Icon Generators ---
+        function getDeviceIcon(type) {
+            let bgCol = '#10b981';
+            let iconClass = 'fa-network-wired';
+            if (type === 'ODC') { bgCol = '#d97706'; iconClass = 'fa-server'; }
+            else if (type === 'ODP') { bgCol = '#059669'; iconClass = 'fa-network-wired'; }
+            else if (type === 'Closure') { bgCol = '#2563eb'; iconClass = 'fa-circle-nodes'; }
+
+            return L.divIcon({
+                className: 'custom-device-marker',
+                html: `<div style="background-color: ${bgCol}; width: 28px; height: 28px; border: 2px solid #ffffff; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); color: white; font-size: 12px;"><i class="fa-solid ${iconClass}"></i></div>`,
+                iconSize: [28, 28],
+                iconAnchor: [14, 14],
+                popupAnchor: [0, -14]
+            });
+        }
+
         function pushUndoAction(action) {
             App.undoStack.push(action);
             if (App.undoStack.length > App.config.maxUndoStack) App.undoStack.shift();
@@ -587,7 +627,7 @@
         function bindNamePopup(layer) {
             layer.on('click', function(e) {
                 L.DomEvent.stopPropagation(e);
-                const props = layer.feature?.properties || {};
+                const props = layer.feature?.properties || layer.options?.properties || {};
                 const name = props.name || props.Name || props.title || props.building || props.highway || 'Object';
                 const desc = props.description || props.Description || '';
                 let content = `<div style="min-width:180px;"><b>${name}</b>`;
@@ -661,6 +701,53 @@
             bindNamePopup(layer);
             UI.updateFeatureCounts();
             UI.toast('success', 'Objek baru berhasil digambar!', 1500);
+        });
+
+        // --- Handle Network Device Placements via Map Clicks ---
+        App.map.on('click', (e) => {
+            if (App.state.activeDeviceTool) {
+                const devType = App.state.activeDeviceTool;
+                const marker = L.marker(e.latlng, { icon: getDeviceIcon(devType) });
+                marker.options.pmIgnore = false;
+                marker.options.properties = { name: `${devType} Device`, description: `Type: ${devType} FTTH Infrastructure` };
+                
+                App.groups.draw.addLayer(marker);
+                pushUndoAction({ type: 'add', group: App.groups.draw, layer: marker });
+                bindNamePopup(marker);
+                UI.updateFeatureCounts();
+                UI.toast('success', `Perangkat ${devType} berhasil ditambahkan!`, 1500);
+
+                // Reset tool state
+                App.state.activeDeviceTool = null;
+                document.getElementById('device-hint').classList.add('hidden');
+                document.querySelectorAll('#btn-device-odc, #btn-device-odp, #btn-device-closure').forEach(b => {
+                    b.classList.remove('ring-4', 'ring-white');
+                });
+            }
+        });
+
+        // Setup Device Button Listeners
+        ['odc', 'odp', 'closure'].forEach(type => {
+            const btn = document.getElementById(`btn-device-${type}`);
+            if (btn) {
+                btn.addEventListener('click', () => {
+                    const upperType = type.toUpperCase();
+                    if (App.state.activeDeviceTool === upperType) {
+                        App.state.activeDeviceTool = null;
+                        document.getElementById('device-hint').classList.add('hidden');
+                        btn.classList.remove('ring-4', 'ring-white');
+                    } else {
+                        App.state.activeDeviceTool = upperType;
+                        document.getElementById('device-hint').textContent = `Klik di peta untuk menempatkan ${upperType}`;
+                        document.getElementById('device-hint').classList.remove('hidden');
+                        document.querySelectorAll('#btn-device-odc, #btn-device-odp, #btn-device-closure').forEach(b => {
+                            b.classList.remove('ring-4', 'ring-white');
+                        });
+                        btn.classList.add('ring-4', 'ring-white');
+                        UI.toast('info', `Mode aktif: Tempatkan ${upperType}`, 1500);
+                    }
+                });
+            }
         });
 
         let lastMoveTime = 0;
@@ -846,7 +933,6 @@
 
             const fetchedGeoJSON = customOSMToGeoJSON(successData);
             
-            // Filter features to only those intersecting uploaded KML boundary
             let finalGeoJSON = fetchedGeoJSON;
             if (App.state.uploadedKmlFeatures && App.state.uploadedKmlFeatures.length > 0) {
                 const filteredFeatures = fetchedGeoJSON.features.filter(osmFeat => {
@@ -949,6 +1035,99 @@
                     Swal.fire('Error', 'Gagal mengekspor gambar.', 'error');
                 });
             }, 500);
+        });
+
+        // ============================================================ //
+        // EXPORT BACK TO KML FEATURE                                   //
+        // ============================================================ //
+        function escapeXml(unsafe) {
+            return unsafe.toString().replace(/[<>&'"]/g, function (c) {
+                switch (c) {
+                    case '<': return '&lt;';
+                    case '>': return '&gt;';
+                    case '&': return '&amp;';
+                    case '\'': return '&apos;';
+                    case '"': return '&quot;';
+                }
+            });
+        }
+
+        document.getElementById('btn-export-kml').addEventListener('click', () => {
+            UI.showLoading('Mengekspor ke KML...', 'Memproses data geometri');
+
+            let kmlString = '<?xml version="1.0" encoding="UTF-8"?>\n';
+            kmlString += '<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n';
+            kmlString += '<name>GeoConvert ACM Export</name>\n';
+
+            const allFeatures = [];
+            [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
+                processAllSubLayers(group, layer => {
+                    if (typeof layer.toGeoJSON === 'function') {
+                        allFeatures.push(layer.toGeoJSON());
+                    }
+                });
+            });
+
+            if (allFeatures.length === 0) {
+                UI.hideLoading();
+                Swal.fire('Warning', 'Tidak ada objek untuk diexport ke KML.', 'warning');
+                return;
+            }
+
+            allFeatures.forEach((f, idx) => {
+                const props = f.properties || f.options?.properties || {};
+                const name = props.name || props.Name || props.title || `Feature_${idx+1}`;
+                const desc = props.description || props.Description || '';
+                const geom = f.geometry;
+                if (!geom) return;
+
+                kmlString += '<Placemark>\n';
+                kmlString += `<name>${escapeXml(name)}</name>\n`;
+                if (desc) {
+                    kmlString += `<description>${escapeXml(desc)}</description>\n`;
+                }
+
+                if (geom.type === 'Point') {
+                    kmlString += '<Point>\n<coordinates>' + geom.coordinates[0] + ',' + geom.coordinates[1] + '</coordinates>\n</Point>\n';
+                } else if (geom.type === 'LineString') {
+                    kmlString += '<LineStream>\n<coordinates>\n';
+                    // Correction for KML tag
+                    kmlString += '</LineStream>\n'; // Wait, standard KML tag is LineString
+                    // Let's fix tag name properly:
+                }
+                // Proper coordinate builder
+                if (geom.type === 'Point') {
+                    kmlString += `<Point><coordinates>${geom.coordinates[0]},${geom.coordinates[1]},0</coordinates></Point>\n`;
+                } else if (geom.type === 'LineString') {
+                    kmlString += '<LineString><coordinates>\n';
+                    geom.coordinates.forEach(pt => {
+                        kmlString += `${pt[0]},${pt[1]},0 `;
+                    });
+                    kmlString += '\n</coordinates></LineString>\n';
+                } else if (geom.type === 'Polygon') {
+                    kmlString += '<Polygon><outerBoundaryIs><LinearRing><coordinates>\n';
+                    geom.coordinates[0].forEach(pt => {
+                        kmlString += `${pt[0]},${pt[1]},0 `;
+                    });
+                    kmlString += '\n</coordinates></LinearRing></outerBoundaryIs></Polygon>\n';
+                }
+
+                kmlString += '</Placemark>\n';
+            });
+
+            kmlString += '</Document>\n</kml>';
+
+            UI.hideLoading();
+            const blob = new Blob([kmlString], { type: 'application/vnd.google-earth.kml+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'export_gis_acm.kml';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            UI.toast('success', 'Export KML Berhasil!', 1500);
         });
 
         // ============================================================ //

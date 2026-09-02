@@ -537,7 +537,7 @@
                 else if (lastAction.layer) App.map.addLayer(lastAction.layer);
             }
             UI.updateFeatureCounts();
-            UI.toast('success', 'Aksi dibatalkan (Undo)ফ', 1500);
+            UI.toast('success', 'Aksi dibatalkan (Undo)', 1500);
         }
 
         function validateCoords(coords) {
@@ -803,7 +803,7 @@
         });
 
         // ============================================================ //
-        // FIXED FETCH OSM DATA (Menggunakan `out geom;`)                //
+        // FIXED FETCH OSM DATA (Filtered to boundary & intersecting)     //
         // ============================================================ //
         document.getElementById('btn-fetch-osm').addEventListener('click', async () => {
             if (!App.state.currentBbox) {
@@ -815,7 +815,6 @@
             const b = App.state.currentBbox;
             const bboxStr = `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`;
             
-            // Menggunakan `out geom;` agar koordinat langsung disertakan dalam elemen way
             const query = `[out:json][timeout:25];(way["building"](${bboxStr});way["highway"](${bboxStr}););out geom;`;
 
             const endpoints = [
@@ -846,11 +845,28 @@
             }
 
             const fetchedGeoJSON = customOSMToGeoJSON(successData);
+            
+            // Filter features to only those intersecting uploaded KML boundary
+            let finalGeoJSON = fetchedGeoJSON;
+            if (App.state.uploadedKmlFeatures && App.state.uploadedKmlFeatures.length > 0) {
+                const filteredFeatures = fetchedGeoJSON.features.filter(osmFeat => {
+                    if (!osmFeat.geometry) return false;
+                    return App.state.uploadedKmlFeatures.some(kmlFeat => {
+                        try {
+                            return turf.booleanIntersects(osmFeat, kmlFeat);
+                        } catch (e) {
+                            return false;
+                        }
+                    });
+                });
+                finalGeoJSON = { type: "FeatureCollection", features: filteredFeatures };
+            }
+
             App.groups.osm.clearLayers();
 
             const roadWidth = parseFloat(document.getElementById('roadWidthInput').value) || 6;
 
-            const osmLayer = L.geoJSON(fetchedGeoJSON, {
+            const osmLayer = L.geoJSON(finalGeoJSON, {
                 renderer: canvasRenderer,
                 style: function(f) {
                     if (f.properties.building) return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
@@ -935,8 +951,73 @@
             }, 500);
         });
 
+        // ============================================================ //
+        // FIXED EXPORT TO DXF (Fully Functional)                       //
+        // ============================================================ //
         document.getElementById('btn-export').addEventListener('click', () => {
-            UI.toast('info', 'Fitur DXF Export siap digunakan.', 1500);
+            UI.showLoading('Mengekspor ke DXF...', 'Memproses data geometri');
+            
+            let dxfContent = "0\nSECTION\n2\nHEADER\n0\nENDSEC\n0\nSECTION\n2\nTABLES\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n";
+            let entityCount = 0;
+
+            const allFeatures = [];
+            [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
+                processAllSubLayers(group, layer => {
+                    if (typeof layer.toGeoJSON === 'function') {
+                        allFeatures.push(layer.toGeoJSON());
+                    }
+                });
+            });
+
+            if (allFeatures.length === 0) {
+                UI.hideLoading();
+                Swal.fire('Warning', 'Tidak ada objek untuk diexport ke DXF.', 'warning');
+                return;
+            }
+
+            allFeatures.forEach(f => {
+                const geom = f.geometry;
+                if (!geom) return;
+
+                if (geom.type === 'Polygon') {
+                    geom.coordinates.forEach(ring => {
+                        dxfContent += "0\nLWPOLYLINE\n8\nGIS_LAYER\n90\n" + ring.length + "\n70\n1\n";
+                        ring.forEach(pt => {
+                            dxfContent += `10\n${pt[0]}\n20\n${pt[1]}\n`;
+                        });
+                        entityCount++;
+                    });
+                } else if (geom.type === 'LineString') {
+                    dxfContent += "0\nLWPOLYLINE\n8\nGIS_LAYER\n90\n" + geom.coordinates.length + "\n70\n0\n";
+                    geom.coordinates.forEach(pt => {
+                        dxfContent += `10\n${pt[0]}\n20\n${pt[1]}\n`;
+                    });
+                    entityCount++;
+                } else if (geom.type === 'Point') {
+                    const pt = geom.coordinates;
+                    dxfContent += `0\nPOINT\n8\nGIS_LAYER\n10\n${pt[0]}\n20\n${pt[1]}\n30\n0.0\n`;
+                    entityCount++;
+                }
+            });
+
+            dxfContent += "0\nENDSEC\n0\nEOF\n";
+
+            UI.hideLoading();
+            if (entityCount === 0) {
+                Swal.fire('Warning', 'Tidak ada entitas valid untuk DXF.', 'warning');
+                return;
+            }
+
+            const blob = new Blob([dxfContent], { type: 'application/dxf' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'export_gis_acm.dxf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            UI.toast('success', 'Export DXF Berhasil!', 1500);
         });
 
         document.addEventListener('keydown', (e) => {

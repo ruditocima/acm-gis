@@ -765,13 +765,13 @@
                         features.push({
                             type: "Feature",
                             geometry: { type: "Polygon", coordinates: [coords] },
-                            properties: el.tags
+                            properties: { id: el.id, ...el.tags }
                         });
                     } else {
                         features.push({
                             type: "Feature",
                             geometry: { type: "LineString", coordinates: coords },
-                            properties: el.tags
+                            properties: { id: el.id, ...el.tags }
                         });
                     }
                 }
@@ -1589,7 +1589,7 @@
         }
 
         // ============================================================
-        // 14. FETCH OSM DATA
+        // 14. FETCH OSM DATA (Prioritizing existing saved/loaded/edited data)
         // ============================================================
 
         async function fetchOSMData(bbox) {
@@ -1676,7 +1676,24 @@
 
             if (successData && successData.elements) {
                 const fetchedGeoJSON = customOSMToGeoJSON(successData);
+
+                // Kumpulkan data bangunan/jalan yang sudah tersimpan / ter-load sebelumnya di peta
+                const existingLayersMap = new Map();
+                processAllSubLayers(App.groups.osm, layer => {
+                    if (layer.feature && layer.feature.properties) {
+                        const props = layer.feature.properties;
+                        const osmId = props.id || props.osm_id;
+                        if (osmId) {
+                            existingLayersMap.set(String(osmId), layer);
+                        }
+                    }
+                });
+
+                // Bersihkan grup osm, lalu masukkan kembali data yang sudah ada (tersimpan/ter-load/diedit/digeser) agar diprioritaskan
                 App.groups.osm.clearLayers();
+                existingLayersMap.forEach((layer) => {
+                    App.groups.osm.addLayer(layer);
+                });
 
                 const roadWidthInput = document.getElementById('roadWidthInput');
                 const userRoadWidth = roadWidthInput ? parseFloat(roadWidthInput.value) || 6 : 6;
@@ -1728,6 +1745,12 @@
                 const filteredFeatures = processedFeatures.filter(f => {
                     if (!f.properties || (!f.properties.building && !f.properties.highway)) return false;
 
+                    // Pastikan objek yang sudah ada di peta (tersimpan/ter-load/diedit/digeser) tidak dimuat ulang atau diduplikasi[cite: 1]
+                    const osmId = f.properties.id || f.properties.osm_id;
+                    if (osmId && existingLayersMap.has(String(osmId))) {
+                        return false;
+                    }
+
                     if (App.state.uploadedKmlFeatures.length > 0) {
                         let intersects = false;
                         for (const kmlF of App.state.uploadedKmlFeatures) {
@@ -1777,7 +1800,6 @@
                                 layer.options.pmIgnore = false;
                                 layer.options.allowRemoval = true;
                                 
-                                // Tandai flag saat objek diedit atau digeser
                                 layer.on('pm:edit', function(e) {
                                     layer.feature.properties._isModified = true;
                                 });
@@ -1809,9 +1831,9 @@
                     });
 
                     UI.updateFeatureCounts();
-                    UI.toast('success', `Berhasil memuat ${filteredFeatures.length} objek dari OSM!`, 3000);
+                    UI.toast('success', `Berhasil memuat ${filteredFeatures.length} objek baru dari OSM!`, 3000);
                 } else {
-                    UI.toast('info', 'Tidak ada gedung/jalan ditemukan pada area ini.', 3000);
+                    UI.toast('info', 'Semua objek pada area ini sudah tersimpan/ter-load sebelumnya.', 3000);
                 }
             } else {
                 Swal.fire({
@@ -1870,7 +1892,6 @@
             btnSave.addEventListener('click', async () => {
                 const allFeatures = [];
                 
-                // 1. Ambil HANYA objek OSM bangunan yang pernah diedit/geser (_isModified === true)
                 processAllSubLayers(App.groups.osm, layer => {
                     if (typeof layer.toGeoJSON === 'function') {
                         let geo = layer.toGeoJSON();
@@ -1892,7 +1913,6 @@
                     }
                 });
 
-                // 2. Ambil SEMUA objek User Drawn yang dibuat user
                 extractFeaturesTo(App.groups.draw, 'draw', allFeatures);
 
                 if (allFeatures.length === 0) {

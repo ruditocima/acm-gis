@@ -868,11 +868,6 @@
         }
 
         // ============================================================
-        // 3. SEARCH / GEOCODING (Optional Safe Check)
-        // ============================================================
-        let searchMarker = null;
-
-        // ============================================================
         // 5. LAYER MANAGER (Visibility, Opacity, Clear)
         // ============================================================
 
@@ -1110,9 +1105,6 @@
 
         App.map.on('pm:create', (e) => {
             const { shape, layer } = e;
-            if (shape === 'Rectangle') {
-                console.log('Rectangle created successfully without ortho constraint.');
-            }
             if (e.shape === 'Marker') {
                 e.layer.setIcon(blueDotIcon);
             } else if (e.layer.setStyle) {
@@ -1180,13 +1172,17 @@
             const layer = e.layer;
             if (!layer) return;
 
-            if (!isLayerFromDrawGroup(layer)) {
+            const isDraw = isLayerFromDrawGroup(layer);
+            const props = layer.feature?.properties || {};
+            const isOsmBuilding = props.building || (props.sourceGroup === 'osm' && !props.highway);
+
+            if (!isDraw && !isOsmBuilding) {
                 if (layer.pm && layer.pm.enabled && layer.pm.enabled()) {
                     layer.pm.disable();
                 }
                 if (!editWarningShown) {
                     editWarningShown = true;
-                    UI.toast('info', 'Edit mode hanya tersedia untuk objek yang Anda gambar.', 2500);
+                    UI.toast('info', 'Edit mode hanya tersedia untuk objek yang Anda gambar atau bangunan OSM.', 2500);
                     setTimeout(() => { editWarningShown = false; }, 3000);
                 }
                 return;
@@ -1341,10 +1337,6 @@
         }
 
         // ============================================================
-        // 10. COPY & PASTE HANDLERS (Safe Check)
-        // ============================================================
-
-        // ============================================================
         // 11. KEYBOARD SHORTCUTS
         // ============================================================
 
@@ -1408,7 +1400,11 @@
                 }
 
                 if (App.map.pm && App.map.pm.globalEditModeEnabled()) {
-                    if (isLayerFromDrawGroup(layer)) {
+                    const isDraw = isLayerFromDrawGroup(layer);
+                    const props = layer.feature?.properties || {};
+                    const isOsmBuilding = props.building || (props.sourceGroup === 'osm' && !props.highway);
+
+                    if (isDraw || isOsmBuilding) {
                         if (currentlyEditingLayer && currentlyEditingLayer !== layer) {
                             if (currentlyEditingLayer.pm && currentlyEditingLayer.pm.enabled && currentlyEditingLayer.pm.enabled()) {
                                 currentlyEditingLayer.pm.disable();
@@ -1421,7 +1417,7 @@
                     } else {
                         if (!editWarningShown) {
                             editWarningShown = true;
-                            UI.toast('info', 'Edit mode hanya tersedia untuk objek yang Anda gambar.', 2500);
+                            UI.toast('info', 'Edit mode hanya tersedia untuk objek yang Anda gambar atau bangunan OSM.', 2500);
                             setTimeout(() => { editWarningShown = false; }, 3000);
                         }
                     }
@@ -1780,6 +1776,15 @@
                             if (feature.properties.building) {
                                 layer.options.pmIgnore = false;
                                 layer.options.allowRemoval = true;
+                                
+                                // Tandai flag saat objek diedit atau digeser
+                                layer.on('pm:edit', function(e) {
+                                    layer.feature.properties._isModified = true;
+                                });
+                                layer.on('pm:dragend', function(e) {
+                                    layer.feature.properties._isModified = true;
+                                });
+
                             } else if (feature.properties.highway) {
                                 layer.options.pmIgnore = true;
                                 layer.options.allowRemoval = false;
@@ -1857,95 +1862,94 @@
         }
 
         // ============================================================
-        // 15. SAVE PROJECT FILE
+        // 15. SAVE PROJECT FILE (Modified to save only edited OSM & Drawn)
         // ============================================================
 
         const btnSave = document.getElementById('btn-save');
-if (btnSave) {
-    btnSave.addEventListener('click', async () => {
-        const allFeatures = [];
-        
-        // 1. Ambil HANYA objek OSM bangunan (Filter out jalan/highway)
-        processAllSubLayers(App.groups.osm, layer => {
-            if (typeof layer.toGeoJSON === 'function') {
-                let geo = layer.toGeoJSON();
-                const processOsmFeature = (f) => {
-                    f.properties = f.properties || {};
-                    if (layer.feature && layer.feature.properties) {
-                        f.properties = { ...layer.feature.properties, ...f.properties };
+        if (btnSave) {
+            btnSave.addEventListener('click', async () => {
+                const allFeatures = [];
+                
+                // 1. Ambil HANYA objek OSM bangunan yang pernah diedit/geser (_isModified === true)
+                processAllSubLayers(App.groups.osm, layer => {
+                    if (typeof layer.toGeoJSON === 'function') {
+                        let geo = layer.toGeoJSON();
+                        const processOsmFeature = (f) => {
+                            f.properties = f.properties || {};
+                            if (layer.feature && layer.feature.properties) {
+                                f.properties = { ...layer.feature.properties, ...f.properties };
+                            }
+                            if (f.properties.building && f.properties._isModified) {
+                                f.properties.sourceGroup = 'osm';
+                                allFeatures.push(f);
+                            }
+                        };
+                        if (geo.type === 'FeatureCollection' && geo.features) {
+                            geo.features.forEach(processOsmFeature);
+                        } else if (geo.type === 'Feature') {
+                            processOsmFeature(geo);
+                        }
                     }
-                    // Pastikan hanya menyimpan jika ada properti 'building' (bangunan), abaikan jalan
-                    if (f.properties.building) {
-                        f.properties.sourceGroup = 'osm';
-                        allFeatures.push(f);
-                    }
-                };
-                if (geo.type === 'FeatureCollection' && geo.features) {
-                    geo.features.forEach(processOsmFeature);
-                } else if (geo.type === 'Feature') {
-                    processOsmFeature(geo);
-                }
-            }
-        });
-
-        // 2. Ambil SEMUA objek User Drawn (baik yang baru dibuat maupun hasil edit)
-        extractFeaturesTo(App.groups.draw, 'draw', allFeatures);
-
-        if (allFeatures.length === 0) {
-            Swal.fire('Warning', 'Tidak ada objek bangunan OSM atau objek gambar user untuk disimpan.', 'warning');
-            return;
-        }
-
-        const featureCollection = { type: "FeatureCollection", features: allFeatures };
-        const jsonContent = JSON.stringify(featureCollection, null, 2);
-
-        if ('showSaveFilePicker' in window) {
-            try {
-                const handle = await window.showSaveFilePicker({
-                    suggestedName: 'proyek_geoconvert_filtered.json',
-                    types: [{
-                        description: 'GeoJSON Project File (*.json)',
-                        accept: { 'application/json': ['.json', '.geojson'] },
-                    }],
                 });
-                const writable = await handle.createWritable();
-                await writable.write(jsonContent);
-                await writable.close();
-                UI.toast('success', 'Objek bangunan OSM & Drawn berhasil disimpan!', 2000);
-            } catch (err) {
-                if (err.name !== 'AbortError') {
-                    Swal.fire('Error', 'Gagal menyimpan file: ' + err.message, 'error');
+
+                // 2. Ambil SEMUA objek User Drawn yang dibuat user
+                extractFeaturesTo(App.groups.draw, 'draw', allFeatures);
+
+                if (allFeatures.length === 0) {
+                    Swal.fire('Warning', 'Tidak ada objek bangunan OSM yang dimodifikasi (diedit/digeser) atau objek gambar user untuk disimpan.', 'warning');
+                    return;
                 }
-            }
-        } else {
-            const { value: fileName } = await Swal.fire({
-                title: 'Simpan Proyek Peta',
-                input: 'text',
-                inputLabel: 'Masukkan nama file proyek:',
-                inputValue: 'proyek_geoconvert_filtered',
-                showCancelButton: true,
-                confirmButtonColor: '#10b981',
-                inputValidator: (value) => {
-                    if (!value) return 'Nama file tidak boleh kosong!';
+
+                const featureCollection = { type: "FeatureCollection", features: allFeatures };
+                const jsonContent = JSON.stringify(featureCollection, null, 2);
+
+                if ('showSaveFilePicker' in window) {
+                    try {
+                        const handle = await window.showSaveFilePicker({
+                            suggestedName: 'proyek_geoconvert_filtered.json',
+                            types: [{
+                                description: 'GeoJSON Project File (*.json)',
+                                accept: { 'application/json': ['.json', '.geojson'] },
+                            }],
+                        });
+                        const writable = await handle.createWritable();
+                        await writable.write(jsonContent);
+                        await writable.close();
+                        UI.toast('success', 'Objek modifikasi OSM & Drawn berhasil disimpan!', 2000);
+                    } catch (err) {
+                        if (err.name !== 'AbortError') {
+                            Swal.fire('Error', 'Gagal menyimpan file: ' + err.message, 'error');
+                        }
+                    }
+                } else {
+                    const { value: fileName } = await Swal.fire({
+                        title: 'Simpan Proyek Peta',
+                        input: 'text',
+                        inputLabel: 'Masukkan nama file proyek:',
+                        inputValue: 'proyek_geoconvert_filtered',
+                        showCancelButton: true,
+                        confirmButtonColor: '#10b981',
+                        inputValidator: (value) => {
+                            if (!value) return 'Nama file tidak boleh kosong!';
+                        }
+                    });
+
+                    if (fileName) {
+                        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonContent);
+                        const a = document.createElement('a');
+                        a.href = dataStr;
+                        a.download = `${fileName.trim()}.json`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        UI.toast('success', 'Objek modifikasi OSM & Drawn berhasil disimpan!', 2000);
+                    }
                 }
             });
-
-            if (fileName) {
-                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonContent);
-                const a = document.createElement('a');
-                a.href = dataStr;
-                a.download = `${fileName.trim()}.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                UI.toast('success', 'Objek bangunan OSM & Drawn berhasil disimpan!', 2000);
-            }
         }
-    });
-}
 
         // ============================================================
-        // 16. LOAD PROJECT FILE (B.json) WITH MERGE SUPPORT
+        // 16. LOAD PROJECT FILE WITH MERGE SUPPORT
         // ============================================================
 
         const loadProjectInput = document.getElementById('loadProjectInput');
@@ -1963,7 +1967,7 @@ if (btnSave) {
 
                         if (hasActiveKML) {
                             const result = await Swal.fire({
-                                title: 'Gabungkan File B.json?',
+                                title: 'Gabungkan File Proyek?',
                                 text: 'File KMZ terbaru sedang aktif di peta. Apakah Anda ingin mengimpor file anda tanpa menimpa KMZ terbaru?',
                                 icon: 'question',
                                 showCancelButton: true,
@@ -2005,9 +2009,6 @@ if (btnSave) {
                                     if (props.building) {
                                         return { color: '#f59e0b', weight: 1, fillColor: '#f59e0b', fillOpacity: 0.4 };
                                     }
-                                    if (props.highway) {
-                                        return { color: '#06b6d4', weight: 1.5, fillColor: '#06b6d4', fillOpacity: 0.3 };
-                                    }
                                     return { color: '#06b6d4', weight: 1.5, fillOpacity: 0.3 };
                                 }
 
@@ -2030,8 +2031,8 @@ if (btnSave) {
                                         layer.options.pmIgnore = false;
                                         if (props.building) {
                                             layer.options.allowRemoval = true;
-                                        } else if (props.highway) {
-                                            layer.options.allowRemoval = false;
+                                            layer.on('pm:edit', function() { layer.feature.properties._isModified = true; });
+                                            layer.on('pm:dragend', function() { layer.feature.properties._isModified = true; });
                                         }
                                         App.groups.osm.addLayer(layer);
                                     }
@@ -2275,6 +2276,7 @@ if (btnSave) {
             let tablesDxf = [];
             tablesDxf.push("  0", "SECTION");
             tablesDxf.push("  2", "TABLES");
+            tablesDxf.path = [];
             tablesDxf.push("  0", "TABLE");
             tablesDxf.push("  2", "LAYER");
             tablesDxf.push(" 70", layerNames.size.toString());

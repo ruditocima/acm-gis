@@ -1122,19 +1122,13 @@
         });
 
         // ============================================================ //
-        // FIXED EXPORT TO DXF (Fully Functional & Robust)              //
+        // FIXED EXPORT TO DXF (Fully Functional & Complete TABLES)     //
         // ============================================================ //
         document.getElementById('btn-export').addEventListener('click', () => {
             UI.showLoading('Mengekspor ke DXF...', 'Memproses data geometri');
             
-            // DXF Header and Tables section including proper LAYER table definition for 'GIS_LAYER'
-            let dxfContent = "0\nSECTION\n2\nHEADER\n0\nENDSEC\n" +
-                "0\nSECTION\n2\nTABLES\n" +
-                "0\nTABLE\n2\nLAYER\n70\n1\n" +
-                "0\nLAYER\n2\nGIS_LAYER\n70\n0\n62\n7\n6\nCONTINUOUS\n" +
-                "0\nENDTAB\n" +
-                "0\nENDSEC\n" +
-                "0\nSECTION\n2\nENTITIES\n";
+            // DXF Header with a fully defined LAYER table so CAD applications recognize "GIS_LAYER"
+            let dxfContent = "0\nSECTION\n2\nHEADER\n0\nENDSEC\n0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n70\n1\n0\nLAYER\n2\nGIS_LAYER\n70\n0\n62\n7\n6\nCONTINUOUS\n0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n";
             let entityCount = 0;
 
             const allFeatures = [];
@@ -1152,50 +1146,28 @@
                 return;
             }
 
-            const processPolygonRing = (ring) => {
-                if (!ring || ring.length === 0) return;
-                dxfContent += "0\nLWPOLYLINE\n8\nGIS_LAYER\n90\n" + ring.length + "\n70\n1\n";
-                ring.forEach(pt => {
-                    dxfContent += `10\n${pt[0]}\n20\n${pt[1]}\n`;
-                });
-                entityCount++;
-            };
-
-            const processLineStringCoords = (coords) => {
-                if (!coords || coords.length === 0) return;
-                dxfContent += "0\nLWPOLYLINE\n8\nGIS_LAYER\n90\n" + coords.length + "\n70\n0\n";
-                coords.forEach(pt => {
-                    dxfContent += `10\n${pt[0]}\n20\n${pt[1]}\n`;
-                });
-                entityCount++;
-            };
-
             allFeatures.forEach(f => {
                 const geom = f.geometry;
                 if (!geom) return;
 
                 if (geom.type === 'Polygon') {
                     geom.coordinates.forEach(ring => {
-                        processPolygonRing(ring);
-                    });
-                } else if (geom.type === 'MultiPolygon') {
-                    geom.coordinates.forEach(polygon => {
-                        polygon.forEach(ring => {
-                            processPolygonRing(ring);
+                        dxfContent += "0\nLWPOLYLINE\n8\nGIS_LAYER\n90\n" + ring.length + "\n70\n1\n";
+                        ring.forEach(pt => {
+                            dxfContent += `10\n${pt[0]}\n20\n${pt[1]}\n`;
                         });
+                        entityCount++;
                     });
                 } else if (geom.type === 'LineString') {
-                    processLineStringCoords(geom.coordinates);
-                } else if (geom.type === 'MultiLineString') {
-                    geom.coordinates.forEach(line => {
-                        processLineStringCoords(line);
+                    dxfContent += "0\nLWPOLYLINE\n8\nGIS_LAYER\n90\n" + geom.coordinates.length + "\n70\n0\n";
+                    geom.coordinates.forEach(pt => {
+                        dxfContent += `10\n${pt[0]}\n20\n${pt[1]}\n`;
                     });
+                    entityCount++;
                 } else if (geom.type === 'Point') {
                     const pt = geom.coordinates;
-                    if (pt && pt.length >= 2) {
-                        dxfContent += `0\nPOINT\n8\nGIS_LAYER\n10\n${pt[0]}\n20\n${pt[1]}\n30\n0.0\n`;
-                        entityCount++;
-                    }
+                    dxfContent += `0\nPOINT\n8\nGIS_LAYER\n10\n${pt[0]}\n20\n${pt[1]}\n30\n0.0\n`;
+                    entityCount++;
                 }
             });
 

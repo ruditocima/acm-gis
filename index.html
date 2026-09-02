@@ -1861,65 +1861,88 @@
         // ============================================================
 
         const btnSave = document.getElementById('btn-save');
-        if (btnSave) {
-            btnSave.addEventListener('click', async () => {
-                const allFeatures = [];
-                extractFeaturesTo(App.groups.kml, 'kml', allFeatures);
-                extractFeaturesTo(App.groups.osm, 'osm', allFeatures);
-                extractFeaturesTo(App.groups.draw, 'draw', allFeatures);
-
-                if (allFeatures.length === 0) {
-                    Swal.fire('Warning', 'Tidak ada data di peta untuk disimpan.', 'warning');
-                    return;
+if (btnSave) {
+    btnSave.addEventListener('click', async () => {
+        const allFeatures = [];
+        
+        // 1. Ambil HANYA objek OSM bangunan (Filter out jalan/highway)
+        processAllSubLayers(App.groups.osm, layer => {
+            if (typeof layer.toGeoJSON === 'function') {
+                let geo = layer.toGeoJSON();
+                const processOsmFeature = (f) => {
+                    f.properties = f.properties || {};
+                    if (layer.feature && layer.feature.properties) {
+                        f.properties = { ...layer.feature.properties, ...f.properties };
+                    }
+                    // Pastikan hanya menyimpan jika ada properti 'building' (bangunan), abaikan jalan
+                    if (f.properties.building) {
+                        f.properties.sourceGroup = 'osm';
+                        allFeatures.push(f);
+                    }
+                };
+                if (geo.type === 'FeatureCollection' && geo.features) {
+                    geo.features.forEach(processOsmFeature);
+                } else if (geo.type === 'Feature') {
+                    processOsmFeature(geo);
                 }
+            }
+        });
 
-                const featureCollection = { type: "FeatureCollection", features: allFeatures };
-                const jsonContent = JSON.stringify(featureCollection, null, 2);
+        // 2. Ambil SEMUA objek User Drawn (baik yang baru dibuat maupun hasil edit)
+        extractFeaturesTo(App.groups.draw, 'draw', allFeatures);
 
-                if ('showSaveFilePicker' in window) {
-                    try {
-                        const handle = await window.showSaveFilePicker({
-                            suggestedName: 'proyek_geoconvert.json',
-                            types: [{
-                                description: 'GeoJSON Project File (*.json)',
-                                accept: { 'application/json': ['.json', '.geojson'] },
-                            }],
-                        });
-                        const writable = await handle.createWritable();
-                        await writable.write(jsonContent);
-                        await writable.close();
-                        UI.toast('success', 'Proyek berhasil disimpan!', 2000);
-                    } catch (err) {
-                        if (err.name !== 'AbortError') {
-                            Swal.fire('Error', 'Gagal menyimpan file: ' + err.message, 'error');
-                        }
-                    }
-                } else {
-                    const { value: fileName } = await Swal.fire({
-                        title: 'Simpan Proyek Peta',
-                        input: 'text',
-                        inputLabel: 'Masukkan nama file proyek:',
-                        inputValue: 'proyek_geoconvert',
-                        showCancelButton: true,
-                        confirmButtonColor: '#10b981',
-                        inputValidator: (value) => {
-                            if (!value) return 'Nama file tidak boleh kosong!';
-                        }
-                    });
+        if (allFeatures.length === 0) {
+            Swal.fire('Warning', 'Tidak ada objek bangunan OSM atau objek gambar user untuk disimpan.', 'warning');
+            return;
+        }
 
-                    if (fileName) {
-                        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonContent);
-                        const a = document.createElement('a');
-                        a.href = dataStr;
-                        a.download = `${fileName.trim()}.json`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        UI.toast('success', 'Proyek berhasil disimpan!', 2000);
-                    }
+        const featureCollection = { type: "FeatureCollection", features: allFeatures };
+        const jsonContent = JSON.stringify(featureCollection, null, 2);
+
+        if ('showSaveFilePicker' in window) {
+            try {
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: 'proyek_geoconvert_filtered.json',
+                    types: [{
+                        description: 'GeoJSON Project File (*.json)',
+                        accept: { 'application/json': ['.json', '.geojson'] },
+                    }],
+                });
+                const writable = await handle.createWritable();
+                await writable.write(jsonContent);
+                await writable.close();
+                UI.toast('success', 'Objek bangunan OSM & Drawn berhasil disimpan!', 2000);
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    Swal.fire('Error', 'Gagal menyimpan file: ' + err.message, 'error');
+                }
+            }
+        } else {
+            const { value: fileName } = await Swal.fire({
+                title: 'Simpan Proyek Peta',
+                input: 'text',
+                inputLabel: 'Masukkan nama file proyek:',
+                inputValue: 'proyek_geoconvert_filtered',
+                showCancelButton: true,
+                confirmButtonColor: '#10b981',
+                inputValidator: (value) => {
+                    if (!value) return 'Nama file tidak boleh kosong!';
                 }
             });
+
+            if (fileName) {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonContent);
+                const a = document.createElement('a');
+                a.href = dataStr;
+                a.download = `${fileName.trim()}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                UI.toast('success', 'Objek bangunan OSM & Drawn berhasil disimpan!', 2000);
+            }
         }
+    });
+}
 
         // ============================================================
         // 16. LOAD PROJECT FILE (B.json) WITH MERGE SUPPORT

@@ -5,27 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GIS | ACM</title>
 
+    <!-- Tailwind CSS (Static Production Build) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
 
+    <!-- Leaflet CSS & JS (for Maps) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
+    <!-- Leaflet Geoman (for drawing/editing) -->
     <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.14.2/dist/leaflet-geoman.css" />
     <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.14.2/dist/leaflet-geoman.min.js"></script>
 
+    <!-- JSZip (for KMZ) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
+    <!-- toGeoJSON (for KML to GeoJSON) -->
     <script src="https://unpkg.com/@tmcw/togeojson@4.2.0/dist/togeojson.umd.js"></script>
 
+    <!-- Turf.js (for spatial processing, buffer & area calculation) -->
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
+    <!-- SweetAlert2 (for alerts) -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
+    <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 
+    <!-- Leaflet MiniMap -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet-minimap/3.6.1/Control.MiniMap.min.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-minimap/3.6.1/Control.MiniMap.min.js"></script>
 
+    <!-- html2canvas for PNG Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <style>
@@ -216,13 +226,16 @@
 </head>
 <body class="flex flex-row bg-gray-900 text-gray-200">
 
+    <!-- Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay">
         <div class="loader" style="width: 48px; height: 48px; border-width: 4px; margin-bottom: 16px;"></div>
         <div id="loadingText" class="text-gray-300 font-medium text-sm">Memproses...</div>
         <div id="loadingSub" class="text-gray-500 text-xs mt-2">Mohon tunggu sebentar</div>
     </div>
 
+    <!-- Sidebar / Main Menu -->
     <div id="sidebar" class="glass-panel w-80 h-screen flex flex-col shadow-2xl absolute left-0 top-0">
+        <!-- Header -->
         <div class="p-5 border-b border-gray-700 border-opacity-50 flex items-center justify-between">
             <div>
                 <h1 class="text-xl font-bold text-emerald-400 tracking-wide">
@@ -235,8 +248,10 @@
             </button>
         </div>
 
+        <!-- Scrollable Content -->
         <div class="p-5 flex-1 overflow-y-auto space-y-5">
 
+            <!-- Layer Control (Map vs Earth) -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Base Layer</h2>
                 <div class="flex bg-gray-900 rounded-lg p-1">
@@ -249,6 +264,7 @@
                 </div>
             </div>
 
+            <!-- Upload Section -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Import Data</h2>
                 <div class="file-upload-wrapper">
@@ -263,6 +279,7 @@
                 </div>
             </div>
 
+            <!-- Fetch OSM Data -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Environment Data</h2>
 
@@ -276,6 +293,7 @@
                 </button>
             </div>
 
+            <!-- Layer Manager -->
             <div class="bg-gray-800 bg-opacity-50 p-4 rounded-xl border border-gray-700 border-opacity-50">
                 <h2 class="text-sm font-semibold mb-3 text-gray-300 uppercase tracking-wider">Layer Manager</h2>
 
@@ -335,6 +353,7 @@
 
         </div>
 
+        <!-- Footer Actions -->
         <div class="p-5 border-t border-gray-700 border-opacity-50 flex flex-col gap-3 bg-gray-800 bg-opacity-30">
             <div class="grid grid-cols-2 gap-2">
                 <button id="btn-save" class="py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center">
@@ -359,8 +378,10 @@
         </div>
     </div>
 
+    <!-- Map Container -->
     <div id="map"></div>
 
+    <!-- Coordinate Display (Bottom Right) -->
     <div id="coordDisplay" class="coord-display absolute bottom-4 right-4 z-[1000] flex flex-col gap-1">
         <div class="flex items-center gap-2">
             <span class="coord-label">Mouse</span>
@@ -380,14 +401,15 @@
         </div>
     </div>
 
+    <!-- Application Logic -->
     <script>
         const App = {
             config: {
-                maxUndoStack: 30, // Diturunkan sedikit agar hemat memori RAM
+                maxUndoStack: 30,
                 osmTimeout: 30000,
                 defaultRoadWidth: 6,
                 coordinatePrecision: 6,
-                version: '2.0.1-lite'
+                version: '2.0.2-lite'
             },
             state: {
                 isMeasureMode: false,
@@ -515,7 +537,7 @@
                 else if (lastAction.layer) App.map.addLayer(lastAction.layer);
             }
             UI.updateFeatureCounts();
-            UI.toast('success', 'Aksi dibatalkan (Undo)!', 1500);
+            UI.toast('success', 'Aksi dibatalkan (Undo)ফ', 1500);
         }
 
         function validateCoords(coords) {
@@ -539,6 +561,7 @@
             return geojson;
         }
 
+        // --- Fixed OSM to GeoJSON parser using `out geom;` ---
         function customOSMToGeoJSON(data) {
             const features = [];
             if (!data || !data.elements) return { type: "FeatureCollection", features: [] };
@@ -575,14 +598,14 @@
         }
 
         // ============================================================ //
-        // INITIALIZE MAP (OPTIMIZED FOR LOW-END HARDWARE)               //
+        // INITIALIZE MAP                                                //
         // ============================================================ //
         App.layers.osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             attribution: '© OpenStreetMap contributors',
-            keepBuffer: 2,           // Dioptimalkan: Berkurang dari 6 ke 2 (lebih ringan)
-            updateWhenIdle: true,    // Dioptimalkan: Tile hanya dimuat saat berhenti bergerak
-            updateWhenZooming: false // Dioptimalkan: Mencegah lag saat transisi zoom
+            keepBuffer: 2,
+            updateWhenIdle: true,
+            updateWhenZooming: false
         });
 
         App.layers.earth = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
@@ -601,7 +624,7 @@
             zoomControl: false,
             renderer: canvasRenderer,
             zoomAnimation: true,
-            fadeAnimation: false, // Dimatikan agar tidak memberatkan GPU
+            fadeAnimation: false,
             markerZoomAnimation: false,
             inertia: true
         });
@@ -616,7 +639,6 @@
         App.groups.osm = L.featureGroup().addTo(App.map);
         App.groups.draw = L.featureGroup().addTo(App.map);
 
-        // Geoman Toolbar Integration (Ringan)
         App.map.pm.addControls({
             position: 'topright',
             drawMarker: true,
@@ -641,13 +663,10 @@
             UI.toast('success', 'Objek baru berhasil digambar!', 1500);
         });
 
-        // ============================================================ //
-        // THROTTLED COORDINATE TRACKING (CPU SAVER)                     //
-        // ============================================================ //
         let lastMoveTime = 0;
         App.map.on('mousemove', (e) => {
             const now = Date.now();
-            if (now - lastMoveTime < 80) return; // Throttled ~12fps untuk hemat CPU laptop kentang
+            if (now - lastMoveTime < 80) return;
             lastMoveTime = now;
             const format = App.state.coordFormat;
             const mouseCoordEl = document.getElementById('mouseCoord');
@@ -663,9 +682,6 @@
             App.state.coordFormat = e.target.value;
         });
 
-        // ============================================================ //
-        // LAYER MANAGER (VISIBILITY & OPACITY & DELETE)                 //
-        // ============================================================ //
         function setupLayerControls(name, groupKey) {
             const toggle = document.getElementById(`toggle-${name}`);
             const opacity = document.getElementById(`opacity-${name}`);
@@ -706,9 +722,6 @@
         setupLayerControls('osm', 'osm');
         setupLayerControls('draw', 'draw');
 
-        // ============================================================ //
-        // BASE LAYER SWITCHER                                           //
-        // ============================================================ //
         const btnMap = document.getElementById('btn-map');
         const btnEarth = document.getElementById('btn-earth');
         btnMap.addEventListener('click', () => {
@@ -724,9 +737,6 @@
             btnMap.className = "flex-1 py-2 text-sm rounded-md text-gray-400 hover:text-white transition-all";
         });
 
-        // ============================================================ //
-        // FILE UPLOAD (KML / KMZ) PARSING                               //
-        // ============================================================ //
         const fileInput = document.getElementById('fileInput');
         fileInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
@@ -793,7 +803,7 @@
         });
 
         // ============================================================ //
-        // FETCH OSM DATA (BUILDINGS & ROADS)                            //
+        // FIXED FETCH OSM DATA (Menggunakan `out geom;`)                //
         // ============================================================ //
         document.getElementById('btn-fetch-osm').addEventListener('click', async () => {
             if (!App.state.currentBbox) {
@@ -804,7 +814,9 @@
             UI.showLoading('Mengambil Data OSM...', 'Menghubungkan ke server Overpass API');
             const b = App.state.currentBbox;
             const bboxStr = `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`;
-            const query = `[out:json][timeout:25];(way["building"](${bboxStr});way["highway"](${bboxStr}););out body;>;out skel qt;`;
+            
+            // Menggunakan `out geom;` agar koordinat langsung disertakan dalam elemen way
+            const query = `[out:json][timeout:25];(way["building"](${bboxStr});way["highway"](${bboxStr}););out geom;`;
 
             const endpoints = [
                 'https://overpass-api.de/api/interpreter',
@@ -854,12 +866,9 @@
 
             App.groups.osm.addLayer(osmLayer);
             UI.updateFeatureCounts();
-            UI.toast('success', 'Data OSM Buildings & Roads dimuat!', 2000);
+            UI.toast('success', 'Data OSM Buildings & Roads berhasil dimuat!', 2000);
         });
 
-        // ============================================================ //
-        // SAVE & LOAD PROJECT (GEOJSON)                                 //
-        // ============================================================ //
         document.getElementById('btn-save').addEventListener('click', () => {
             const allFeatures = [];
             [App.groups.kml, App.groups.osm, App.groups.draw].forEach(group => {
@@ -909,9 +918,6 @@
             loadInput.value = '';
         });
 
-        // ============================================================ //
-        // EXPORT TO DXF & PNG                                           //
-        // ============================================================ //
         document.getElementById('btn-export-png').addEventListener('click', () => {
             UI.showLoading('Mengekspor Peta ke PNG...', 'Merender tangkapan layar');
             setTimeout(() => {
@@ -933,7 +939,6 @@
             UI.toast('info', 'Fitur DXF Export siap digunakan.', 1500);
         });
 
-        // Keyboard Shortcuts (Undo / Redo)
         document.addEventListener('keydown', (e) => {
             if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
                 e.preventDefault();

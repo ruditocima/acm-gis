@@ -1337,18 +1337,105 @@
         }
 
         // ============================================================
-        // 11. KEYBOARD SHORTCUTS
+        // 11. KEYBOARD SHORTCUTS (Diperbarui dengan Copy & Paste)
         // ============================================================
 
         document.addEventListener('keydown', (e) => {
+            // Cegah shortcut berfungsi saat user sedang mengetik di dalam input/form
             const activeElement = document.activeElement;
             if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
                 return;
             }
 
+            // Undo (Ctrl+Z)
             if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
                 e.preventDefault();
                 performUndo();
+            }
+            
+            // Copy (Ctrl+C)
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+                if (App.state.lastSelectedLayer && typeof App.state.lastSelectedLayer.toGeoJSON === 'function') {
+                    e.preventDefault();
+                    // Simpan data layer terpilih ke dalam state clipboard
+                    App.state.clipboardGeoJSON = App.state.lastSelectedLayer.toGeoJSON();
+                    
+                    // Bersihkan properti ID untuk menghindari konflik
+                    if (App.state.clipboardGeoJSON.properties) {
+                        delete App.state.clipboardGeoJSON.properties.id;
+                        delete App.state.clipboardGeoJSON.properties.osm_id;
+                        App.state.clipboardGeoJSON.properties.name = (App.state.clipboardGeoJSON.properties.name || 'Object') + ' (Copy)';
+                    }
+                    UI.toast('success', 'Objek disalin (Ctrl+C)', 1500);
+                } else {
+                    UI.toast('info', 'Pilih (klik) objek terlebih dahulu untuk disalin', 2000);
+                }
+            }
+
+            // Paste (Ctrl+V)
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+                if (App.state.clipboardGeoJSON) {
+                    e.preventDefault();
+                    
+                    // Clone data dari clipboard
+                    let pastedGeoJSON = JSON.parse(JSON.stringify(App.state.clipboardGeoJSON));
+
+                    // Berikan sedikit offset (geser sedikit) agar objek baru tidak menimpa persis 100% di atas objek lama (agar terlihat)
+                    const offset = 0.0002; 
+                    if (pastedGeoJSON.geometry) {
+                        const geomType = pastedGeoJSON.geometry.type;
+                        const coords = pastedGeoJSON.geometry.coordinates;
+                        
+                        const applyOffset = (coordArray, type) => {
+                            if (type === 'Point') {
+                                coordArray[0] += offset;
+                                coordArray[1] -= offset;
+                            } else if (type === 'LineString' || type === 'MultiPoint') {
+                                coordArray.forEach(c => { c[0] += offset; c[1] -= offset; });
+                            } else if (type === 'Polygon' || type === 'MultiLineString') {
+                                coordArray.forEach(ring => ring.forEach(c => { c[0] += offset; c[1] -= offset; }));
+                            } else if (type === 'MultiPolygon') {
+                                coordArray.forEach(poly => poly.forEach(ring => ring.forEach(c => { c[0] += offset; c[1] -= offset; })));
+                            }
+                        };
+                        applyOffset(coords, geomType);
+                    }
+
+                    // Render layer baru dari GeoJSON hasil paste
+                    L.geoJSON(pastedGeoJSON, {
+                        renderer: canvasRenderer,
+                        pointToLayer: function(feature, latlng) {
+                            return L.marker(latlng, { icon: blueDotIcon });
+                        },
+                        style: function() {
+                            // Default styling untuk layer paste (bisa diedit di map nanti)
+                            return { color: '#3b82f6', weight: 1.5, fillOpacity: 0.3 };
+                        },
+                        onEachFeature: function(feature, layer) {
+                            // Selalu izinkan layer paste untuk diedit dan dihapus
+                            layer.options.pmIgnore = false;
+                            layer.options.allowRemoval = true;
+                            
+                            layer.feature = layer.feature || { type: 'Feature', properties: {} };
+                            layer.feature.properties = { ...feature.properties, sourceGroup: 'draw' };
+
+                            // Tambahkan ke group user drawn agar bisa di-export/save
+                            App.groups.draw.addLayer(layer);
+                            bindNamePopup(layer);
+                            
+                            // Catat di Undo Stack
+                            pushUndoAction({ type: 'add', group: App.groups.draw, layer: layer });
+                            
+                            // Otomatis pilih layer yang baru saja di-paste
+                            setTimeout(() => setSelectedLayer(layer), 50);
+                        }
+                    });
+
+                    UI.updateFeatureCounts();
+                    UI.toast('success', 'Objek ditempel (Ctrl+V)', 1500);
+                } else {
+                    UI.toast('info', 'Clipboard kosong. Lakukan Ctrl+C pada objek terlebih dahulu', 2000);
+                }
             }
 
             if (e.key === '?' || e.key === '/') {
@@ -1367,6 +1454,8 @@
                 html: `
                     <div class="text-left text-sm space-y-2">
                         <div class="flex items-center"><span class="shortcut-key">Ctrl+Z</span><span>Undo aksi terakhir</span></div>
+                        <div class="flex items-center"><span class="shortcut-key">Ctrl+C</span><span>Copy objek terpilih</span></div>
+                        <div class="flex items-center"><span class="shortcut-key">Ctrl+V</span><span>Paste objek</span></div>
                         <div class="flex items-center"><span class="shortcut-key">?</span><span>Tampilkan bantuan ini</span></div>
                         <div class="flex items-center"><span class="shortcut-key">Esc</span><span>Batalkan mode aktif</span></div>
                     </div>
@@ -1424,6 +1513,7 @@
                     return;
                 }
 
+                // Pilih layer saat di-klik (Berguna untuk keperluan Ctrl+C)
                 setSelectedLayer(layer);
 
                 let props = layer.feature?.properties || {};
@@ -1745,7 +1835,7 @@
                 const filteredFeatures = processedFeatures.filter(f => {
                     if (!f.properties || (!f.properties.building && !f.properties.highway)) return false;
 
-                    // Pastikan objek yang sudah ada di peta (tersimpan/ter-load/diedit/digeser) tidak dimuat ulang atau diduplikasi[cite: 1]
+                    // Pastikan objek yang sudah ada di peta (tersimpan/ter-load/diedit/digeser) tidak dimuat ulang atau diduplikasi
                     const osmId = f.properties.id || f.properties.osm_id;
                     if (osmId && existingLayersMap.has(String(osmId))) {
                         return false;
